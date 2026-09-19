@@ -9,7 +9,7 @@ export type PdfExport = {
 
 /**
  * Not implemented yet: the renderer choice (headless Chromium vs. a pure-JS
- * layout library) is still open — see docs/adr/0003-pdf-rendering.md.
+ * layout library) is still open — see docs/adr/0004-pdf-rendering.md.
  * Wired up now so the reporting public API is stable for the UI.
  */
 export async function exportReportToPdf(
@@ -18,7 +18,7 @@ export async function exportReportToPdf(
   void report
   return err(
     appError(ERROR_CODES.INTERNAL, 'PDF export is not implemented yet', {
-      details: { adr: 'docs/adr/0003-pdf-rendering.md' },
+      details: { adr: 'docs/adr/0004-pdf-rendering.md' },
     }),
   )
 }
