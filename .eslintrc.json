@@ -1,0 +1,86 @@
+{
+  "extends": ["next/core-web-vitals", "prettier"],
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@/modules/*/*"],
+            "message": "Import module code from its public API (@/modules/<name>) only."
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["modules/**/*.ts", "modules/**/*.tsx"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/modules/*/*"],
+                "message": "Cross-module access goes through @/modules/<name> (index.ts); use a relative path within your own module."
+              },
+              {
+                "group": ["@/app/*", "@/components/*"],
+                "message": "Dependencies point one way: app/ -> modules/ -> lib/."
+              }
+            ],
+            "paths": [
+              {
+                "name": "@anthropic-ai/sdk",
+                "message": "LLM SDKs may only be imported inside modules/analysis/adapters/."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["modules/analysis/adapters/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/modules/*/*"],
+                "message": "Cross-module access goes through @/modules/<name> (index.ts)."
+              },
+              {
+                "group": ["@/app/*", "@/components/*"],
+                "message": "Dependencies point one way: app/ -> modules/ -> lib/."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["lib/**/*.ts", "lib/**/*.tsx"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/app/*", "@/modules/*", "@/components/*"],
+                "message": "lib/ is framework-level and must not depend on modules/, app/, or components/."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["tests/**/*.ts", "tests/**/*.tsx"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ]
+}
