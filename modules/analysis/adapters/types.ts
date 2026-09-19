@@ -36,7 +36,7 @@ export type BatchOutput = {
 }
 
 /**
- * Every LLM call in SAMOSA goes through this interface, so swapping Claude for
+ * Every LLM call in SAMOSA goes through this interface, so swapping OpenAI for
  * a local IndoBERT model is a wiring change rather than a rewrite.
  */
 export type LlmAdapter = {
