@@ -8,7 +8,7 @@ export const maxDuration = 300
 
 /**
  * Worker entry point. Replace the shared-secret check with the Inngest signing
- * handler once the job queue is wired up (see docs/adr/0002-async-jobs.md).
+ * handler once the job queue is wired up (see docs/adr/0003-async-analysis-jobs.md).
  */
 export async function POST(request: NextRequest) {
   const secret = request.headers.get('x-worker-secret')

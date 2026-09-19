@@ -1,4 +1,4 @@
-# 0002. Async analysis via queued jobs
+# 0003. Async analysis via queued jobs
 
 - **Status:** Accepted
 - **Date:** 2026-09-19

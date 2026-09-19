@@ -1,4 +1,4 @@
-# 0001. Modular monolith on Next.js App Router
+# 0002. Modular monolith on Next.js App Router
 
 - **Status:** Accepted
 - **Date:** 2026-09-19
@@ -22,7 +22,7 @@ dengan boundary yang dipaksakan lewat `index.ts` public API dan aturan
 - (+) Boundary modul sudah jelas, jadi ekstraksi ke service terpisah nanti
   (kandidat pertama: `analysis`) hanya perlu memindahkan folder, bukan rewrite.
 - (-) Semua beban jalan di satu runtime; job LLM yang berat harus dipindah ke
-  worker terpisah (lihat ADR-0002) agar tidak menahan request.
+  worker terpisah (lihat ADR-0003) agar tidak menahan request.
 - (-) Boundary dijaga lint, bukan compiler — butuh disiplin review.
 
 ## Alternatives considered
