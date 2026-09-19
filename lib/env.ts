@@ -13,8 +13,8 @@ const clientSchema = z.object({
 
 const serverSchema = clientSchema.extend({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  ANTHROPIC_API_KEY: z.string().min(1),
-  ANTHROPIC_MODEL: z.string().default('claude-sonnet-5'),
+  OPENAI_API_KEY: z.string().min(1),
+  OPENAI_MODEL: z.string().default('gpt-4o-mini'),
   GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
   SENTRY_DSN: z.string().optional(),
