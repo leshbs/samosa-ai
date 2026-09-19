@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClaudeAdapter } from '../adapters/claude'
+import { createOpenAiAdapter } from '../adapters/openai'
 import { DEFAULT_PROMPT_VERSION } from '../prompts'
 import { ERROR_CODES, appError, err, logger, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
@@ -87,7 +87,7 @@ export async function runJob(
     return err(appError(ERROR_CODES.INTERNAL, 'Could not load dataset responses'))
   }
 
-  const outcome = await analyzeResponses(createClaudeAdapter(), {
+  const outcome = await analyzeResponses(createOpenAiAdapter(), {
     jobId,
     promptVersion: String(job.prompt_version),
     responses: responses.map((row) => ({ id: String(row.id), text: String(row.text) })),
