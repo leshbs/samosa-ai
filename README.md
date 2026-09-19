@@ -14,7 +14,7 @@ siap-print.
 - Node.js 20 LTS
 - pnpm 9+ (`corepack enable pnpm`)
 - Akses ke sebuah project Supabase (atau Docker untuk Supabase lokal)
-- Anthropic API key
+- OpenAI API key
 
 ## Setup
 
@@ -73,7 +73,7 @@ Upload CSV → POST /api/datasets → ingestion.uploadDataset()
   baru di `modules/analysis/prompts/` + entry di registry. Setiap
   `analysis_result` menyimpan `prompt_version` dan `model_id` demi
   reproducibility riset.
-- **LLM adapter.** `@anthropic-ai/sdk` hanya boleh diimpor di
+- **LLM adapter.** `openai` hanya boleh diimpor di
   `modules/analysis/adapters/`. Ada adapter leksikon lokal untuk tes offline dan
   sebagai baseline non-LLM.
 - **Keamanan.** Semua tabel punya RLS yang di-scope ke `organization_id`.
@@ -82,5 +82,21 @@ Upload CSV → POST /api/datasets → ingestion.uploadDataset()
 - **Env.** Divalidasi Zod di `lib/env.ts`; konfigurasi yang kurang membuat app
   gagal saat startup, bukan saat request pertama.
 
-Konvensi lengkap ada di [CLAUDE.md](CLAUDE.md); keputusan arsitektur ada di
-[docs/adr/](docs/adr/).
+## Dokumentasi
+
+| Dokumen                                  | Isi                                                                     |
+| ---------------------------------------- | ----------------------------------------------------------------------- |
+| **[docs/OVERVIEW.md](docs/OVERVIEW.md)** | **Source of truth** — arsitektur, tech stack, data model, konvensi, DoD |
+| [CLAUDE.md](CLAUDE.md)                   | Penunjuk ringkas untuk sesi Claude Code                                 |
+| [docs/adr/](docs/adr/)                   | Architecture Decision Records                                           |
+| [docs/research/](docs/research/)         | Catatan eksperimen prompt & model untuk paper                           |
+
+### Architecture Decision Records
+
+| #                                               | Judul                          | Status   |
+| ----------------------------------------------- | ------------------------------ | -------- |
+| [0001](docs/adr/0001-nextjs-supabase-stack.md)  | Next.js 15 + Supabase stack    | Accepted |
+| [0002](docs/adr/0002-modular-monolith.md)       | Modular monolith               | Accepted |
+| [0003](docs/adr/0003-async-analysis-jobs.md)    | Async analysis via queued jobs | Accepted |
+| [0004](docs/adr/0004-pdf-rendering.md)          | PDF rendering approach         | Proposed |
+| [0005](docs/adr/0005-openai-as-llm-provider.md) | OpenAI sebagai LLM provider    | Accepted |

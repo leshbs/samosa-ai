@@ -1,4 +1,4 @@
-# 0003. PDF rendering approach
+# 0004. PDF rendering approach
 
 - **Status:** Proposed
 - **Date:** 2026-09-19
