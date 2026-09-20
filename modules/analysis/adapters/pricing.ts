@@ -63,3 +63,37 @@ export function formatIdr(microIdr: number): string {
     maximumFractionDigits: 0,
   }).format(microIdr / 1_000_000)
 }
+
+/**
+ * Measured against analysis.v1 on Indonesian aspirations: roughly 120 input
+ * tokens per response once the framing tags are counted, ~55 output tokens for
+ * the JSON, plus the few-shot exchange re-sent with every batch.
+ */
+const INPUT_TOKENS_PER_RESPONSE = 120
+const OUTPUT_TOKENS_PER_RESPONSE = 55
+const FEW_SHOT_TOKENS_PER_BATCH = 900
+
+/**
+ * Up-front estimate for the confirmation dialog. Deliberately rough and
+ * rounded up — a user who is told Rp 180 and charged Rp 210 loses trust in
+ * every number the app shows them.
+ */
+export function estimateJobCostMicroIdr(
+  modelId: string,
+  responseCount: number,
+  batchSize: number,
+): number {
+  const batches = Math.ceil(responseCount / batchSize)
+
+  return estimateCostMicroIdr(modelId, {
+    inputTokens:
+      responseCount * INPUT_TOKENS_PER_RESPONSE + batches * FEW_SHOT_TOKENS_PER_BATCH,
+    outputTokens: responseCount * OUTPUT_TOKENS_PER_RESPONSE,
+  })
+}
+
+/** Batches run 4-wide; a batch takes roughly 8 seconds end to end. */
+export function estimateJobSeconds(responseCount: number, batchSize: number): number {
+  const batches = Math.ceil(responseCount / batchSize)
+  return Math.max(5, Math.ceil(batches / 4) * 8)
+}

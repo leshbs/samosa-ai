@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { AnalyzeButton } from '@/components/analysis/analyze-button'
 import { DeleteDatasetButton } from '@/components/datasets/delete-dataset-button'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,6 +15,13 @@ import {
 } from '@/components/ui/table'
 import { formatDateTime } from '@/lib/utils'
 import { can, getSessionUser } from '@/modules/auth'
+import {
+  BATCH_SIZE,
+  estimateJobCostMicroIdr,
+  estimateJobSeconds,
+  formatIdr,
+  getLatestJobForDataset,
+} from '@/modules/analysis'
 import { RESPONSES_PAGE_SIZE, getDataset, listResponses } from '@/modules/ingestion'
 
 export const metadata: Metadata = { title: 'Detail dataset' }
@@ -35,6 +43,13 @@ export default async function DatasetDetailPage({
   const responses = await listResponses(id, Number.isNaN(currentPage) ? 1 : currentPage)
   const session = await getSessionUser()
   const canDelete = session.ok && can(session.value.role, 'dataset:delete')
+  const canAnalyze = session.ok && can(session.value.role, 'analysis:run')
+
+  const latestJob = await getLatestJobForDataset(id)
+  // Pricing tables stay on the server; the button receives a formatted string.
+  const estimatedCost = formatIdr(
+    estimateJobCostMicroIdr('gpt-4o-mini', dataset.value.responseCount, BATCH_SIZE),
+  )
 
   const facts = [
     { label: 'Sumber', value: dataset.value.source.toUpperCase() },
@@ -55,13 +70,31 @@ export default async function DatasetDetailPage({
           </Link>
           <h1 className="text-2xl font-semibold">{dataset.value.name}</h1>
         </div>
-        {canDelete ? (
-          <DeleteDatasetButton
-            datasetId={dataset.value.id}
-            datasetName={dataset.value.name}
-            redirectTo="/datasets"
-          />
-        ) : null}
+        <div className="flex items-center gap-2">
+          {latestJob.ok && latestJob.value ? (
+            <Button asChild variant="outline">
+              <Link href={`/analysis/${latestJob.value.id}`}>Lihat analisis</Link>
+            </Button>
+          ) : null}
+          {canAnalyze ? (
+            <AnalyzeButton
+              datasetId={dataset.value.id}
+              responseCount={dataset.value.responseCount}
+              estimatedCost={estimatedCost}
+              estimatedSeconds={estimateJobSeconds(
+                dataset.value.responseCount,
+                BATCH_SIZE,
+              )}
+            />
+          ) : null}
+          {canDelete ? (
+            <DeleteDatasetButton
+              datasetId={dataset.value.id}
+              datasetName={dataset.value.name}
+              redirectTo="/datasets"
+            />
+          ) : null}
+        </div>
       </div>
 
       <Card>
