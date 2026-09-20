@@ -12,6 +12,8 @@ export const JOB_STATUSES = [
   'queued',
   'running',
   'succeeded',
+  /** Some batches failed; the results that did land are still usable. */
+  'partial',
   'failed',
   'cancelled',
 ] as const
@@ -68,6 +70,11 @@ export type AnalysisJob = {
   modelId: string
   processedCount: number
   totalCount: number
+  failedCount: number
+  inputTokens: number
+  outputTokens: number
+  /** Estimated spend in millionths of IDR; integer to avoid float drift. */
+  costMicroIdr: number
   errorMessage: string | null
   startedAt: string | null
   finishedAt: string | null
