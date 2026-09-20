@@ -1,3 +1,4 @@
+import tailwindcssAnimate from 'tailwindcss-animate'
 import type { Config } from 'tailwindcss'
 
 const config: Config = {
@@ -44,7 +45,9 @@ const config: Config = {
       },
     },
   },
-  plugins: [require('tailwindcss-animate')],
+  // Imported, not require()d: this file is an ES module, and Node >= 22 loads
+  // it through loadESMFromCJS, where `require` is not defined at all.
+  plugins: [tailwindcssAnimate],
 }
 
 export default config

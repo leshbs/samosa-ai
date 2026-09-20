@@ -9,19 +9,23 @@ export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
 
-  // The server cannot know the visitor's theme, so render the icon only after
-  // hydration; otherwise the markup mismatches and React warns.
+  // The server cannot know the visitor's theme, so anything derived from it has
+  // to wait for hydration. That goes for the label as much as the icon: React
+  // does not patch up a mismatched attribute, so a stale aria-label would stick
+  // and tell screen reader users the opposite of what the button does.
   useEffect(() => setMounted(true), [])
 
-  const isDark = resolvedTheme === 'dark'
+  const isDark = mounted && resolvedTheme === 'dark'
 
   return (
     <Button
       type="button"
       variant="ghost"
       size="icon"
-      aria-label={isDark ? 'Ganti ke mode terang' : 'Ganti ke mode gelap'}
-      onClick={() => setTheme(isDark ? 'light' : 'dark')}
+      aria-label={
+        mounted ? (isDark ? 'Ganti ke mode terang' : 'Ganti ke mode gelap') : 'Ganti tema'
+      }
+      onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
     >
       {mounted ? (
         isDark ? (

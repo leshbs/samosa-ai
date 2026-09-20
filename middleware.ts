@@ -57,7 +57,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(login)
   }
 
-  if (user && AUTH_PAGES.includes(pathname)) {
+  // A signed-in user normally has no business on the login page. The exception
+  // is a page carrying an `error`: that is the dashboard telling us this user
+  // cannot enter (no organization yet), and bouncing them back would loop
+  // /dashboard -> /login -> /dashboard until the browser gives up.
+  const hasError = request.nextUrl.searchParams.has('error')
+  if (user && AUTH_PAGES.includes(pathname) && !hasError) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
