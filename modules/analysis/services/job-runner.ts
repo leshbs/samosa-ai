@@ -91,6 +91,14 @@ export async function runJob(
     jobId,
     promptVersion: String(job.prompt_version),
     responses: responses.map((row) => ({ id: String(row.id), text: String(row.text) })),
+    // Persist progress as batches land so the polling endpoint has something
+    // to report; a 500-row job otherwise sits at 0 for minutes.
+    onProgress: async ({ processed, total }) => {
+      await supabase
+        .from('analysis_jobs')
+        .update({ processed_count: processed, total_count: total })
+        .eq('id', jobId)
+    },
   })
 
   if (!outcome.ok) {
@@ -117,21 +125,33 @@ export async function runJob(
     return err(appError(ERROR_CODES.INTERNAL, 'Could not persist analysis results'))
   }
 
+  // Some batches failed but we kept what landed: saying "succeeded" would
+  // overstate the result, and "failed" would throw away usable analysis.
+  const failedCount = outcome.value.failedResponseIds.length
+  const status = failedCount > 0 ? 'partial' : 'succeeded'
+
   await supabase
     .from('analysis_jobs')
     .update({
-      status: 'succeeded',
+      status,
       processed_count: rows.length,
+      failed_count: failedCount,
+      input_tokens: outcome.value.totalInputTokens,
+      output_tokens: outcome.value.totalOutputTokens,
+      cost_micro_idr: outcome.value.costMicroIdr,
       model_id: outcome.value.modelId,
       finished_at: new Date().toISOString(),
     })
     .eq('id', jobId)
 
-  log.info('analysis.job.succeeded', {
+  log.info('analysis.job.finished', {
+    status,
     analyzed: rows.length,
-    failed: outcome.value.failedResponseIds.length,
+    failed: failedCount,
+    skipped: outcome.value.skippedResponseIds.length,
     inputTokens: outcome.value.totalInputTokens,
     outputTokens: outcome.value.totalOutputTokens,
+    costMicroIdr: outcome.value.costMicroIdr,
   })
 
   return ok({ analyzed: rows.length })

@@ -6,7 +6,13 @@
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[]
 
 export type Sentiment = 'positive' | 'neutral' | 'negative'
-export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+export type JobStatus =
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'partial'
+  | 'failed'
+  | 'cancelled'
 export type DatasetSource = 'csv' | 'xlsx' | 'google_forms' | 'manual'
 export type OrgRole = 'owner' | 'admin' | 'member' | 'viewer'
 
@@ -54,6 +60,10 @@ type AnalysisJobsRow = {
   model_id: string | null
   processed_count: number
   total_count: number
+  failed_count: number
+  input_tokens: number
+  output_tokens: number
+  cost_micro_idr: number
   error_message: string | null
   started_at: string | null
   finished_at: string | null
@@ -110,6 +120,10 @@ export type Database = {
         | 'model_id'
         | 'processed_count'
         | 'total_count'
+        | 'failed_count'
+        | 'input_tokens'
+        | 'output_tokens'
+        | 'cost_micro_idr'
         | 'error_message'
         | 'started_at'
         | 'finished_at'

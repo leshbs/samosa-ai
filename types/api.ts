@@ -21,7 +21,8 @@ export type CreateDatasetInput = z.infer<typeof createDatasetSchema>
 
 export const createAnalysisSchema = z.object({
   datasetId: z.string().uuid(),
-  promptVersion: z.string().default('v1'),
+  /** Left optional so the prompt registry stays the single source of the default. */
+  promptVersion: z.string().optional(),
 })
 export type CreateAnalysisInput = z.infer<typeof createAnalysisSchema>
 
