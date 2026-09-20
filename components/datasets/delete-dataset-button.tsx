@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { requestJson } from '@/modules/shared'
 
 /**
  * Deleting cascades to every response in the dataset, so it asks first.
@@ -29,11 +30,13 @@ export function DeleteDatasetButton({
     if (!confirmed) return
 
     setPending(true)
-    const response = await fetch(`/api/datasets/${datasetId}`, { method: 'DELETE' })
+    const deleted = await requestJson(`/api/datasets/${datasetId}`, {
+      method: 'DELETE',
+    })
     setPending(false)
 
-    if (!response.ok) {
-      toast.error('Dataset gagal dihapus.')
+    if (!deleted.ok) {
+      toast.error(deleted.error.message)
       return
     }
 

@@ -8,6 +8,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { createClient } from '@/lib/supabase/client'
+import {
+  BACKEND_UNREACHABLE_MESSAGE,
+  isBackendUnreachable,
+} from '@/lib/supabase/auth-error'
+import { requestJson } from '@/modules/shared'
 
 const signupSchema = z.object({
   fullName: z.string().trim().min(2, 'Nama minimal 2 karakter').max(120),
@@ -40,7 +45,12 @@ export function SignupForm() {
     })
 
     if (error) {
-      setError('root', { message: 'Pendaftaran gagal. Coba email lain.' })
+      // "Coba email lain" is bad advice when the server is simply down.
+      setError('root', {
+        message: isBackendUnreachable(error)
+          ? BACKEND_UNREACHABLE_MESSAGE
+          : 'Pendaftaran gagal. Coba email lain.',
+      })
       return
     }
 
@@ -51,14 +61,18 @@ export function SignupForm() {
       return
     }
 
-    const response = await fetch('/api/auth/provision', {
+    const provisioned = await requestJson('/api/auth/provision', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ organizationName: values.organizationName }),
     })
 
-    if (!response.ok) {
-      setError('root', { message: 'Akun dibuat, tapi organisasi gagal disiapkan.' })
+    if (!provisioned.ok) {
+      // The account exists either way, so point the user at signing in rather
+      // than at filling this form in a second time.
+      setError('root', {
+        message: `Akun dibuat, tapi organisasi gagal disiapkan. ${provisioned.error.message}`,
+      })
       return
     }
 

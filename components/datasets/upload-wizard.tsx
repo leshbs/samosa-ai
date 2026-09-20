@@ -18,6 +18,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
+import { requestJson } from '@/modules/shared'
 import type { DatasetPreview } from '@/modules/ingestion'
 import type { DatasetSource } from '@/types/domain'
 
@@ -61,20 +62,21 @@ export function UploadWizard() {
     body.append('file', picked)
     body.append('source', sourceOf(picked))
 
-    const response = await fetch('/api/datasets/preview', { method: 'POST', body })
-    const payload = (await response.json()) as
-      { data: DatasetPreview } | { error: { message: string } }
+    const previewed = await requestJson<DatasetPreview>('/api/datasets/preview', {
+      method: 'POST',
+      body,
+    })
 
     setBusy(false)
 
-    if (!response.ok || !('data' in payload)) {
-      setError('error' in payload ? payload.error.message : 'File tidak bisa dibaca.')
+    if (!previewed.ok) {
+      setError(previewed.error.message)
       return
     }
 
     setFile(picked)
-    setPreview(payload.data)
-    setTextColumn(payload.data.suggestedColumn ?? payload.data.columns[0] ?? '')
+    setPreview(previewed.value)
+    setTextColumn(previewed.value.suggestedColumn ?? previewed.value.columns[0] ?? '')
     setName(defaultName(picked))
     setStep(2)
   }, [])
@@ -99,20 +101,21 @@ export function UploadWizard() {
     body.append('source', sourceOf(file))
     body.append('textColumn', textColumn)
 
-    const response = await fetch('/api/datasets', { method: 'POST', body })
-    const payload = (await response.json()) as
-      | { data: { datasetId: string; responseCount: number; skippedEmpty: number } }
-      | { error: { message: string } }
+    const created = await requestJson<{
+      datasetId: string
+      responseCount: number
+      skippedEmpty: number
+    }>('/api/datasets', { method: 'POST', body })
 
     setBusy(false)
 
-    if (!response.ok || !('data' in payload)) {
-      setError('error' in payload ? payload.error.message : 'Upload gagal.')
+    if (!created.ok) {
+      setError(created.error.message)
       return
     }
 
-    toast.success(`${payload.data.responseCount} aspirasi berhasil diunggah.`)
-    router.replace(`/datasets/${payload.data.datasetId}`)
+    toast.success(`${created.value.responseCount} aspirasi berhasil diunggah.`)
+    router.replace(`/datasets/${created.value.datasetId}`)
     router.refresh()
   }
 
