@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { GoogleButton } from '@/components/forms/google-button'
 import { LoginForm } from '@/components/forms/login-form'
+import { SignOutButton } from '@/components/forms/sign-out-button'
 
 export const metadata: Metadata = { title: 'Masuk' }
 
@@ -36,9 +37,14 @@ export default async function LoginPage({
 
       {notice ? <p className="text-sm text-muted-foreground">{notice}</p> : null}
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+        <div className="space-y-3">
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+          {params.error === 'provisioning' ? (
+            <SignOutButton label="Keluar dan coba akun lain" />
+          ) : null}
+        </div>
       ) : null}
 
       <LoginForm redirectTo={next} />
