@@ -12,7 +12,7 @@ export default function LandingPage() {
         laporan siap-print dalam hitungan menit.
       </p>
       <Link
-        href="/datasets"
+        href="/dashboard"
         className="rounded-lg bg-primary px-5 py-2.5 font-medium text-primary-foreground"
       >
         Mulai analisis
