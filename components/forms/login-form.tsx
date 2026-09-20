@@ -8,6 +8,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { createClient } from '@/lib/supabase/client'
+import {
+  BACKEND_UNREACHABLE_MESSAGE,
+  isBackendUnreachable,
+} from '@/lib/supabase/auth-error'
 
 const loginSchema = z.object({
   email: z.string().email('Masukkan email yang valid'),
@@ -30,8 +34,14 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
     const { error } = await supabase.auth.signInWithPassword(values)
 
     if (error) {
-      // Deliberately vague: distinguishing the two would confirm which emails exist.
-      setError('root', { message: 'Email atau password salah.' })
+      // Deliberately vague about *which* field was wrong: distinguishing the two
+      // would confirm which emails exist. An outage is a different story — the
+      // credentials were never judged, so saying they were is simply false.
+      setError('root', {
+        message: isBackendUnreachable(error)
+          ? BACKEND_UNREACHABLE_MESSAGE
+          : 'Email atau password salah.',
+      })
       return
     }
 
