@@ -10,5 +10,12 @@ export default async function DashboardLayout({
   const session = await getSessionUser()
   if (!session.ok) redirect('/login')
 
-  return <AppShell email={session.value.email}>{children}</AppShell>
+  return (
+    <AppShell
+      email={session.value.email}
+      organizationName={session.value.organizationName}
+    >
+      {children}
+    </AppShell>
+  )
 }
