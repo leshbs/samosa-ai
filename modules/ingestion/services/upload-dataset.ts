@@ -60,6 +60,8 @@ export async function uploadDataset(
       source: input.source,
       storage_path: storagePath,
       response_count: extracted.value.responses.length,
+      // Records which column the text came from, so a re-import is reproducible.
+      metadata: { text_column_name: input.textColumn },
     })
     .select('id')
     .single()
