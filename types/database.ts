@@ -32,6 +32,7 @@ type DatasetsRow = {
   source: DatasetSource
   storage_path: string | null
   response_count: number
+  metadata: Json
   created_at: string
 }
 
@@ -97,7 +98,10 @@ export type Database = {
     Tables: {
       organizations: Table<OrganizationsRow, 'id' | 'created_at'>
       organization_members: Table<OrganizationMembersRow, 'role' | 'created_at'>
-      datasets: Table<DatasetsRow, 'id' | 'storage_path' | 'response_count' | 'created_at'>
+      datasets: Table<
+        DatasetsRow,
+        'id' | 'storage_path' | 'response_count' | 'metadata' | 'created_at'
+      >
       responses: Table<ResponsesRow, 'id' | 'respondent_meta' | 'created_at'>
       analysis_jobs: Table<
         AnalysisJobsRow,
