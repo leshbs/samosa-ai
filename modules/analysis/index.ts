@@ -1,6 +1,9 @@
 /** Public API of the analysis module. Nothing else may be imported from outside. */
 export { createJob, runJob } from './services/job-runner'
 export { analyzeResponses, BATCH_SIZE, MAX_CONCURRENCY } from './services/orchestrator'
+export { planBatches, MAX_ANALYZED_LENGTH } from './services/batcher'
+export type { BatchPlan, Analyzable } from './services/batcher'
+export { estimateCostMicroIdr, formatIdr, rateFor, USD_TO_IDR } from './adapters/pricing'
 export type {
   AnalyzedResponse,
   OrchestratorInput,
