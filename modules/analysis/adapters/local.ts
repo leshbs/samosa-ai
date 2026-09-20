@@ -42,6 +42,8 @@ export function createLocalAdapter(): LlmAdapter {
         items: [...items],
         modelId: 'local-lexicon-v0',
         usage: { inputTokens: 0, outputTokens: 0 },
+        // No provider call, so nothing to charge for.
+        costMicroIdr: 0,
       })
     },
   }

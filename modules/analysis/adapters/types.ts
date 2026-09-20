@@ -33,6 +33,8 @@ export type BatchOutput = {
   items: AnalyzedItem[]
   modelId: string
   usage: AdapterUsage
+  /** Estimated spend for this call, in millionths of IDR. */
+  costMicroIdr: number
 }
 
 /**

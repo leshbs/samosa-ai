@@ -26,6 +26,7 @@ function stubAdapter(overrides: Partial<LlmAdapter> = {}): LlmAdapter {
         })),
         modelId: 'stub-model',
         usage: { inputTokens: 10, outputTokens: 5 },
+        costMicroIdr: 1_000,
       }),
     ),
     ...overrides,
@@ -103,6 +104,7 @@ describe('analyzeResponses', () => {
           })),
           modelId: 'stub-model',
           usage: { inputTokens: 1, outputTokens: 1 },
+          costMicroIdr: 100,
         })
       }),
     })
