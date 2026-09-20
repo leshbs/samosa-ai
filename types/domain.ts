@@ -45,6 +45,8 @@ export type Dataset = {
   storagePath: string | null
   responseCount: number
   uploaderId: string
+  /** Header the responses were taken from; null for datasets created before mapping. */
+  textColumnName: string | null
   createdAt: string
 }
 
