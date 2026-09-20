@@ -16,6 +16,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { requestJson } from '@/modules/shared'
 
 export function AnalyzeButton({
   datasetId,
@@ -35,23 +36,20 @@ export function AnalyzeButton({
   async function start() {
     setPending(true)
 
-    const response = await fetch('/api/analysis', {
+    const started = await requestJson<{ jobId: string }>('/api/analysis', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ datasetId }),
     })
 
-    const payload = (await response.json()) as
-      { data: { jobId: string } } | { error: { message: string } }
-
     setPending(false)
 
-    if (!response.ok || !('data' in payload)) {
-      toast.error('error' in payload ? payload.error.message : 'Analisis gagal dimulai.')
+    if (!started.ok) {
+      toast.error(started.error.message)
       return
     }
 
-    router.push(`/analysis/${payload.data.jobId}`)
+    router.push(`/analysis/${started.value.jobId}`)
   }
 
   const minutes = Math.ceil(estimatedSeconds / 60)
