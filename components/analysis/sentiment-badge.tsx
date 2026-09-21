@@ -1,37 +1,40 @@
-import { cn } from '@/lib/utils'
 import type { Sentiment } from '@/types/domain'
 
 /**
  * Colour alone would exclude colour-blind readers, so each sentiment also
  * carries its own word.
+ *
+ * The hues are the chart palette's, not a second set: when the pie says
+ * "positive is blue" and the badge below it says "positive is green", a reader
+ * scanning between the two has to re-learn the code halfway down the page.
  */
-const STYLES: Record<Sentiment, { label: string; className: string }> = {
+const LABELS: Record<Sentiment, string> = {
+  positive: 'Positif',
+  neutral: 'Netral',
+  negative: 'Negatif',
+}
+
+const TOKENS: Record<Sentiment, { bg: string; fg: string }> = {
   positive: {
-    label: 'Positif',
-    className:
-      'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200',
+    bg: 'var(--sentiment-positive-bg)',
+    fg: 'var(--sentiment-positive-fg)',
   },
-  neutral: {
-    label: 'Netral',
-    className: 'bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-200',
-  },
+  neutral: { bg: 'var(--sentiment-neutral-bg)', fg: 'var(--sentiment-neutral-fg)' },
   negative: {
-    label: 'Negatif',
-    className: 'bg-rose-100 text-rose-900 dark:bg-rose-950 dark:text-rose-200',
+    bg: 'var(--sentiment-negative-bg)',
+    fg: 'var(--sentiment-negative-fg)',
   },
 }
 
 export function SentimentBadge({ sentiment }: { sentiment: Sentiment }) {
-  const style = STYLES[sentiment]
+  const token = TOKENS[sentiment]
 
   return (
     <span
-      className={cn(
-        'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
-        style.className,
-      )}
+      className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
+      style={{ backgroundColor: token.bg, color: token.fg }}
     >
-      {style.label}
+      {LABELS[sentiment]}
     </span>
   )
 }

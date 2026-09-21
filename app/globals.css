@@ -20,6 +20,27 @@
     --input: 214 32% 91%;
     --ring: 24 94% 50%;
     --radius: 0.625rem;
+
+    /* Chart palette — a diverging blue↔red scale with a recessive gray
+       midpoint, validated for protanopia/deuteranopia against this surface.
+       Green↔red was rejected: it is the one pair red-green colour blindness
+       collapses, and sentiment is the chart people act on. The neutral step
+       sits below 3:1 on purpose — "neither" should recede — so every chart
+       that uses it also carries direct labels and a table view. */
+    --chart-positive: #2a78d6;
+    --chart-neutral: #c3c2b7;
+    --chart-negative: #e34948;
+    --chart-series-1: #2a78d6;
+    --chart-grid: #e1e0d9;
+    --chart-axis: #898781;
+    /* Badge tints: the same three hues at reading weight, so a sentiment
+       means one colour everywhere on the page. */
+    --sentiment-positive-bg: #e8f1fc;
+    --sentiment-positive-fg: #17508f;
+    --sentiment-neutral-bg: #f1f0ec;
+    --sentiment-neutral-fg: #4a4a47;
+    --sentiment-negative-bg: #fde9e9;
+    --sentiment-negative-fg: #a3201f;
   }
 
   .dark {
@@ -38,6 +59,21 @@
     --border: 217 33% 20%;
     --input: 217 33% 20%;
     --ring: 24 94% 55%;
+
+    /* Re-stepped for the dark surface, not flipped: the same three hues
+       validated again against the dark card colour. */
+    --chart-positive: #3987e5;
+    --chart-neutral: #4a4a47;
+    --chart-negative: #e66767;
+    --chart-series-1: #3987e5;
+    --chart-grid: #2c2c2a;
+    --chart-axis: #898781;
+    --sentiment-positive-bg: #14283d;
+    --sentiment-positive-fg: #93c0f2;
+    --sentiment-neutral-bg: #2a2a28;
+    --sentiment-neutral-fg: #c9c8c0;
+    --sentiment-negative-bg: #3a1c1c;
+    --sentiment-negative-fg: #f0a3a3;
   }
 
   * {
