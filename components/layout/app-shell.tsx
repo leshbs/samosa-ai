@@ -27,8 +27,10 @@ export function AppShell({
       </header>
 
       <div className="md:grid md:grid-cols-[13rem_1fr]">
-        {/* Horizontal strip on phones, a real sidebar from md up. */}
-        <aside className="border-b p-3 md:min-h-[calc(100vh-3.5rem)] md:border-b-0 md:border-r">
+        {/* Horizontal strip on phones, a real sidebar from md up. The five
+            entries add up to ~530px, so on a 375px screen the strip scrolls
+            sideways on its own rather than dragging the whole page with it. */}
+        <aside className="overflow-x-auto border-b p-3 md:min-h-[calc(100vh-3.5rem)] md:overflow-x-visible md:border-b-0 md:border-r">
           <SidebarNav />
         </aside>
         <main className="px-4 py-8 md:px-8">{children}</main>
