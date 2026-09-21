@@ -17,7 +17,7 @@ export function SidebarNav() {
   const pathname = usePathname()
 
   return (
-    <nav className="flex gap-1 md:flex-col" aria-label="Navigasi utama">
+    <nav className="flex w-max gap-1 md:w-auto md:flex-col" aria-label="Navigasi utama">
       {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
         // Prefix match so /datasets/<id> keeps the Dataset entry highlighted.
         const active = pathname === href || pathname.startsWith(`${href}/`)
