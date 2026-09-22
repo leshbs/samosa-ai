@@ -35,23 +35,25 @@ samosa/
 
 ### Tech stack
 
-| Layer         | Tech                         | Rasional                                                  |
-| ------------- | ---------------------------- | --------------------------------------------------------- |
-| Framework     | Next.js 15 (App Router)      | React SSR/RSC, TS-first, single deploy                    |
-| Language      | TypeScript strict            | Type safety, portfolio-grade                              |
-| Styling       | Tailwind CSS + shadcn/ui     | Utility-first, fully customizable                         |
-| Charts        | Recharts / Tremor            | Dashboard-oriented                                        |
-| Data fetching | TanStack Query               | Cache, retry, realtime state                              |
-| Validation    | Zod                          | Schema-first DTO validation                               |
-| Database      | Supabase (Postgres)          | Managed, RLS built-in, generous free tier                 |
-| Auth          | Supabase Auth + Google OAuth | Siap untuk Google Forms API                               |
-| Storage       | Supabase Storage             | Upload CSV/Excel                                          |
-| AI Provider   | **OpenAI API**               | JSON mode / structured output, biaya per token kompetitif |
-| Jobs          | Inngest atau Vercel cron     | Async LLM batch processing                                |
-| Hosting       | Vercel                       | CI/CD dari GitHub, edge                                   |
-| Monitoring    | Sentry + PostHog             | Error + product analytics                                 |
-| Testing       | Vitest + Playwright          | Unit + E2E                                                |
-| Package mgr   | pnpm                         | Fast, disk-efficient                                      |
+| Layer         | Tech                         | Rasional                                                       |
+| ------------- | ---------------------------- | -------------------------------------------------------------- |
+| Framework     | Next.js 15 (App Router)      | React SSR/RSC, TS-first, single deploy                         |
+| UI runtime    | React 19                     | Dipasangkan dengan Next 15; wajib untuk export PDF (ADR-0007)  |
+| Language      | TypeScript strict            | Type safety, portfolio-grade                                   |
+| Styling       | Tailwind CSS + shadcn/ui     | Utility-first, fully customizable                              |
+| Charts        | Recharts / Tremor            | Dashboard-oriented                                             |
+| Data fetching | TanStack Query               | Cache, retry, realtime state                                   |
+| Validation    | Zod                          | Schema-first DTO validation                                    |
+| Database      | Supabase (Postgres)          | Managed, RLS built-in, generous free tier                      |
+| Auth          | Supabase Auth + Google OAuth | Siap untuk Google Forms API                                    |
+| Storage       | Supabase Storage             | Upload CSV/Excel                                               |
+| AI Provider   | **OpenAI API**               | JSON mode / structured output, biaya per token kompetitif      |
+| Jobs          | Inngest atau Vercel cron     | Async LLM batch processing                                     |
+| Hosting       | Vercel                       | CI/CD dari GitHub, edge                                        |
+| Monitoring    | Sentry + PostHog             | Error + product analytics                                      |
+| PDF export    | @react-pdf/renderer          | Jalan di Node function biasa, tanpa binary Chromium (ADR-0004) |
+| Testing       | Vitest + Playwright          | Unit + E2E                                                     |
+| Package mgr   | pnpm                         | Fast, disk-efficient                                           |
 
 ### External APIs
 
@@ -279,8 +281,11 @@ User uploads CSV
        - openai adapter untuk sentiment/topic/keyword/summary
        - save ke analysis_results table
   → Client polls /api/analysis/[id]/status atau subscribe Supabase realtime
+       - sebelum job jadi terminal: reporting.generateReportSummary()
+         menulis ringkasan eksekutif + insight ke tabel reports
   → Ketika done, client fetch /api/reports/[id]
   → reporting.buildReport() → aggregated view untuk dashboard
+  → Export: GET /api/reports/[id]/pdf | /csv
 ```
 
 ### Data model (skema utama)
