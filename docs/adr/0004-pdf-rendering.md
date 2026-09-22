@@ -1,7 +1,7 @@
 # 0004. PDF rendering approach
 
-- **Status:** Proposed
-- **Date:** 2026-09-19
+- **Status:** Accepted
+- **Date:** 2026-09-22 (diusulkan 2026-09-19)
 
 ## Context
 
@@ -12,19 +12,33 @@ JS (`@react-pdf/renderer`, `pdfmake`).
 
 ## Decision
 
-Belum diputuskan. `modules/reporting/exporters/pdf-exporter.ts` sudah ada sebagai
-stub dengan signature final supaya UI bisa dibangun paralel; implementasinya
-menunggu ADR ini di-accept.
+Pakai **`@react-pdf/renderer`**. Dokumen disusun ulang sebagai primitif PDF di
+`modules/reporting/exporters/pdf-exporter.tsx`, bukan screenshot halaman
+dashboard.
+
+Chart digambar dari angka agregat yang sama dengan yang dipakai halaman web:
+bar horizontal sebagai `<View>` dengan lebar proporsional, dan stacked bar
+diverging untuk sentimen. Warna diambil dari nilai light-theme di
+`app/globals.css` sebagai hex literal — PDF tidak punya stylesheet dan kertas
+selalu terang.
 
 ## Consequences
 
-- (+) Public API reporting stabil lebih dulu; tidak ada rework di sisi UI.
-- (-) Export PDF belum tersedia sampai keputusan diambil — CSV jadi jalur export
-  sementara.
+- (+) Jalan di Node function biasa. Tidak ada binary Chromium ~50MB, tidak ada
+  cold start berdetik-detik, tidak ada route `/print` yang perlu auth sendiri.
+- (+) Ukuran dokumen dibatasi jumlah topik, bukan jumlah respons: dataset 5.000
+  baris menghasilkan halaman sebanyak dataset 50 baris. Karena itu tidak ada
+  guard "dataset terlalu besar" — bentuk kegagalan yang butuh guard itu tidak
+  ada di desain ini.
+- (−) Chart digambar ulang, tidak reuse komponen Recharts. Dua tempat harus
+  diubah kalau bentuk chart berubah. Trade-off ini diterima karena chart-nya
+  bar sederhana.
+- (−) Font bawaan Helvetica: cukup untuk bahasa Indonesia, tapi belum sesuai
+  branding. Kalau nanti perlu font sendiri, daftarkan lewat `Font.register`.
 
 ## Alternatives considered
 
 - **Headless Chromium** — kualitas visual terbaik (pakai komponen dashboard yang
   sama), tapi berat di serverless dan cold start lambat.
-- **@react-pdf/renderer** — ringan dan jalan di Node biasa, tapi chart harus
-  digambar ulang dan tidak reuse komponen Recharts.
+- **pdfmake** — mirip @react-pdf/renderer tapi layout-nya deklaratif JSON;
+  komponen React lebih mudah dibaca dan ditest di codebase ini.

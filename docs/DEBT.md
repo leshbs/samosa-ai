@@ -126,3 +126,26 @@ yang berguna belum ada. Ini butuh orang, bukan kode.
 
 **Pemicu:** sebelum mulai Fase 5. **Bayar dengan:** satu sesi 30 menit dengan
 pengurus OSIS sungguhan, pakai dataset mereka sendiri.
+
+### PDF tanpa nomor halaman
+
+`render` prop di `@react-pdf/renderer` — satu-satunya cara mendapat
+`pageNumber`/`totalPages` — tidak menghasilkan apa pun di dokumen laporan,
+diam-diam. Diukur, bukan ditebak: di dokumen minimal, `<Text fixed render=...>`
+muncul normal; di `pdf-exporter.tsx` tidak, bahkan ketika callback-nya
+mengembalikan string konstan. `<Text fixed>` dengan children statis di posisi
+yang persis sama muncul.
+
+Footer sekarang memuat nama organisasi dan dataset, tanpa nomor halaman.
+Laporan 2-3 halaman masih terbaca, tapi kalau nanti jadi lebih panjang ini
+perlu dibereskan.
+
+**Catatan untuk lain kali:** tiga bentuk footer gagal tanpa pesan error apa pun
+(flex row di dalam box absolute, `left` + `right` bersamaan, dan `render`).
+Satu-satunya cara menemukannya adalah merender PDF-nya lalu melihatnya.
+
+### Chart PDF digambar ulang, tidak reuse Recharts
+
+Bar di PDF disusun dari primitif `<View>`, terpisah dari komponen Recharts di
+web. Kalau bentuk chart berubah, dua tempat harus diubah. Trade-off ini diambil
+sadar di ADR-0004 dan masih wajar selama chart-nya bar sederhana.

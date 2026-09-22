@@ -80,6 +80,14 @@ export default async function ReportDetailPage({
             {formatDateTime(job.value.createdAt)} · prompt {job.value.promptVersion}
           </p>
         </div>
+
+        {/* Plain links, not fetch(): a GET that returns a file is already a
+            download, and routing it through JavaScript only adds a way to fail. */}
+        <Button asChild size="sm">
+          <a href={`/api/reports/${job.value.id}/pdf`} download>
+            Export PDF
+          </a>
+        </Button>
       </div>
 
       <ExecutiveSummary
@@ -165,6 +173,14 @@ export default async function ReportDetailPage({
       ) : null}
 
       {/* ── 5. Response explorer ────────────────────────────────────── */}
+      <div className="flex justify-end">
+        <Button asChild variant="outline" size="sm">
+          <a href={`/api/reports/${job.value.id}/csv`} download>
+            Export CSV
+          </a>
+        </Button>
+      </div>
+
       <ResponseExplorer
         rows={rows}
         topics={data.topics.slice(0, FILTERABLE_TOPICS).map((topic) => topic.term)}
