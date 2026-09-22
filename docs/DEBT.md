@@ -172,3 +172,19 @@ Checklist 7.5 menyebut empat hal yang belum ada:
 `can(role, 'org:manage')` hanya `owner`. Route memakai yang lebih ketat, jadi
 perilakunya benar, tapi dua sumber aturan yang tidak sama persis itu menunggu
 untuk membingungkan seseorang. Samakan salah satunya.
+
+### Checkpoint 7.6 belum lengkap: butuh orang
+
+Happy path-nya sudah diverifikasi mesin (lihat `docs/research/phase-7-findings.md`):
+unggah CSV → analisis → ringkasan AI → laporan → export PDF dan CSV, semuanya
+jalan di browser dengan data nyata dan nol error. Yang belum ada adalah bagian
+7.6 yang tidak bisa dikerjakan tanpa orang: mendemokan ke ketua OSIS/panitia dan
+mengumpulkan umpan balik. Ini item yang sama dengan checkpoint 4.6.
+
+### Kutipan per topik bisa berulang di dataset dengan kalimat mirip
+
+Di `aspirasi-120`, bagian "Contoh aspirasi per topik" di PDF menampilkan tiga
+varian dari kalimat yang hampir sama. `topResponsesByTopic` memilih satu negatif,
+satu positif, lalu sisanya berdasarkan confidence — tidak ada dedup kemiripan.
+Di dataset sintetis ini wajar; di dataset nyata perlu dicek sebelum diputuskan
+apakah butuh penyaring kemiripan.
