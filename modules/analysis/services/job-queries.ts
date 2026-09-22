@@ -156,3 +156,39 @@ export async function getLatestJobForDataset(
 
   return ok(data ? toJob(data as JobRow) : null)
 }
+
+export type UsageSummary = {
+  totalJobs: number
+  responsesAnalyzed: number
+  inputTokens: number
+  outputTokens: number
+  costMicroIdr: number
+}
+
+/**
+ * What this organization has spent so far. Summed in JS rather than with a
+ * Postgres aggregate: a school's job count is in the dozens, and an rpc() would
+ * mean a migration to maintain for arithmetic this small.
+ */
+export async function getUsageSummary(
+  organizationId: string,
+): Promise<Result<UsageSummary, AppError>> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('analysis_jobs')
+    .select('processed_count, input_tokens, output_tokens, cost_micro_idr')
+    .eq('organization_id', organizationId)
+
+  if (error) return err(appError(ERROR_CODES.INTERNAL, 'Could not load usage'))
+
+  const rows = data ?? []
+
+  return ok({
+    totalJobs: rows.length,
+    responsesAnalyzed: rows.reduce((sum, row) => sum + Number(row.processed_count), 0),
+    inputTokens: rows.reduce((sum, row) => sum + Number(row.input_tokens), 0),
+    outputTokens: rows.reduce((sum, row) => sum + Number(row.output_tokens), 0),
+    costMicroIdr: rows.reduce((sum, row) => sum + Number(row.cost_micro_idr), 0),
+  })
+}
