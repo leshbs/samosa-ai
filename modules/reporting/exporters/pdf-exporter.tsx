@@ -6,7 +6,7 @@ import {
   View,
   renderToBuffer,
 } from '@react-pdf/renderer'
-import { ERROR_CODES, appError, err, ok, type Result } from '@/modules/shared'
+import { ERROR_CODES, appError, err, logger, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
 import type { ReportInsight, Sentiment } from '@/types/domain'
 import type { TopicQuotes } from '../aggregators/quotes'
@@ -379,6 +379,9 @@ export async function exportReportToPdf(
     const buffer = await renderToBuffer(<ReportDocument data={data} />)
     return ok({ bytes: new Uint8Array(buffer), fileName: fileNameFor(data) })
   } catch (cause) {
+    // The cause never reaches the client, so it has to be logged here or the
+    // failure is a bare 500 with nothing to go on.
+    logger.error('reporting.pdf.render_failed', { cause: String(cause) })
     return err(appError(ERROR_CODES.INTERNAL, 'Could not render the PDF', { cause }))
   }
 }
