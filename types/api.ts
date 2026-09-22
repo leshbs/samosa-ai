@@ -30,3 +30,14 @@ export const reportExportSchema = z.object({
   format: z.enum(['pdf', 'csv', 'xlsx']),
 })
 export type ReportExportInput = z.infer<typeof reportExportSchema>
+
+export const updateProfileSchema = z.object({
+  displayName: z.string().trim().min(1).max(80),
+})
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>
+
+export const updateOrganizationSchema = z.object({
+  // Matches the check constraint on organizations.name.
+  name: z.string().trim().min(1).max(120),
+})
+export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>

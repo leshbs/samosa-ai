@@ -5,10 +5,12 @@ import { UserMenu } from '@/components/layout/user-menu'
 
 export function AppShell({
   email,
+  displayName,
   organizationName,
   children,
 }: {
   email: string
+  displayName: string
   organizationName: string
   children: React.ReactNode
 }) {
@@ -21,7 +23,11 @@ export function AppShell({
           </Link>
           <div className="flex items-center gap-1">
             <ThemeToggle />
-            <UserMenu email={email} organizationName={organizationName} />
+            <UserMenu
+              email={email}
+              displayName={displayName}
+              organizationName={organizationName}
+            />
           </div>
         </div>
       </header>

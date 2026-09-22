@@ -149,3 +149,26 @@ Satu-satunya cara menemukannya adalah merender PDF-nya lalu melihatnya.
 Bar di PDF disusun dari primitif `<View>`, terpisah dari komponen Recharts di
 web. Kalau bentuk chart berubah, dua tempat harus diubah. Trade-off ini diambil
 sadar di ADR-0004 dan masih wajar selama chart-nya bar sederhana.
+
+### Settings: foto profil, undang anggota, hapus akun
+
+Checklist 7.5 menyebut empat hal yang belum ada:
+
+- **Foto profil** — butuh bucket storage, upload, crop, dan penanganan gambar
+  besar. Avatar sekarang memakai inisial dari nama.
+- **Undang anggota lewat email** — checklist menandainya opsional untuk MVP.
+  Butuh alur undangan (token, email, penerimaan) yang setara ukurannya dengan
+  7.4, jadi ditunda bersama.
+- **Hapus akun** — sengaja tidak dibuat. Ini tidak bisa dibatalkan dan menyentuh
+  `auth.users` plus cascade ke seluruh data organisasi. Membuat tombolnya
+  setengah jalan lebih berbahaya daripada tidak ada tombol sama sekali. DoD 7.5
+  hanya mensyaratkan edit profil dan nama organisasi, dan keduanya sudah jalan.
+- **Nama tampilan disimpan di `auth.users.user_metadata`**, bukan tabel
+  `profiles`. Kalau profil nanti punya field kedua, pindahkan ke tabel sendiri.
+
+### RLS organisasi lebih longgar dari policy modul
+
+`organizations_update` di RLS mengizinkan `owner` dan `admin`, sedangkan
+`can(role, 'org:manage')` hanya `owner`. Route memakai yang lebih ketat, jadi
+perilakunya benar, tapi dua sumber aturan yang tidak sama persis itu menunggu
+untuk membingungkan seseorang. Samakan salah satunya.

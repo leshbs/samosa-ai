@@ -80,11 +80,38 @@ describe('getSessionUser', () => {
       value: {
         userId: 'user-1',
         email: 'ketua@osis.test',
+        displayName: '',
         organizationId: 'org-1',
         organizationName: 'OSIS Nusantara',
         role: 'admin',
       },
     })
+  })
+
+  it('carries the display name from auth metadata when one is set', async () => {
+    getUser.mockResolvedValue({
+      data: {
+        user: {
+          id: 'user-1',
+          email: 'ketua@osis.test',
+          user_metadata: { full_name: 'Rani Putri' },
+        },
+      },
+      error: null,
+    })
+    from.mockImplementation((table: string) =>
+      table === 'organization_members'
+        ? membershipQuery({
+            data: { organization_id: 'org-1', role: 'admin' },
+            error: null,
+          })
+        : organizationQuery({ data: { name: 'OSIS Nusantara' }, error: null }),
+    )
+
+    const result = await getSessionUser()
+
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.displayName).toBe('Rani Putri')
   })
 
   it('fails as UNAUTHORIZED when the session is missing', async () => {

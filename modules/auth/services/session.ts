@@ -13,6 +13,8 @@ export type AuthUser = {
 export type SessionUser = {
   userId: string
   email: string
+  /** From auth metadata; empty until the user sets one on the settings page. */
+  displayName: string
   organizationId: string
   organizationName: string
   role: OrgRole
@@ -69,6 +71,10 @@ export async function getSessionUser(): Promise<Result<SessionUser, AppError>> {
   return ok({
     userId: auth.user.id,
     email: auth.user.email ?? '',
+    displayName:
+      typeof auth.user.user_metadata?.full_name === 'string'
+        ? auth.user.user_metadata.full_name
+        : '',
     organizationId,
     organizationName: organization?.name ?? 'Organisasi',
     role: membership.role as OrgRole,

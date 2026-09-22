@@ -5,8 +5,9 @@ export {
   getJob,
   listJobResults,
   getLatestJobForDataset,
+  getUsageSummary,
 } from './services/job-queries'
-export type { JobListItem, AnalysisResultRow } from './services/job-queries'
+export type { JobListItem, AnalysisResultRow, UsageSummary } from './services/job-queries'
 export { analyzeResponses, BATCH_SIZE, MAX_CONCURRENCY } from './services/orchestrator'
 export { planBatches, MAX_ANALYZED_LENGTH } from './services/batcher'
 export type { BatchPlan, Analyzable } from './services/batcher'
