@@ -52,12 +52,27 @@ export async function createJob(
   return ok({ id: String(data.id), status: 'queued' })
 }
 
+export type RunJobOptions = {
+  /**
+   * Runs once the results are stored but before the job reaches a terminal
+   * status. The report summary is written here: the page listens for that
+   * status change, so anything that happens afterwards arrives too late and
+   * the reader sees a finished report with an empty summary.
+   *
+   * It is a hook rather than a direct call because reporting depends on
+   * analysis; calling reporting from here would close the cycle. The app layer
+   * composes the two.
+   */
+  onResultsReady?: (context: { organizationId: string }) => Promise<void>
+}
+
 /**
  * Executes a queued job end to end. Runs in a background worker (Inngest /
  * cron), not in a request handler — a 500-row dataset takes minutes.
  */
 export async function runJob(
   jobId: string,
+  options: RunJobOptions = {},
 ): Promise<Result<{ analyzed: number }, AppError>> {
   const supabase = createAdminClient()
   const log = logger.child({ jobId })
@@ -123,6 +138,16 @@ export async function runJob(
   if (insertError) {
     await failJob(jobId, 'Could not persist analysis results')
     return err(appError(ERROR_CODES.INTERNAL, 'Could not persist analysis results'))
+  }
+
+  if (options.onResultsReady) {
+    try {
+      await options.onResultsReady({ organizationId: String(job.organization_id) })
+    } catch (cause) {
+      // A missing narrative is a worse report, not a failed analysis: the
+      // results are already saved and the charts render without it.
+      log.warn('analysis.job.after_results_failed', { cause: String(cause) })
+    }
   }
 
   // Some batches failed but we kept what landed: saying "succeeded" would

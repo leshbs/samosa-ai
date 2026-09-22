@@ -1,6 +1,12 @@
 import { ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
-import type { BatchInput, BatchOutput, LlmAdapter } from './types'
+import type {
+  BatchInput,
+  BatchOutput,
+  LlmAdapter,
+  SummaryInput,
+  SummaryOutput,
+} from './types'
 
 const POSITIVE_CUES = ['bagus', 'baik', 'seru', 'puas', 'mantap', 'suka', 'keren']
 const NEGATIVE_CUES = ['buruk', 'jelek', 'kecewa', 'telat', 'lambat', 'susah', 'kurang']
@@ -43,6 +49,56 @@ export function createLocalAdapter(): LlmAdapter {
         modelId: 'local-lexicon-v0',
         usage: { inputTokens: 0, outputTokens: 0 },
         // No provider call, so nothing to charge for.
+        costMicroIdr: 0,
+      })
+    },
+
+    /**
+     * Template prose over the aggregate figures. Not a substitute for the
+     * model's writing -- it exists so offline runs produce a report that is
+     * complete and checkable rather than one with an empty summary.
+     */
+    async summarize(input: SummaryInput): Promise<Result<SummaryOutput, AppError>> {
+      const { totalResponses, sentimentCounts, topTopics } = input.data
+      const share = (count: number) =>
+        totalResponses === 0 ? 0 : Math.round((count / totalResponses) * 100)
+
+      const positive = sentimentCounts.positive ?? 0
+      const negative = sentimentCounts.negative ?? 0
+
+      const summary =
+        `Dari ${totalResponses} aspirasi, ${share(positive)}% bernada positif dan ` +
+        `${share(negative)}% negatif. ` +
+        (topTopics.length > 0
+          ? `Topik yang paling sering muncul adalah ${topTopics
+              .slice(0, 3)
+              .map((topic) => topic.topic)
+              .join(', ')}.`
+          : 'Belum ada topik yang cukup sering muncul untuk disorot.') +
+        ' Ringkasan ini disusun tanpa model bahasa, jadi hanya memuat angka yang terukur.'
+
+      const insights = topTopics.slice(0, 3).map((topic) => ({
+        title: `Topik: ${topic.topic}`.slice(0, 60),
+        detail: `${topic.topic} disebut di ${topic.count} aspirasi (${share(
+          topic.count,
+        )}% dari total).`,
+        evidence: [] as number[],
+      }))
+
+      return ok({
+        summary,
+        insights:
+          insights.length > 0
+            ? insights
+            : [
+                {
+                  title: 'Belum ada pola yang menonjol',
+                  detail: `Dari ${totalResponses} aspirasi, belum ada topik yang cukup berulang untuk disimpulkan.`,
+                  evidence: [] as number[],
+                },
+              ],
+        modelId: 'local-lexicon-v0',
+        usage: { inputTokens: 0, outputTokens: 0 },
         costMicroIdr: 0,
       })
     },
