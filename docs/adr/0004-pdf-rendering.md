@@ -33,6 +33,9 @@ selalu terang.
 - (−) Chart digambar ulang, tidak reuse komponen Recharts. Dua tempat harus
   diubah kalau bentuk chart berubah. Trade-off ini diterima karena chart-nya
   bar sederhana.
+- (−) Menuntut React 19. Reconciler @react-pdf hanya mengenali elemen dari versi
+  React yang sama dengan yang dipakai app; di React 18 export-nya gagal dengan
+  error yang tidak menyebut PDF sama sekali. Lihat ADR-0007.
 - (−) Font bawaan Helvetica: cukup untuk bahasa Indonesia, tapi belum sesuai
   branding. Kalau nanti perlu font sendiri, daftarkan lewat `Font.register`.
 
