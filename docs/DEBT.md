@@ -188,3 +188,21 @@ varian dari kalimat yang hampir sama. `topResponsesByTopic` memilih satu negatif
 satu positif, lalu sisanya berdasarkan confidence — tidak ada dedup kemiripan.
 Di dataset sintetis ini wajar; di dataset nyata perlu dicek sebelum diputuskan
 apakah butuh penyaring kemiripan.
+
+### 7.4 Share link publik — ditunda, dengan sketsa
+
+Sengaja tidak dibuat di fase ini. Ini satu-satunya item 7.x yang melebarkan
+permukaan keamanan: route publik yang meng-autentikasi lewat token, bukan lewat
+sesi, jadi RLS tidak lagi jadi batas utamanya.
+
+Sketsa kalau nanti dikerjakan:
+
+- Tabel `report_shares` (`job_id`, `organization_id`, `token_hash`,
+  `created_by`, `revoked_at`, `expires_at`).
+- **Simpan hash token, bukan tokennya.** Token asli hanya muncul sekali, saat
+  dibuat. Bocornya isi tabel tidak boleh langsung jadi akses baca.
+- Satu link = satu job. Tidak ada token level organisasi.
+- `app/(public)/shared/[token]/page.tsx` read-only: tanpa explorer, tanpa
+  regenerate, tanpa export — hanya ringkasan dan grafik.
+- Pencabutan mengisi `revoked_at`; halaman publik memeriksanya di setiap request,
+  bukan hanya saat token dibuat.
