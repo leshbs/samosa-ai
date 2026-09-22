@@ -14,6 +14,16 @@ function makeResponses(count: number) {
 function stubAdapter(overrides: Partial<LlmAdapter> = {}): LlmAdapter {
   return {
     name: 'stub',
+    // The orchestrator never summarizes; present only to satisfy the interface.
+    summarize: vi.fn(async () =>
+      ok({
+        summary: 'ringkasan eksekutif',
+        insights: [],
+        modelId: 'stub-model',
+        usage: { inputTokens: 0, outputTokens: 0 },
+        costMicroIdr: 0,
+      }),
+    ),
     analyzeBatch: vi.fn(async ({ texts }) =>
       ok({
         items: texts.map((_: string, index: number) => ({

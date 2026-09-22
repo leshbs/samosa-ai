@@ -7,6 +7,7 @@ import type { ApiSuccess } from '@/types/api'
 const getSessionUser = vi.fn()
 const createJob = vi.fn()
 const runJob = vi.fn()
+const generateReportSummary = vi.fn()
 
 /** Captures the callback instead of running it, so the test controls timing. */
 const afterCallbacks: Array<() => Promise<void>> = []
@@ -29,6 +30,7 @@ vi.mock('@/modules/auth', async () => {
 })
 
 vi.mock('@/modules/analysis', () => ({ createJob, runJob }))
+vi.mock('@/modules/reporting', () => ({ generateReportSummary }))
 
 const { POST } = await import('@/app/api/analysis/route')
 
@@ -57,6 +59,8 @@ beforeEach(() => {
   getSessionUser.mockReset()
   createJob.mockReset()
   runJob.mockReset()
+  generateReportSummary.mockReset()
+  generateReportSummary.mockResolvedValue({ ok: true, value: { insights: [] } })
   afterCallbacks.length = 0
 })
 
@@ -83,7 +87,60 @@ describe('POST /api/analysis', () => {
 
     expect(afterCallbacks).toHaveLength(1)
     await afterCallbacks[0]?.()
-    expect(runJob).toHaveBeenCalledWith('job-1')
+    expect(runJob).toHaveBeenCalledWith('job-1', expect.anything())
+  })
+
+  it('writes the summary before the job reaches a terminal status', async () => {
+    getSessionUser.mockResolvedValue(SESSION)
+    createJob.mockResolvedValue({ ok: true, value: { id: 'job-1', status: 'queued' } })
+    // Stand in for runJob: fire the hook the way the real one does, in the
+    // window between storing results and flipping the job to succeeded. The
+    // report page refreshes on that status change, so a summary written after
+    // it would arrive too late to be seen.
+    runJob.mockImplementation(
+      async (
+        _jobId: string,
+        options: {
+          onResultsReady?: (ctx: { organizationId: string }) => Promise<void>
+        },
+      ) => {
+        await options.onResultsReady?.({ organizationId: 'org-1' })
+        return { ok: true, value: { analyzed: 5 } }
+      },
+    )
+
+    await POST(request({ datasetId: DATASET_ID }) as never)
+    await afterCallbacks[0]?.()
+
+    expect(generateReportSummary).toHaveBeenCalledWith({
+      organizationId: 'org-1',
+      jobId: 'job-1',
+    })
+  })
+
+  it('keeps the job successful when the summary cannot be written', async () => {
+    getSessionUser.mockResolvedValue(SESSION)
+    createJob.mockResolvedValue({ ok: true, value: { id: 'job-1', status: 'queued' } })
+    generateReportSummary.mockResolvedValue({
+      ok: false,
+      error: { code: 'UPSTREAM', message: 'Model unavailable' },
+    })
+    runJob.mockImplementation(
+      async (
+        _jobId: string,
+        options: {
+          onResultsReady?: (ctx: { organizationId: string }) => Promise<void>
+        },
+      ) => {
+        await options.onResultsReady?.({ organizationId: 'org-1' })
+        return { ok: true, value: { analyzed: 5 } }
+      },
+    )
+
+    await POST(request({ datasetId: DATASET_ID }) as never)
+
+    // A missing narrative is a worse report, not a failed analysis.
+    await expect(afterCallbacks[0]?.()).resolves.toBeUndefined()
   })
 
   it('swallows a failed run rather than throwing into a sent response', async () => {

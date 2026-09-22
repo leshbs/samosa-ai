@@ -4,7 +4,7 @@ import OpenAI from 'openai'
 import { serverEnv } from '@/lib/env'
 import { ERROR_CODES, appError, err, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
-import { analysisPrompt } from '../prompts'
+import { analysisPrompt, summaryPrompt } from '../prompts'
 import { estimateCostMicroIdr } from './pricing'
 import { MAX_ATTEMPTS, backoffDelayMs, isRetryableError, retryAfterMs } from './retry'
 import {
@@ -12,6 +12,8 @@ import {
   type BatchInput,
   type BatchOutput,
   type LlmAdapter,
+  type SummaryInput,
+  type SummaryOutput,
 } from './types'
 
 const MAX_OUTPUT_TOKENS = 4_096
@@ -95,6 +97,9 @@ function parseBatch(raw: string): Result<BatchOutput['items'], AppError> {
   return ok(result.data.items)
 }
 
+/** The narrative is prose, not a per-response table, so it needs far less room. */
+const MAX_SUMMARY_TOKENS = 1_024
+
 export function createOpenAiAdapter(options: AdapterOptions = {}): LlmAdapter {
   return {
     name: 'openai',
@@ -138,6 +143,70 @@ export function createOpenAiAdapter(options: AdapterOptions = {}): LlmAdapter {
 
       return ok({
         items: items.value,
+        modelId,
+        usage,
+        costMicroIdr: estimateCostMicroIdr(modelId, usage),
+      })
+    },
+
+    async summarize(input: SummaryInput): Promise<Result<SummaryOutput, AppError>> {
+      const prompt = summaryPrompt(input.promptVersion)
+      const modelId = serverEnv().OPENAI_MODEL
+
+      const response = await callWithRetry(
+        () =>
+          getClient().chat.completions.create({
+            model: modelId,
+            max_tokens: MAX_SUMMARY_TOKENS,
+            temperature: TEMPERATURE,
+            response_format: { type: 'json_object' },
+            messages: [
+              { role: 'system', content: prompt.SYSTEM },
+              ...prompt.FEW_SHOT_MESSAGES(),
+              { role: 'user', content: prompt.USER_TEMPLATE(input.data) },
+            ],
+          }),
+        options,
+      )
+
+      if (!response.ok) return response
+
+      const content = response.value.choices[0]?.message.content
+      if (!content) {
+        return err(appError(ERROR_CODES.UPSTREAM, 'OpenAI response contained no content'))
+      }
+
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(stripCodeFence(content))
+      } catch (cause) {
+        return err(
+          appError(ERROR_CODES.UPSTREAM, 'Model returned output that is not valid JSON', {
+            cause,
+          }),
+        )
+      }
+
+      const summary = prompt.parse(parsed)
+      if (!summary.success) {
+        return err(
+          appError(
+            ERROR_CODES.UPSTREAM,
+            'Model output did not match the expected schema',
+            {
+              details: { issues: summary.error.issues.length },
+            },
+          ),
+        )
+      }
+
+      const usage = {
+        inputTokens: response.value.usage?.prompt_tokens ?? 0,
+        outputTokens: response.value.usage?.completion_tokens ?? 0,
+      }
+
+      return ok({
+        ...summary.data,
         modelId,
         usage,
         costMicroIdr: estimateCostMicroIdr(modelId, usage),

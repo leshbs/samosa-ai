@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
-import { runJob } from '@/modules/analysis'
 import { ERROR_CODES, appError, logger } from '@/modules/shared'
+import { runAnalysisJob } from '@/app/api/_lib/run-analysis'
 import { failure, success } from '@/app/api/_lib/respond'
 
 /** Analysis of a 500-row dataset runs for minutes, well past the default limit. */
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   }
 
   logger.info('worker.job.received', { jobId: body.jobId })
-  const result = await runJob(body.jobId)
+  const result = await runAnalysisJob(body.jobId)
 
   return result.ok ? success(result.value) : failure(result.error)
 }

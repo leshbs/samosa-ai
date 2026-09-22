@@ -14,6 +14,12 @@ export type { KeywordCount } from './aggregators/keywords'
 export { crossTabTopicSentiment } from './aggregators/cross-tab'
 export type { TopicSentimentRow } from './aggregators/cross-tab'
 export type { AnalyzedRecord, CountedTerm } from './aggregators/types'
+export { generateReportSummary, getStoredSummary } from './services/summary-generator'
+export type {
+  GenerateSummaryInput,
+  GeneratedSummary,
+  StoredSummary,
+} from './services/summary-generator'
 export { exportReportToCsv } from './exporters/csv-exporter'
 export { exportReportToPdf } from './exporters/pdf-exporter'
 export type { PdfExport } from './exporters/pdf-exporter'
