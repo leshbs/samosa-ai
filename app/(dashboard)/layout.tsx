@@ -20,6 +20,7 @@ export default async function DashboardLayout({
   return (
     <AppShell
       email={session.value.email}
+      displayName={session.value.displayName}
       organizationName={session.value.organizationName}
     >
       {children}
