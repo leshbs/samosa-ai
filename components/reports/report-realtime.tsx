@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import type { JobStatus } from '@/types/domain'
 
@@ -31,34 +32,54 @@ export function ReportRealtime({
 
   useEffect(() => {
     const supabase = createClient()
+    let channel: RealtimeChannel | null = null
+    let cancelled = false
 
-    const channel = supabase
-      .channel(`report-${jobId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'analysis_jobs',
-          // Scoped to this tenant so an unrelated job elsewhere cannot make
-          // this page flash; RLS is the boundary, this is the noise filter.
-          filter: `organization_id=eq.${organizationId}`,
-        },
-        (payload) => {
-          const next = payload.new as { id?: string; status?: JobStatus }
-          if (next.id !== jobId || !next.status) return
-          if (!TERMINAL.includes(next.status)) return
-          if (announced.current) return
+    async function listen() {
+      // Hand the session to the socket *before* subscribing. Realtime runs
+      // every change through the subscriber's own RLS policies, and a socket
+      // that opened with nothing but the anon key is not a member of any
+      // organization -- so it joins happily, reports "Subscribed to
+      // PostgreSQL", and then receives silence forever. Measured, not
+      // guessed: an anon socket and a signed-in one both report SUBSCRIBED,
+      // and only the signed-in one is delivered a single row.
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token
+      if (!token || cancelled) return
+      await supabase.realtime.setAuth(token)
+      if (cancelled) return
 
-          announced.current = true
-          toast.success('Analisis selesai — laporan diperbarui.')
-          router.refresh()
-        },
-      )
-      .subscribe()
+      channel = supabase
+        .channel(`report-${jobId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'analysis_jobs',
+            // Scoped to this tenant so an unrelated job elsewhere cannot make
+            // this page flash; RLS is the boundary, this is the noise filter.
+            filter: `organization_id=eq.${organizationId}`,
+          },
+          (payload) => {
+            const next = payload.new as { id?: string; status?: JobStatus }
+            if (next.id !== jobId || !next.status) return
+            if (!TERMINAL.includes(next.status)) return
+            if (announced.current) return
+
+            announced.current = true
+            toast.success('Analisis selesai — laporan diperbarui.')
+            router.refresh()
+          },
+        )
+        .subscribe()
+    }
+
+    void listen()
 
     return () => {
-      void supabase.removeChannel(channel)
+      cancelled = true
+      if (channel) void supabase.removeChannel(channel)
     }
   }, [jobId, organizationId, router])
 

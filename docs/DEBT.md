@@ -100,16 +100,24 @@ atas halaman lain yang ~106 kB. Di jaringan sekolah itu terasa.
 dengan:** `next/dynamic` untuk dua chart Recharts, supaya KPI tile dan sebaran
 sentimen (keduanya HTML biasa, tanpa Recharts) tampil lebih dulu.
 
-### Realtime belum terbukti end-to-end
+### ~~Realtime belum terbukti end-to-end~~ — lunas 2026-09-22
 
-`ReportRealtime` sudah terpasang dan channel-nya terhubung, tapi
-`20260921000100_realtime_analysis_jobs.sql` belum di-`supabase db push`. Sampai
-migrasi itu jalan, `analysis_jobs` tidak ada di publication `supabase_realtime`
-dan event-nya tidak akan pernah sampai — halamannya tetap benar, hanya tidak
-memperbarui sendiri.
+Migrasi `20260921000100_realtime_analysis_jobs.sql` sudah dijalankan dan
+`analysis_jobs` sekarang ada di publication `supabase_realtime`. Diverifikasi
+end-to-end di browser: job `running` → `succeeded` memunculkan toast "Analisis
+selesai — laporan diperbarui." dan frame `postgres_changes` terlihat di
+websocket.
 
-**Pemicu:** sekarang. **Bayar dengan:** `pnpm db:migrate`, lalu jalankan ulang
-sebuah analisis sambil membuka laporannya di tab lain.
+Verifikasi itu menemukan satu bug nyata: channel-nya subscribe sebelum session
+diserahkan ke socket realtime, jadi RLS membuang semua row. Gejalanya menipu —
+channel tetap membalas `SUBSCRIBED` dan server tetap bilang "Subscribed to
+PostgreSQL", tapi tidak ada satu pun event yang datang. Diperbaiki dengan
+`supabase.realtime.setAuth(token)` sebelum `.subscribe()`.
+
+**Catatan untuk lain kali:** status channel bukan bukti. Satu-satunya bukti
+adalah event yang benar-benar sampai. Perubahan `alter publication` juga butuh
+beberapa detik sebelum Realtime memakainya — probe pertama setelah migrasi bisa
+gagal padahal migrasinya benar.
 
 ### Checkpoint 4.6 belum dikerjakan
 
