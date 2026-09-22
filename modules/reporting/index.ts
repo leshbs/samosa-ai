@@ -11,6 +11,8 @@ export { aggregateTopics, DEFAULT_TOP_TOPICS } from './aggregators/topics'
 export type { TopicCount } from './aggregators/topics'
 export { aggregateKeywords, DEFAULT_TOP_KEYWORDS } from './aggregators/keywords'
 export type { KeywordCount } from './aggregators/keywords'
+export { topResponsesByTopic, DEFAULT_QUOTES_PER_TOPIC } from './aggregators/quotes'
+export type { QuotableRecord, TopicQuotes } from './aggregators/quotes'
 export { crossTabTopicSentiment } from './aggregators/cross-tab'
 export type { TopicSentimentRow } from './aggregators/cross-tab'
 export type { AnalyzedRecord, CountedTerm } from './aggregators/types'
@@ -20,6 +22,7 @@ export type {
   GeneratedSummary,
   StoredSummary,
 } from './services/summary-generator'
-export { exportReportToCsv } from './exporters/csv-exporter'
+export { exportReportToCsv, exportResponsesToCsv } from './exporters/csv-exporter'
+export type { ExportableResponse } from './exporters/csv-exporter'
 export { exportReportToPdf } from './exporters/pdf-exporter'
-export type { PdfExport } from './exporters/pdf-exporter'
+export type { PdfExport, ReportDocumentData } from './exporters/pdf-exporter'
