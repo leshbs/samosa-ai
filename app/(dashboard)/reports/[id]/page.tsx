@@ -11,13 +11,14 @@ import { KeywordBar } from '@/components/charts/keyword-bar'
 import { SENTIMENT_LABELS } from '@/components/charts/palette'
 import { SentimentBar } from '@/components/charts/sentiment-bar'
 import { TopicBar } from '@/components/charts/topic-bar'
+import { ExecutiveSummary } from '@/components/reports/executive-summary'
 import { ReportRealtime } from '@/components/reports/report-realtime'
 import { ResponseExplorer } from '@/components/reports/response-explorer'
 import { StatTile } from '@/components/reports/stat-tile'
 import { Button } from '@/components/ui/button'
 import { formatDateTime, formatPercent } from '@/lib/utils'
 import { getJob, listJobResults } from '@/modules/analysis'
-import { buildDashboardData } from '@/modules/reporting'
+import { buildDashboardData, getStoredSummary } from '@/modules/reporting'
 
 export const metadata: Metadata = { title: 'Laporan' }
 
@@ -52,6 +53,9 @@ export default async function ReportDetailPage({
     )
   }
 
+  const stored = await getStoredSummary(job.value.organizationId, job.value.id)
+  const quotesById = new Map(rows.map((row) => [row.responseId, row.responseText]))
+
   const topThree = data.topics.slice(0, 3)
 
   return (
@@ -77,6 +81,14 @@ export default async function ReportDetailPage({
           </p>
         </div>
       </div>
+
+      <ExecutiveSummary
+        jobId={job.value.id}
+        summary={stored?.summary ?? null}
+        insights={stored?.insights ?? []}
+        generatedAt={stored?.createdAt ?? null}
+        quotesById={quotesById}
+      />
 
       {/* ── 1. Overview ─────────────────────────────────────────────── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -1,8 +1,9 @@
 import { after, type NextRequest } from 'next/server'
 import { can, getSessionUser } from '@/modules/auth'
-import { createJob, runJob } from '@/modules/analysis'
+import { createJob } from '@/modules/analysis'
 import { ERROR_CODES, appError, logger } from '@/modules/shared'
 import { createAnalysisSchema } from '@/types/api'
+import { runAnalysisJob } from '@/app/api/_lib/run-analysis'
 import { failure, success } from '@/app/api/_lib/respond'
 
 /** A 500-row dataset takes minutes; the default limit would cut it short. */
@@ -37,11 +38,11 @@ export async function POST(request: NextRequest) {
   /**
    * The 202 goes out now and the work continues in this same invocation
    * (ADR-0003: the client polls /api/analysis/[id]/status for progress).
-   * runJob records its own failures on the job row, so nothing here can throw
+   * runAnalysisJob records its own failures on the job row, so nothing here can throw
    * into a response that has already been sent.
    */
   after(async () => {
-    const outcome = await runJob(jobId)
+    const outcome = await runAnalysisJob(jobId)
     if (!outcome.ok) {
       logger.error('analysis.job.run_failed', { jobId, code: outcome.error.code })
     }

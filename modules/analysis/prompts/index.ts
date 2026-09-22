@@ -1,6 +1,8 @@
+import type { z } from 'zod'
 import * as analysisV1 from './analysis.v1'
 import * as sentimentV1 from './sentiment.v1'
 import * as summaryV1 from './summary.v1'
+import * as summaryV2 from './summary.v2'
 import * as topicV1 from './topic.v1'
 
 /**
@@ -18,7 +20,14 @@ export const ANALYSIS_PROMPTS = {
 
 export const SENTIMENT_PROMPTS = { v1: sentimentV1 } as const
 export const TOPIC_PROMPTS = { v1: topicV1 } as const
-export const SUMMARY_PROMPTS = { v1: summaryV1 } as const
+export const SUMMARY_PROMPTS = {
+  'summary.v1': summaryV1,
+  'summary.v2': summaryV2,
+  v1: summaryV1,
+} as const
+
+/** v2 is what new reports use: it cites the quotes behind each insight. */
+export const DEFAULT_SUMMARY_VERSION = 'summary.v2'
 
 export const DEFAULT_PROMPT_VERSION = 'analysis.v1'
 
@@ -60,9 +69,68 @@ export function sentimentPrompt(version: string) {
   return SENTIMENT_PROMPTS[version as keyof typeof SENTIMENT_PROMPTS]
 }
 
-export function summaryPrompt(version: string) {
-  if (!(version in SUMMARY_PROMPTS)) {
+export type SummaryPromptInput = summaryV2.SummaryPromptInput
+
+export type NormalizedInsight = {
+  title: string
+  detail: string
+  /** 1-based positions into the sample quotes the prompt was given. */
+  evidence: number[]
+}
+
+export type NormalizedSummary = {
+  summary: string
+  insights: NormalizedInsight[]
+}
+
+export type SummaryPrompt = {
+  readonly PROMPT_VERSION: string
+  readonly SYSTEM: string
+  readonly USER_TEMPLATE: (input: SummaryPromptInput) => string
+  readonly FEW_SHOT_MESSAGES: () => Array<{ role: 'user' | 'assistant'; content: string }>
+  /** Each version normalizes to one shape, so callers never branch on version. */
+  readonly parse: (value: unknown) => z.SafeParseReturnType<unknown, NormalizedSummary>
+}
+
+/** v1 predates cited evidence; normalize it to the same shape with none. */
+const summaryV1Schema = summaryV1.OUTPUT_SCHEMA.transform((value) => ({
+  summary: value.summary,
+  insights: value.insights.map((insight) => ({ ...insight, evidence: [] as number[] })),
+}))
+
+const SUMMARY_PROMPT_IMPLS: Record<keyof typeof SUMMARY_PROMPTS, SummaryPrompt> = {
+  'summary.v1': {
+    PROMPT_VERSION: summaryV1.PROMPT_VERSION,
+    SYSTEM: summaryV1.SYSTEM,
+    USER_TEMPLATE: summaryV1.USER_TEMPLATE,
+    FEW_SHOT_MESSAGES: NO_FEW_SHOT,
+    parse: (value) => summaryV1Schema.safeParse(value),
+  },
+  v1: {
+    PROMPT_VERSION: summaryV1.PROMPT_VERSION,
+    SYSTEM: summaryV1.SYSTEM,
+    USER_TEMPLATE: summaryV1.USER_TEMPLATE,
+    FEW_SHOT_MESSAGES: NO_FEW_SHOT,
+    parse: (value) => summaryV1Schema.safeParse(value),
+  },
+  'summary.v2': {
+    PROMPT_VERSION: summaryV2.PROMPT_VERSION,
+    SYSTEM: summaryV2.SYSTEM,
+    USER_TEMPLATE: summaryV2.USER_TEMPLATE,
+    FEW_SHOT_MESSAGES: summaryV2.FEW_SHOT_MESSAGES,
+    parse: (value) => summaryV2.OUTPUT_SCHEMA.safeParse(value),
+  },
+}
+
+export function isSummaryPromptVersion(
+  value: string,
+): value is keyof typeof SUMMARY_PROMPTS {
+  return value in SUMMARY_PROMPTS
+}
+
+export function summaryPrompt(version: string): SummaryPrompt {
+  if (!isSummaryPromptVersion(version)) {
     throw new Error(`Unknown summary prompt version: ${version}`)
   }
-  return SUMMARY_PROMPTS[version as keyof typeof SUMMARY_PROMPTS]
+  return SUMMARY_PROMPT_IMPLS[version]
 }
