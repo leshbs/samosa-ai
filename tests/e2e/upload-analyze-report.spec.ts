@@ -33,6 +33,22 @@ test.describe('upload to report', () => {
     await expect(page.getByRole('link', { name: 'Mulai analisis' })).toBeVisible()
   })
 
+  test('the legal pages are reachable and bilingual', async ({ page }) => {
+    await page.goto('/')
+    // Reachable from where someone decides to trust the product with data.
+    await page.getByRole('link', { name: 'Kebijakan Privasi' }).click()
+    await expect(page.getByRole('heading', { name: 'Kebijakan Privasi' })).toBeVisible()
+
+    // The disclosure that matters most: the text leaves the country.
+    await expect(page.getByText('OpenAI di Amerika Serikat')).toBeVisible()
+
+    await page.getByRole('link', { name: 'English' }).click()
+    await expect(page.getByRole('heading', { name: 'Privacy Policy' })).toBeVisible()
+
+    await page.goto('/terms')
+    await expect(page.getByRole('heading', { name: 'Ketentuan Layanan' })).toBeVisible()
+  })
+
   test('uploads a CSV, runs analysis, and exports the report', async ({ page }) => {
     test.skip(!EMAIL || !PASSWORD, 'Set E2E_EMAIL and E2E_PASSWORD to run this.')
     // An LLM call per batch plus one for the summary; minutes, not seconds.
