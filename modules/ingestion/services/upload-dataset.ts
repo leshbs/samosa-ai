@@ -1,14 +1,13 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { DATASET_BUCKET, removeDatasetObject } from './dataset-storage'
 import { parseCsv, parseXlsx } from '../parsers'
 import { extractResponses, validateUploadSize } from '../validators/dataset-validator'
 import { validateFileSignature, validateUploadFile } from '../validators/file-signature'
 import { ERROR_CODES, appError, err, logger, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
 import type { DatasetSource } from '@/types/domain'
-
-const DATASET_BUCKET = 'datasets'
 
 export type UploadDatasetInput = {
   organizationId: string
@@ -77,6 +76,8 @@ export async function uploadDataset(
     .single()
 
   if (datasetError || !dataset) {
+    // The bytes are already in the bucket and no row will ever point at them.
+    await removeDatasetObject(storagePath)
     return err(appError(ERROR_CODES.INTERNAL, 'Dataset tidak bisa dibuat'))
   }
 
@@ -91,8 +92,11 @@ export async function uploadDataset(
   )
 
   if (responsesError) {
-    // Leave no half-ingested dataset behind; the row cascade removes responses.
+    // Leave no half-ingested dataset behind; the row cascade removes responses,
+    // and the upload has to go with it or the file outlives everything that
+    // referenced it.
     await supabase.from('datasets').delete().eq('id', datasetId)
+    await removeDatasetObject(storagePath)
     return err(
       appError(ERROR_CODES.INTERNAL, 'Aspirasi dari dataset tidak bisa disimpan'),
     )

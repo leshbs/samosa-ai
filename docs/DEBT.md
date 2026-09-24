@@ -307,3 +307,15 @@ lewat — indeks `rate_limits_window_idx` sudah disiapkan untuk itu.
 
 `pnpm audit` belum jadi bagian CI, dan service role key belum pernah dirotasi.
 Kedua hal ini dicatat di `docs/security-audit.md` bagian 9 sebagai batas audit.
+
+### File yatim di storage tidak pernah disapu
+
+Menghapus dataset sekarang menghapus objeknya di bucket juga, tapi kalau
+bucket-nya sedang tidak bisa dihubungi, barisnya tetap terhapus dan filenya
+tertinggal — hanya ada satu baris log `ingestion.dataset.object_orphaned`
+berisi path-nya.
+
+**Bayar dengan:** job berkala yang membandingkan isi bucket `datasets` dengan
+kolom `storage_path`, plus alert pada pesan log itu begitu Sentry terpasang.
+Sebelum perbaikan ini, kebocorannya permanen dan diam-diam: `deleteDataset`
+tidak pernah menyentuh storage sama sekali.
