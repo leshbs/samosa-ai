@@ -47,7 +47,8 @@ export async function listJobs(): Promise<Result<JobListItem[], AppError>> {
     .order('created_at', { ascending: false })
     .limit(50)
 
-  if (error) return err(appError(ERROR_CODES.INTERNAL, 'Could not load analysis jobs'))
+  if (error)
+    return err(appError(ERROR_CODES.INTERNAL, 'Daftar analisis tidak bisa dimuat'))
 
   const jobs = (data ?? []).map((row) => toJob(row as JobRow))
   if (jobs.length === 0) return ok([])
@@ -82,7 +83,7 @@ export async function getJob(jobId: string): Promise<Result<AnalysisJob, AppErro
 
   // RLS turns another tenant's job into "no rows", which is what we want.
   if (error || !data)
-    return err(appError(ERROR_CODES.NOT_FOUND, 'Analysis job not found'))
+    return err(appError(ERROR_CODES.NOT_FOUND, 'Job analisis tidak ditemukan'))
 
   return ok(toJob(data as JobRow))
 }
@@ -111,7 +112,8 @@ export async function listJobResults(
     .select('response_id, sentiment, sentiment_confidence, topics, keywords, summary')
     .eq('job_id', jobId)
 
-  if (error) return err(appError(ERROR_CODES.INTERNAL, 'Could not load analysis results'))
+  if (error)
+    return err(appError(ERROR_CODES.INTERNAL, 'Hasil analisis tidak bisa dimuat'))
 
   const results = data ?? []
   if (results.length === 0) return ok([])
@@ -152,7 +154,7 @@ export async function getLatestJobForDataset(
     .limit(1)
     .maybeSingle()
 
-  if (error) return err(appError(ERROR_CODES.INTERNAL, 'Could not load analysis job'))
+  if (error) return err(appError(ERROR_CODES.INTERNAL, 'Analisis tidak bisa dimuat'))
 
   return ok(data ? toJob(data as JobRow) : null)
 }
@@ -180,7 +182,8 @@ export async function getUsageSummary(
     .select('processed_count, input_tokens, output_tokens, cost_micro_idr')
     .eq('organization_id', organizationId)
 
-  if (error) return err(appError(ERROR_CODES.INTERNAL, 'Could not load usage'))
+  if (error)
+    return err(appError(ERROR_CODES.INTERNAL, 'Data pemakaian tidak bisa dimuat'))
 
   const rows = data ?? []
 

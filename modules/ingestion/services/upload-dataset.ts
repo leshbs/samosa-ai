@@ -48,7 +48,7 @@ export async function uploadDataset(
     .upload(storagePath, buffer, { contentType: input.file.type, upsert: false })
 
   if (uploadError) {
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not store the uploaded file'))
+    return err(appError(ERROR_CODES.INTERNAL, 'File yang diunggah tidak bisa disimpan'))
   }
 
   const { data: dataset, error: datasetError } = await supabase
@@ -67,7 +67,7 @@ export async function uploadDataset(
     .single()
 
   if (datasetError || !dataset) {
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not create the dataset record'))
+    return err(appError(ERROR_CODES.INTERNAL, 'Dataset tidak bisa dibuat'))
   }
 
   const datasetId = String(dataset.id)
@@ -83,7 +83,9 @@ export async function uploadDataset(
   if (responsesError) {
     // Leave no half-ingested dataset behind; the row cascade removes responses.
     await supabase.from('datasets').delete().eq('id', datasetId)
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not store dataset responses'))
+    return err(
+      appError(ERROR_CODES.INTERNAL, 'Aspirasi dari dataset tidak bisa disimpan'),
+    )
   }
 
   logger.info('ingestion.dataset.created', {

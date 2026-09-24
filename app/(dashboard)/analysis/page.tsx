@@ -1,6 +1,8 @@
+import { Sparkles } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Card, CardContent } from '@/components/ui/card'
+import { EmptyState } from '@/components/layout/empty-state'
+import { Card } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -45,11 +47,12 @@ export default async function AnalysisListPage() {
       </div>
 
       {jobs.value.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            Belum ada analisis. Buka sebuah dataset lalu tekan Analisis.
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Sparkles}
+          title="Belum ada analisis"
+          description="Analisis dijalankan dari halaman dataset: buka salah satu dataset, lalu tekan Analisis."
+          action={{ label: 'Pilih dataset', href: '/datasets' }}
+        />
       ) : (
         <Card>
           <Table>

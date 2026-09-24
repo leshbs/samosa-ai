@@ -9,13 +9,13 @@ export async function POST(request: NextRequest) {
   const session = await getSessionUser()
   if (!session.ok) return failure(session.error)
   if (!can(session.value.role, 'dataset:create')) {
-    return failure(appError(ERROR_CODES.FORBIDDEN, 'You cannot upload datasets'))
+    return failure(appError(ERROR_CODES.FORBIDDEN, 'Kamu tidak bisa mengunggah dataset'))
   }
 
   const form = await request.formData()
   const file = form.get('file')
   if (!(file instanceof File)) {
-    return failure(appError(ERROR_CODES.VALIDATION, 'A file is required'))
+    return failure(appError(ERROR_CODES.VALIDATION, 'File wajib dipilih'))
   }
 
   const parsed = createDatasetSchema.safeParse({
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   })
   if (!parsed.success) {
     return failure(
-      appError(ERROR_CODES.VALIDATION, 'Invalid dataset metadata', {
+      appError(ERROR_CODES.VALIDATION, 'Data dataset tidak valid', {
         details: { issues: parsed.error.flatten().fieldErrors },
       }),
     )

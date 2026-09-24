@@ -41,7 +41,9 @@ export async function loadReportExport(
   const results = await listJobResults(jobId)
   if (!results.ok) return results
   if (results.value.length === 0) {
-    return err(appError(ERROR_CODES.NOT_FOUND, 'This job has no results to export'))
+    return err(
+      appError(ERROR_CODES.NOT_FOUND, 'Analisis ini belum punya hasil untuk diekspor'),
+    )
   }
 
   const dataset = await getDataset(job.value.datasetId)

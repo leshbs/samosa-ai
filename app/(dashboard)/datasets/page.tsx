@@ -1,8 +1,10 @@
+import { Upload } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { DeleteDatasetButton } from '@/components/datasets/delete-dataset-button'
+import { EmptyState } from '@/components/layout/empty-state'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -46,11 +48,12 @@ export default async function DatasetsPage() {
       </div>
 
       {datasets.value.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            Belum ada dataset. Unggah CSV atau Excel hasil Google Forms untuk mulai.
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Upload}
+          title="Belum ada dataset"
+          description="Unggah hasil Google Forms dalam format CSV atau Excel untuk mulai menganalisis aspirasi."
+          action={{ label: 'Unggah dataset pertama', href: '/datasets/new' }}
+        />
       ) : (
         <Card>
           <Table>

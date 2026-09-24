@@ -65,14 +65,24 @@ export async function analyzeResponses(
   input: OrchestratorInput,
 ): Promise<Result<OrchestratorOutput, AppError>> {
   if (input.responses.length === 0) {
-    return err(appError(ERROR_CODES.VALIDATION, 'Dataset has no responses to analyze'))
+    return err(
+      appError(
+        ERROR_CODES.VALIDATION,
+        'Dataset ini tidak punya aspirasi untuk dianalisis',
+      ),
+    )
   }
 
   const log = logger.child({ jobId: input.jobId, adapter: adapter.name })
   const plan = planBatches(input.responses)
 
   if (plan.batches.length === 0) {
-    return err(appError(ERROR_CODES.VALIDATION, 'No responses survived cleaning'))
+    return err(
+      appError(
+        ERROR_CODES.VALIDATION,
+        'Tidak ada aspirasi yang tersisa setelah dibersihkan',
+      ),
+    )
   }
 
   log.info('analysis.batches.created', {
@@ -139,7 +149,7 @@ export async function analyzeResponses(
   }
 
   if (results.length === 0) {
-    return err(appError(ERROR_CODES.UPSTREAM, 'Every analysis batch failed'))
+    return err(appError(ERROR_CODES.UPSTREAM, 'Semua batch analisis gagal'))
   }
 
   return ok({

@@ -19,8 +19,10 @@ export async function GET(_request: Request, context: RouteContext) {
     .eq('id', id)
     .maybeSingle()
 
-  if (error) return failure(appError(ERROR_CODES.INTERNAL, 'Could not load job status'))
-  if (!data) return failure(appError(ERROR_CODES.NOT_FOUND, 'Analysis job not found'))
+  if (error)
+    return failure(appError(ERROR_CODES.INTERNAL, 'Status analisis tidak bisa dimuat'))
+  if (!data)
+    return failure(appError(ERROR_CODES.NOT_FOUND, 'Job analisis tidak ditemukan'))
 
   return success({
     jobId: String(data.id),
