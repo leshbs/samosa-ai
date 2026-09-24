@@ -3,6 +3,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { parseCsv, parseXlsx } from '../parsers'
 import { extractResponses, validateUploadSize } from '../validators/dataset-validator'
+import { validateFileSignature, validateUploadFile } from '../validators/file-signature'
 import { ERROR_CODES, appError, err, logger, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
 import type { DatasetSource } from '@/types/domain'
@@ -27,10 +28,19 @@ export type UploadDatasetOutput = {
 export async function uploadDataset(
   input: UploadDatasetInput,
 ): Promise<Result<UploadDatasetOutput, AppError>> {
+  const nameCheck = validateUploadFile(input.file)
+  if (!nameCheck.ok) return nameCheck
+
   const sizeCheck = validateUploadSize(input.file.size)
   if (!sizeCheck.ok) return sizeCheck
 
   const buffer = await input.file.arrayBuffer()
+
+  // `source` arrives in the request body, so the bytes are the only honest
+  // account of what was actually uploaded.
+  const signatureCheck = validateFileSignature(buffer, input.source)
+  if (!signatureCheck.ok) return signatureCheck
+
   const parsed =
     input.source === 'xlsx'
       ? parseXlsx(buffer)

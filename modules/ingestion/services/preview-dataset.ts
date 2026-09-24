@@ -1,5 +1,6 @@
 import { parseCsv, parseXlsx } from '../parsers'
 import { validateUploadSize } from '../validators/dataset-validator'
+import { validateFileSignature, validateUploadFile } from '../validators/file-signature'
 import { ERROR_CODES, appError, err, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
 import type { DatasetSource } from '@/types/domain'
@@ -50,10 +51,17 @@ export async function previewDataset(
   file: File,
   source: DatasetSource,
 ): Promise<Result<DatasetPreview, AppError>> {
+  const nameCheck = validateUploadFile(file)
+  if (!nameCheck.ok) return nameCheck
+
   const sizeCheck = validateUploadSize(file.size)
   if (!sizeCheck.ok) return sizeCheck
 
   const buffer = await file.arrayBuffer()
+
+  const signatureCheck = validateFileSignature(buffer, source)
+  if (!signatureCheck.ok) return signatureCheck
+
   const parsed =
     source === 'xlsx'
       ? parseXlsx(buffer)
