@@ -188,7 +188,7 @@ describe('createOpenAiAdapter', () => {
 
     expect(result.ok).toBe(false)
     if (result.ok) return
-    expect(result.error.message).toContain('not valid JSON')
+    expect(result.error.message).toContain('tidak bisa dibaca')
   })
 
   it('rejects output that parses but does not match the schema', async () => {
@@ -201,7 +201,7 @@ describe('createOpenAiAdapter', () => {
 
     expect(result.ok).toBe(false)
     if (result.ok) return
-    expect(result.error.message).toContain('did not match')
+    expect(result.error.message).toContain('tidak sesuai format')
   })
 
   it('rejects an unknown prompt version instead of silently using another', async () => {

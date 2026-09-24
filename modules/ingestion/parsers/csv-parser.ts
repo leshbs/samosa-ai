@@ -26,7 +26,7 @@ export function parseCsv(content: string): Result<ParsedSheet, AppError> {
   if (fatal.length > 0) {
     const first = fatal[0]
     return err(
-      appError(ERROR_CODES.VALIDATION, 'CSV could not be parsed', {
+      appError(ERROR_CODES.VALIDATION, 'File CSV tidak bisa dibaca', {
         details: { row: first?.row, reason: first?.message },
       }),
     )
@@ -34,7 +34,7 @@ export function parseCsv(content: string): Result<ParsedSheet, AppError> {
 
   const columns = parsed.meta.fields ?? []
   if (columns.length === 0) {
-    return err(appError(ERROR_CODES.VALIDATION, 'CSV has no header row'))
+    return err(appError(ERROR_CODES.VALIDATION, 'File CSV tidak punya baris header'))
   }
 
   return ok({ columns, rows: parsed.data })

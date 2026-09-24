@@ -59,7 +59,9 @@ async function callWithRetry<T>(
   }
 
   return err(
-    appError(ERROR_CODES.UPSTREAM, 'OpenAI API request failed', { cause: lastError }),
+    appError(ERROR_CODES.UPSTREAM, 'Permintaan ke penyedia AI gagal', {
+      cause: lastError,
+    }),
   )
 }
 
@@ -79,18 +81,26 @@ function parseBatch(raw: string): Result<BatchOutput['items'], AppError> {
     parsed = JSON.parse(stripCodeFence(raw))
   } catch (cause) {
     return err(
-      appError(ERROR_CODES.UPSTREAM, 'Model returned output that is not valid JSON', {
-        cause,
-      }),
+      appError(
+        ERROR_CODES.UPSTREAM,
+        'Model membalas dengan format yang tidak bisa dibaca',
+        {
+          cause,
+        },
+      ),
     )
   }
 
   const result = batchAnalysisSchema.safeParse(parsed)
   if (!result.success) {
     return err(
-      appError(ERROR_CODES.UPSTREAM, 'Model output did not match the expected schema', {
-        details: { issues: result.error.issues.length },
-      }),
+      appError(
+        ERROR_CODES.UPSTREAM,
+        'Balasan model tidak sesuai format yang diharapkan',
+        {
+          details: { issues: result.error.issues.length },
+        },
+      ),
     )
   }
 
@@ -130,7 +140,7 @@ export function createOpenAiAdapter(options: AdapterOptions = {}): LlmAdapter {
 
       const content = response.value.choices[0]?.message.content
       if (!content) {
-        return err(appError(ERROR_CODES.UPSTREAM, 'OpenAI response contained no content'))
+        return err(appError(ERROR_CODES.UPSTREAM, 'Penyedia AI membalas tanpa isi'))
       }
 
       const items = parseBatch(content)
@@ -173,7 +183,7 @@ export function createOpenAiAdapter(options: AdapterOptions = {}): LlmAdapter {
 
       const content = response.value.choices[0]?.message.content
       if (!content) {
-        return err(appError(ERROR_CODES.UPSTREAM, 'OpenAI response contained no content'))
+        return err(appError(ERROR_CODES.UPSTREAM, 'Penyedia AI membalas tanpa isi'))
       }
 
       let parsed: unknown
@@ -181,9 +191,13 @@ export function createOpenAiAdapter(options: AdapterOptions = {}): LlmAdapter {
         parsed = JSON.parse(stripCodeFence(content))
       } catch (cause) {
         return err(
-          appError(ERROR_CODES.UPSTREAM, 'Model returned output that is not valid JSON', {
-            cause,
-          }),
+          appError(
+            ERROR_CODES.UPSTREAM,
+            'Model membalas dengan format yang tidak bisa dibaca',
+            {
+              cause,
+            },
+          ),
         )
       }
 
@@ -192,7 +206,7 @@ export function createOpenAiAdapter(options: AdapterOptions = {}): LlmAdapter {
         return err(
           appError(
             ERROR_CODES.UPSTREAM,
-            'Model output did not match the expected schema',
+            'Balasan model tidak sesuai format yang diharapkan',
             {
               details: { issues: summary.error.issues.length },
             },

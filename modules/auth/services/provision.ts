@@ -52,7 +52,7 @@ export async function provisionOrganization(
     if (error) {
       if (error.code === UNIQUE_VIOLATION) continue
       logger.error('auth.organization.create_failed', { code: error.code })
-      return err(appError(ERROR_CODES.INTERNAL, 'Could not create your organization'))
+      return err(appError(ERROR_CODES.INTERNAL, 'Organisasi kamu tidak bisa dibuat'))
     }
 
     const organizationId = String(data.id)
@@ -66,7 +66,7 @@ export async function provisionOrganization(
       // Leave no orphan organization that nobody can reach.
       await supabase.from('organizations').delete().eq('id', organizationId)
       logger.error('auth.membership.create_failed', { code: membership.error.code })
-      return err(appError(ERROR_CODES.INTERNAL, 'Could not set up your account'))
+      return err(appError(ERROR_CODES.INTERNAL, 'Akun kamu tidak bisa disiapkan'))
     }
 
     logger.info('auth.organization.created', { organizationId })
@@ -74,6 +74,6 @@ export async function provisionOrganization(
   }
 
   return err(
-    appError(ERROR_CODES.CONFLICT, 'Could not find a free name for your organization'),
+    appError(ERROR_CODES.CONFLICT, 'Tidak ada nama organisasi yang masih tersedia'),
   )
 }

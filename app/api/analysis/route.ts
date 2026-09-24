@@ -13,13 +13,15 @@ export async function POST(request: NextRequest) {
   const session = await getSessionUser()
   if (!session.ok) return failure(session.error)
   if (!can(session.value.role, 'analysis:run')) {
-    return failure(appError(ERROR_CODES.FORBIDDEN, 'You cannot start analyses'))
+    return failure(
+      appError(ERROR_CODES.FORBIDDEN, 'Kamu tidak bisa menjalankan analisis'),
+    )
   }
 
   const parsed = createAnalysisSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) {
     return failure(
-      appError(ERROR_CODES.VALIDATION, 'Invalid analysis request', {
+      appError(ERROR_CODES.VALIDATION, 'Permintaan analisis tidak valid', {
         details: { issues: parsed.error.flatten().fieldErrors },
       }),
     )

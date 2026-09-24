@@ -11,12 +11,12 @@ export async function DELETE(
   const session = await getSessionUser()
   if (!session.ok) return failure(session.error)
   if (!can(session.value.role, 'dataset:delete')) {
-    return failure(appError(ERROR_CODES.FORBIDDEN, 'You cannot delete datasets'))
+    return failure(appError(ERROR_CODES.FORBIDDEN, 'Kamu tidak bisa menghapus dataset'))
   }
 
   const { id } = await context.params
   if (!z.string().uuid().safeParse(id).success) {
-    return failure(appError(ERROR_CODES.VALIDATION, 'Dataset id must be a UUID'))
+    return failure(appError(ERROR_CODES.VALIDATION, 'ID dataset tidak valid'))
   }
 
   // RLS re-checks ownership, so a valid id from another tenant still 404s.

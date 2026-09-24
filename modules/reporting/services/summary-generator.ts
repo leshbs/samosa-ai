@@ -132,10 +132,10 @@ export async function generateReportSummary(
     .eq('organization_id', input.organizationId)
 
   if (error) {
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not load analysis results'))
+    return err(appError(ERROR_CODES.INTERNAL, 'Hasil analisis tidak bisa dimuat'))
   }
   if (!data || data.length === 0) {
-    return err(appError(ERROR_CODES.NOT_FOUND, 'No analysis results for this job'))
+    return err(appError(ERROR_CODES.NOT_FOUND, 'Analisis ini belum punya hasil'))
   }
 
   const rows: SampledRow[] = data.map((row) => {
@@ -195,7 +195,7 @@ export async function generateReportSummary(
   )
 
   if (upsertError) {
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not save the report summary'))
+    return err(appError(ERROR_CODES.INTERNAL, 'Ringkasan laporan tidak bisa disimpan'))
   }
 
   log.info('reporting.summary.generated', {

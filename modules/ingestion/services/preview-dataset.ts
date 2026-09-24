@@ -61,7 +61,7 @@ export async function previewDataset(
   if (!parsed.ok) return parsed
 
   if (parsed.value.rows.length === 0) {
-    return err(appError(ERROR_CODES.VALIDATION, 'File has no data rows'))
+    return err(appError(ERROR_CODES.VALIDATION, 'File tidak punya baris data'))
   }
 
   const sampleRows = parsed.value.rows.slice(0, PREVIEW_ROW_COUNT)

@@ -17,7 +17,7 @@ export async function updateDisplayName(
 
   const { data, error } = await supabase.auth.updateUser({ data: { full_name: name } })
   if (error || !data.user) {
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not save your name'))
+    return err(appError(ERROR_CODES.INTERNAL, 'Nama tidak bisa disimpan'))
   }
 
   return ok({ displayName: name })

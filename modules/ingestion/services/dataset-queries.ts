@@ -57,7 +57,7 @@ export async function listDatasets(): Promise<Result<Dataset[], AppError>> {
     .order('created_at', { ascending: false })
 
   if (error) {
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not load datasets'))
+    return err(appError(ERROR_CODES.INTERNAL, 'Daftar dataset tidak bisa dimuat'))
   }
 
   return ok((data as DatasetRow[]).map(toDataset))
@@ -74,7 +74,7 @@ export async function getDataset(datasetId: string): Promise<Result<Dataset, App
 
   // RLS turns "another tenant's dataset" into "no rows", which is what we want.
   if (error || !data) {
-    return err(appError(ERROR_CODES.NOT_FOUND, 'Dataset not found'))
+    return err(appError(ERROR_CODES.NOT_FOUND, 'Dataset tidak ditemukan'))
   }
 
   return ok(toDataset(data as DatasetRow))
@@ -106,7 +106,7 @@ export async function listResponses(
     .range(from, from + RESPONSES_PAGE_SIZE - 1)
 
   if (error) {
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not load responses'))
+    return err(appError(ERROR_CODES.INTERNAL, 'Aspirasi tidak bisa dimuat'))
   }
 
   const total = count ?? 0
@@ -136,12 +136,12 @@ export async function deleteDataset(datasetId: string): Promise<Result<void, App
     .eq('id', datasetId)
 
   if (error) {
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not delete the dataset'))
+    return err(appError(ERROR_CODES.INTERNAL, 'Dataset tidak bisa dihapus'))
   }
 
   // RLS silently drops rows the caller may not delete; report that honestly.
   if (!count) {
-    return err(appError(ERROR_CODES.NOT_FOUND, 'Dataset not found'))
+    return err(appError(ERROR_CODES.NOT_FOUND, 'Dataset tidak ditemukan'))
   }
 
   return ok(undefined)

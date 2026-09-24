@@ -170,6 +170,6 @@ describe('requireSessionUser', () => {
   it('throws instead of returning an unauthenticated caller', async () => {
     getUser.mockResolvedValue({ data: { user: null }, error: null })
 
-    await expect(requireSessionUser()).rejects.toThrow('You are not signed in')
+    await expect(requireSessionUser()).rejects.toThrow('Kamu belum masuk')
   })
 })

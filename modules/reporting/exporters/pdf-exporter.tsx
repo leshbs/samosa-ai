@@ -371,7 +371,7 @@ export async function exportReportToPdf(
 ): Promise<Result<PdfExport, AppError>> {
   if (data.sentiment.total === 0) {
     return err(
-      appError(ERROR_CODES.VALIDATION, 'This job has no results to put in a report'),
+      appError(ERROR_CODES.VALIDATION, 'Analisis ini belum punya hasil untuk dilaporkan'),
     )
   }
 
@@ -382,6 +382,6 @@ export async function exportReportToPdf(
     // The cause never reaches the client, so it has to be logged here or the
     // failure is a bare 500 with nothing to go on.
     logger.error('reporting.pdf.render_failed', { cause: String(cause) })
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not render the PDF', { cause }))
+    return err(appError(ERROR_CODES.INTERNAL, 'PDF gagal dibuat', { cause }))
   }
 }

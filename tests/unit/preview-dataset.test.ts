@@ -68,6 +68,6 @@ describe('previewDataset', () => {
 
     expect(result.ok).toBe(false)
     if (result.ok) return
-    expect(result.error.message).toContain('empty')
+    expect(result.error.message).toContain('kosong')
   })
 })

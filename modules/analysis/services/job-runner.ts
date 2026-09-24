@@ -27,10 +27,17 @@ export async function createJob(
     .eq('organization_id', input.organizationId)
 
   if (countError) {
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not count dataset responses'))
+    return err(
+      appError(ERROR_CODES.INTERNAL, 'Jumlah aspirasi di dataset tidak bisa dihitung'),
+    )
   }
   if (!count) {
-    return err(appError(ERROR_CODES.VALIDATION, 'Dataset has no responses to analyze'))
+    return err(
+      appError(
+        ERROR_CODES.VALIDATION,
+        'Dataset ini tidak punya aspirasi untuk dianalisis',
+      ),
+    )
   }
 
   const { data, error } = await supabase
@@ -46,7 +53,7 @@ export async function createJob(
     .single()
 
   if (error || !data) {
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not create analysis job'))
+    return err(appError(ERROR_CODES.INTERNAL, 'Job analisis tidak bisa dibuat'))
   }
 
   return ok({ id: String(data.id), status: 'queued' })
@@ -84,7 +91,7 @@ export async function runJob(
     .single()
 
   if (jobError || !job) {
-    return err(appError(ERROR_CODES.NOT_FOUND, 'Analysis job not found'))
+    return err(appError(ERROR_CODES.NOT_FOUND, 'Job analisis tidak ditemukan'))
   }
 
   await supabase
@@ -98,8 +105,8 @@ export async function runJob(
     .eq('dataset_id', job.dataset_id)
 
   if (responsesError || !responses) {
-    await failJob(jobId, 'Could not load dataset responses')
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not load dataset responses'))
+    await failJob(jobId, 'Aspirasi di dataset tidak bisa dimuat')
+    return err(appError(ERROR_CODES.INTERNAL, 'Aspirasi di dataset tidak bisa dimuat'))
   }
 
   const outcome = await analyzeResponses(createOpenAiAdapter(), {
@@ -136,8 +143,8 @@ export async function runJob(
 
   const { error: insertError } = await supabase.from('analysis_results').insert(rows)
   if (insertError) {
-    await failJob(jobId, 'Could not persist analysis results')
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not persist analysis results'))
+    await failJob(jobId, 'Hasil analisis tidak bisa disimpan')
+    return err(appError(ERROR_CODES.INTERNAL, 'Hasil analisis tidak bisa disimpan'))
   }
 
   if (options.onResultsReady) {

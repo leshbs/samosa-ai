@@ -10,7 +10,7 @@ export async function GET(_request: Request, context: RouteContext) {
   const session = await getSessionUser()
   if (!session.ok) return failure(session.error)
   if (!can(session.value.role, 'report:export')) {
-    return failure(appError(ERROR_CODES.FORBIDDEN, 'You cannot export reports'))
+    return failure(appError(ERROR_CODES.FORBIDDEN, 'Kamu tidak bisa mengekspor laporan'))
   }
 
   const { id } = await context.params

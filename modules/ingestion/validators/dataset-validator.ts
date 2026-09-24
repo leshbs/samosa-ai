@@ -19,10 +19,10 @@ export type ExtractionReport = {
 }
 
 export function validateUploadSize(bytes: number): Result<void, AppError> {
-  if (bytes <= 0) return err(appError(ERROR_CODES.VALIDATION, 'File is empty'))
+  if (bytes <= 0) return err(appError(ERROR_CODES.VALIDATION, 'File kosong'))
   if (bytes > MAX_UPLOAD_BYTES) {
     return err(
-      appError(ERROR_CODES.VALIDATION, 'File exceeds the 10 MB upload limit', {
+      appError(ERROR_CODES.VALIDATION, 'Ukuran file melebihi batas 10 MB', {
         details: { bytes, limit: MAX_UPLOAD_BYTES },
       }),
     )
@@ -74,11 +74,16 @@ export function extractResponses(
   }
 
   if (responses.length === 0) {
-    return err(appError(ERROR_CODES.VALIDATION, 'No usable responses found in the file'))
+    return err(
+      appError(
+        ERROR_CODES.VALIDATION,
+        'Tidak ada aspirasi yang bisa dipakai di file ini',
+      ),
+    )
   }
   if (responses.length > MAX_RESPONSES_PER_DATASET) {
     return err(
-      appError(ERROR_CODES.VALIDATION, 'Dataset exceeds the 5000-response limit', {
+      appError(ERROR_CODES.VALIDATION, 'Dataset melebihi batas 5.000 aspirasi', {
         details: { found: responses.length, limit: MAX_RESPONSES_PER_DATASET },
       }),
     )

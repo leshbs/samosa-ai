@@ -26,11 +26,13 @@ export async function renameOrganization(
     .maybeSingle()
 
   if (error) {
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not rename the organization'))
+    return err(appError(ERROR_CODES.INTERNAL, 'Nama organisasi tidak bisa diubah'))
   }
   // RLS turns "not allowed" into "no rows updated" rather than an error.
   if (!data) {
-    return err(appError(ERROR_CODES.FORBIDDEN, 'You cannot rename this organization'))
+    return err(
+      appError(ERROR_CODES.FORBIDDEN, 'Kamu tidak bisa mengubah nama organisasi ini'),
+    )
   }
 
   return ok({ name: String(data.name) })

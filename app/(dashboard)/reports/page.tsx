@@ -1,6 +1,8 @@
+import { FileText } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Card, CardContent } from '@/components/ui/card'
+import { EmptyState } from '@/components/layout/empty-state'
+import { Card } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -47,12 +49,12 @@ export default async function ReportsListPage() {
       </div>
 
       {reports.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            Belum ada laporan. Analisis sebuah dataset dulu, laporannya muncul di sini
-            begitu selesai.
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={FileText}
+          title="Belum ada laporan"
+          description="Setiap analisis yang selesai otomatis punya laporan. Jalankan satu analisis dulu."
+          action={{ label: 'Pilih dataset', href: '/datasets' }}
+        />
       ) : (
         <Card>
           <Table>

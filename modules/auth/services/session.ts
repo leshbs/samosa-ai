@@ -29,7 +29,7 @@ export async function getAuthUser(): Promise<Result<AuthUser, AppError>> {
 
   const { data, error } = await supabase.auth.getUser()
   if (error || !data.user) {
-    return err(appError(ERROR_CODES.UNAUTHORIZED, 'You are not signed in'))
+    return err(appError(ERROR_CODES.UNAUTHORIZED, 'Kamu belum masuk'))
   }
 
   return ok({ userId: data.user.id, email: data.user.email ?? '' })
@@ -44,7 +44,7 @@ export async function getSessionUser(): Promise<Result<SessionUser, AppError>> {
 
   const { data: auth, error: authError } = await supabase.auth.getUser()
   if (authError || !auth.user) {
-    return err(appError(ERROR_CODES.UNAUTHORIZED, 'You are not signed in'))
+    return err(appError(ERROR_CODES.UNAUTHORIZED, 'Kamu belum masuk'))
   }
 
   const { data: membership, error: membershipError } = await supabase
@@ -55,7 +55,7 @@ export async function getSessionUser(): Promise<Result<SessionUser, AppError>> {
     .single()
 
   if (membershipError || !membership) {
-    return err(appError(ERROR_CODES.FORBIDDEN, 'Your account has no organization yet'))
+    return err(appError(ERROR_CODES.FORBIDDEN, 'Akunmu belum punya organisasi'))
   }
 
   const organizationId = String(membership.organization_id)
