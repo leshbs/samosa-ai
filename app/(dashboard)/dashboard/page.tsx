@@ -1,7 +1,7 @@
 import { Upload } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/layout/empty-state'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getSessionUser } from '@/modules/auth'
 import { listDatasets } from '@/modules/ingestion'
@@ -27,19 +27,12 @@ export default async function DashboardHomePage() {
       </div>
 
       {items.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-            <Upload className="h-8 w-8 text-muted-foreground" aria-hidden />
-            <p className="font-medium">Belum ada dataset</p>
-            <p className="max-w-sm text-sm text-muted-foreground">
-              Unggah hasil Google Forms dalam format CSV atau Excel untuk mulai
-              menganalisis aspirasi.
-            </p>
-            <Button asChild>
-              <Link href="/datasets/new">Unggah dataset pertama</Link>
-            </Button>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Upload}
+          title="Belum ada dataset"
+          description="Unggah hasil Google Forms dalam format CSV atau Excel untuk mulai menganalisis aspirasi."
+          action={{ label: 'Unggah dataset pertama', href: '/datasets/new' }}
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           <Card>

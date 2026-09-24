@@ -148,7 +148,7 @@ describe('POST /api/analysis', () => {
     createJob.mockResolvedValue({ ok: true, value: { id: 'job-1', status: 'queued' } })
     runJob.mockResolvedValue({
       ok: false,
-      error: { code: 'UPSTREAM', message: 'Every analysis batch failed' },
+      error: { code: 'UPSTREAM', message: 'Semua batch analisis gagal' },
     })
 
     await POST(request({ datasetId: DATASET_ID }) as never)
@@ -173,7 +173,7 @@ describe('POST /api/analysis', () => {
   it('rejects an anonymous caller', async () => {
     getSessionUser.mockResolvedValue({
       ok: false,
-      error: { code: 'UNAUTHORIZED', message: 'You are not signed in' },
+      error: { code: 'UNAUTHORIZED', message: 'Kamu belum masuk' },
     })
 
     const response = await POST(request({ datasetId: DATASET_ID }) as never)
@@ -221,7 +221,10 @@ describe('POST /api/analysis', () => {
     getSessionUser.mockResolvedValue(SESSION)
     createJob.mockResolvedValue({
       ok: false,
-      error: { code: 'VALIDATION', message: 'Dataset has no responses to analyze' },
+      error: {
+        code: 'VALIDATION',
+        message: 'Dataset ini tidak punya aspirasi untuk dianalisis',
+      },
     })
 
     const response = await POST(request({ datasetId: DATASET_ID }) as never)

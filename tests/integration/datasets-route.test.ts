@@ -82,7 +82,7 @@ describe('POST /api/datasets', () => {
   it('rejects an anonymous caller before touching the upload service', async () => {
     getSessionUser.mockResolvedValue({
       ok: false,
-      error: { code: 'UNAUTHORIZED', message: 'You are not signed in' },
+      error: { code: 'UNAUTHORIZED', message: 'Kamu belum masuk' },
     })
 
     const response = await POST(request({ file: csv() }) as never)
@@ -135,7 +135,10 @@ describe('POST /api/datasets', () => {
     getSessionUser.mockResolvedValue(SESSION)
     uploadDataset.mockResolvedValue({
       ok: false,
-      error: { code: 'VALIDATION', message: 'No usable responses found in the file' },
+      error: {
+        code: 'VALIDATION',
+        message: 'Tidak ada aspirasi yang bisa dipakai di file ini',
+      },
     })
 
     const response = await POST(
@@ -149,6 +152,6 @@ describe('POST /api/datasets', () => {
 
     expect(response.status).toBe(422)
     const payload = (await response.json()) as ApiFailure
-    expect(payload.error.message).toContain('No usable responses')
+    expect(payload.error.message).toContain('Tidak ada aspirasi')
   })
 })

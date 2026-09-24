@@ -10,7 +10,9 @@ export async function POST(_request: Request, context: RouteContext) {
   const session = await getSessionUser()
   if (!session.ok) return failure(session.error)
   if (!can(session.value.role, 'analysis:run')) {
-    return failure(appError(ERROR_CODES.FORBIDDEN, 'You cannot regenerate summaries'))
+    return failure(
+      appError(ERROR_CODES.FORBIDDEN, 'Kamu tidak bisa membuat ulang ringkasan'),
+    )
   }
 
   const { id } = await context.params

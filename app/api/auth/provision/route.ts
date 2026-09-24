@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
 
   const body = bodySchema.safeParse(await request.json().catch(() => null))
   if (!body.success) {
-    return failure(appError(ERROR_CODES.VALIDATION, 'An organization name is required'))
+    return failure(appError(ERROR_CODES.VALIDATION, 'Nama organisasi wajib diisi'))
   }
 
   const result = await provisionOrganization({
