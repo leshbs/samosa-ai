@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { LegalFooter } from '@/components/layout/legal-footer'
 
 export default function LandingPage() {
   return (
@@ -17,6 +18,7 @@ export default function LandingPage() {
       >
         Mulai analisis
       </Link>
+      <LegalFooter className="pt-6" />
     </main>
   )
 }

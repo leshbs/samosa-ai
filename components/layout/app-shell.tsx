@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { LegalFooter } from '@/components/layout/legal-footer'
 import { SidebarNav } from '@/components/layout/sidebar-nav'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
 import { UserMenu } from '@/components/layout/user-menu'
@@ -39,7 +40,10 @@ export function AppShell({
         <aside className="overflow-x-auto border-b p-3 md:min-h-[calc(100vh-3.5rem)] md:overflow-x-visible md:border-b-0 md:border-r">
           <SidebarNav />
         </aside>
-        <main className="px-4 py-8 md:px-8">{children}</main>
+        <div className="flex min-h-[calc(100vh-3.5rem)] flex-col">
+          <main className="flex-1 px-4 py-8 md:px-8">{children}</main>
+          <LegalFooter className="border-t px-4 py-4 md:px-8" />
+        </div>
       </div>
     </div>
   )
