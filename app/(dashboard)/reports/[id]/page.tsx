@@ -7,10 +7,10 @@ import {
   TermTable,
   TopicSentimentTable,
 } from '@/components/charts/chart-tables'
-import { KeywordBar } from '@/components/charts/keyword-bar'
+// Recharts is loaded on demand; the sentiment bar is plain HTML and is not.
+import { KeywordBar, TopicBar } from '@/components/charts/lazy-charts'
 import { SENTIMENT_LABELS } from '@/components/charts/palette'
 import { SentimentBar } from '@/components/charts/sentiment-bar'
-import { TopicBar } from '@/components/charts/topic-bar'
 import { ExecutiveSummary } from '@/components/reports/executive-summary'
 import { ReportRealtime } from '@/components/reports/report-realtime'
 import { ResponseExplorer } from '@/components/reports/response-explorer'
