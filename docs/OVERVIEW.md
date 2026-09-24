@@ -35,25 +35,26 @@ samosa/
 
 ### Tech stack
 
-| Layer         | Tech                         | Rasional                                                       |
-| ------------- | ---------------------------- | -------------------------------------------------------------- |
-| Framework     | Next.js 15 (App Router)      | React SSR/RSC, TS-first, single deploy                         |
-| UI runtime    | React 19                     | Dipasangkan dengan Next 15; wajib untuk export PDF (ADR-0007)  |
-| Language      | TypeScript strict            | Type safety, portfolio-grade                                   |
-| Styling       | Tailwind CSS + shadcn/ui     | Utility-first, fully customizable                              |
-| Charts        | Recharts / Tremor            | Dashboard-oriented                                             |
-| Data fetching | TanStack Query               | Cache, retry, realtime state                                   |
-| Validation    | Zod                          | Schema-first DTO validation                                    |
-| Database      | Supabase (Postgres)          | Managed, RLS built-in, generous free tier                      |
-| Auth          | Supabase Auth + Google OAuth | Siap untuk Google Forms API                                    |
-| Storage       | Supabase Storage             | Upload CSV/Excel                                               |
-| AI Provider   | **OpenAI API**               | JSON mode / structured output, biaya per token kompetitif      |
-| Jobs          | Inngest atau Vercel cron     | Async LLM batch processing                                     |
-| Hosting       | Vercel                       | CI/CD dari GitHub, edge                                        |
-| Monitoring    | Sentry + PostHog             | Error + product analytics                                      |
-| PDF export    | @react-pdf/renderer          | Jalan di Node function biasa, tanpa binary Chromium (ADR-0004) |
-| Testing       | Vitest + Playwright          | Unit + E2E                                                     |
-| Package mgr   | pnpm                         | Fast, disk-efficient                                           |
+| Layer         | Tech                            | Rasional                                                              |
+| ------------- | ------------------------------- | --------------------------------------------------------------------- |
+| Framework     | Next.js 15 (App Router)         | React SSR/RSC, TS-first, single deploy                                |
+| UI runtime    | React 19                        | Dipasangkan dengan Next 15; wajib untuk export PDF (ADR-0007)         |
+| Language      | TypeScript strict               | Type safety, portfolio-grade                                          |
+| Styling       | Tailwind CSS + shadcn/ui        | Utility-first, fully customizable                                     |
+| Charts        | Recharts / Tremor               | Dashboard-oriented                                                    |
+| Data fetching | TanStack Query                  | Cache, retry, realtime state                                          |
+| Validation    | Zod                             | Schema-first DTO validation                                           |
+| Database      | Supabase (Postgres)             | Managed, RLS built-in, generous free tier                             |
+| Auth          | Supabase Auth + Google OAuth    | Siap untuk Google Forms API                                           |
+| Storage       | Supabase Storage                | Upload CSV/Excel                                                      |
+| AI Provider   | **OpenAI API**                  | JSON mode / structured output, biaya per token kompetitif             |
+| Jobs          | Inngest atau Vercel cron        | Async LLM batch processing                                            |
+| Hosting       | Vercel                          | CI/CD dari GitHub, edge                                               |
+| Monitoring    | Log terstruktur + `requestId`   | Korelasi edge ke log line. Sentry belum dipasang, lihat `DEBT.md`     |
+| Rate limiting | Postgres (`consume_rate_limit`) | Tanpa vendor kedua; penghitung in-process tidak berguna di serverless |
+| PDF export    | @react-pdf/renderer             | Jalan di Node function biasa, tanpa binary Chromium (ADR-0004)        |
+| Testing       | Vitest + Playwright             | Unit + E2E                                                            |
+| Package mgr   | pnpm                            | Fast, disk-efficient                                                  |
 
 ### External APIs
 
@@ -433,13 +434,19 @@ ADR adalah bukti _engineering thinking_ — sangat berharga untuk portfolio univ
 
 ## 6. Security Checklist
 
-Status tiap item menandai apa yang sudah ada di kode vs. apa yang masih harus dikerjakan.
+Audit penuh beserta buktinya ada di **[`docs/security-audit.md`](security-audit.md)** (fase 9). Daftar di bawah ringkasannya.
 
-- ✅ **RLS di semua tabel Supabase** — user hanya bisa baca data milik organisasinya. Policy memfilter lewat `public.current_org_ids()` / `public.has_org_role()`.
-- ✅ **API key lewat environment variables** — tidak pernah masuk Git (`.env.local` ada di `.gitignore`; gunakan Vercel env vars di production).
+- ✅ **RLS di semua tabel Supabase** — user hanya bisa baca data milik organisasinya, lewat `public.current_org_ids()` / `public.has_org_role()`. **Diverifikasi, bukan diasumsikan:** `scripts/check-rls.mjs` membangun dua organisasi lengkap lalu gagal kalau satu baris pun bocor — 14 cek lulus.
+- ✅ **API key lewat environment variables** — tidak pernah masuk Git. Diverifikasi dengan mencari _nilai_ kuncinya di `.next/static/`: nol hasil.
 - ✅ **Sanitize input sebelum ke LLM** — validasi panjang, strip control chars, defang delimiter prompt, dan flag frasa prompt-injection (`modules/analysis/postprocess/sanitize.ts`).
-- ⬜ **Rate limiting di endpoint upload dan analysis** — belum diimplementasi. Rencana: Upstash Redis (punya free tier untuk ini).
-- ⬜ **PII handling** — belum diimplementasi. Rencana: opsi anonymize (hapus nama, email) sebelum data disimpan atau dikirim ke LLM. Saat ini `respondent_meta` disimpan apa adanya dan **tidak** ikut dikirim ke LLM.
+- ✅ **Sanitasi unggahan file** — magic bytes, whitelist ekstensi dan MIME, batas ukuran dan jumlah baris (`modules/ingestion/validators/file-signature.ts`). `source` datang dari body request, jadi byte-nya satu-satunya keterangan jujur soal isi file.
+- ✅ **CSRF** — pengecekan `Origin` untuk setiap metode tulis di middleware; `/api/webhooks/*` dikecualikan karena memakai shared secret.
+- ✅ **Content Security Policy** — nonce per request, `strict-dynamic`, plus header konstan di `next.config.ts`. Nol pelanggaran di enam route, diperiksa di browser sungguhan.
+- ✅ **Korelasi log** — satu `requestId` dari edge sampai ke log line, dikembalikan sebagai header `x-request-id`.
+- 🟡 **Rate limiting di endpoint upload dan analysis** — kodenya ada dan gagal-terbuka dengan benar, tapi migrasinya belum diterapkan ke project hosted. Postgres, bukan Upstash: penghitung in-process tidak berguna di serverless. Lihat `DEBT.md`.
+- ⬜ **PII handling** — belum diimplementasi. Rencana: opsi anonymize (hapus nama, email) sebelum data disimpan. Saat ini `respondent_meta` disimpan apa adanya dan **tidak** ikut dikirim ke LLM.
+- ⬜ **Error tracking (Sentry)** — sengaja belum dipasang; DoD-nya tidak bisa dibuktikan tanpa akun. Dua titik sambungnya dicatat di `DEBT.md`.
+- ⬜ **Audit dependensi terjadwal & rotasi kunci** — belum ada. Dicatat sebagai batas audit di `security-audit.md` bagian 9.
 
 ---
 
