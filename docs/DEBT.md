@@ -206,3 +206,104 @@ Sketsa kalau nanti dikerjakan:
   regenerate, tanpa export — hanya ringkasan dan grafik.
 - Pencabutan mengisi `revoked_at`; halaman publik memeriksanya di setiap request,
   bukan hanya saat token dibuat.
+
+---
+
+## Ditambahkan di Fase 9
+
+### Migrasi fase 9 belum diterapkan ke project hosted
+
+`20260924000100_rate_limits.sql` dan `20260924000200_analysis_jobs_org_index.sql`
+belum jalan. CLI Supabase tidak bisa menyambung tanpa password database, dan
+password itu tidak ada di `.env.local`.
+
+Akibatnya hari ini: rate limiter **gagal terbuka** (request tetap lewat,
+`security.rate_limit.unavailable` tercatat) dan query per-organisasi di
+`analysis_jobs` masih sequential scan. Dua-duanya degradasi yang aman, tapi
+dua-duanya berarti kontrolnya belum benar-benar aktif.
+
+**Pemicu:** sekarang. **Bayar dengan:** tempel kedua file ke SQL Editor —
+keduanya idempoten — lalu jalankan `node --env-file=.env.local
+scripts/check-rls.mjs` dan pastikan baris SKIP terakhir berubah jadi PASS.
+
+### Sentry belum dipasang
+
+Checklist 9.4 meminta error tracking dengan DoD "sample error muncul di
+dashboard". Itu butuh akun yang tidak bisa dibuat dari sini, dan integrasi yang
+tidak bisa dibuktikan jalan lebih buruk daripada tidak ada integrasi. SDK-nya
+juga menambah puluhan kB ke bundle client yang baru saja dipangkas di 9.3.
+
+Yang sudah ada sebagai gantinya: korelasi `requestId` dari edge sampai ke log
+line, terbukti end-to-end.
+
+**Kalau nanti dipasang, dua titik sambungnya:**
+
+- Server: `logger.error` di `modules/shared/logger/logger.ts` — satu-satunya
+  tempat error server keluar. Kirim dari sana, lengkap dengan `requestId` yang
+  sudah ada di context.
+- Client: `ErrorState` di `components/layout/error-state.tsx` — satu-satunya
+  tempat error render ditangkap. `error.digest` adalah kunci yang menyambungkan
+  ke stack trace server.
+
+`SENTRY_DSN` sudah ada di `.env.example` dan `lib/env.ts` sebagai optional.
+
+### Halaman legal masih draf
+
+`lib/legal/controller.ts` berisi placeholder `TODO` untuk nama penanggung jawab
+data, email kontak, dan alamat. Selama placeholder itu ada, keempat halaman
+legal menampilkan banner merah "Draf — belum siap dipakai".
+
+Belum ditinjau ahli hukum. Ditulis mengikuti struktur UU PDP No. 27/2022, tapi
+itu bukan pengganti peninjauan.
+
+**Pemicu:** sebelum pengguna sungguhan pertama. **Bayar dengan:** isi empat
+konstanta itu, lalu minta seseorang yang paham UU PDP membacanya.
+
+### CSV injection belum ditangani
+
+Aspirasi yang diawali `=`, `+`, `-`, atau `@` tersimpan apa adanya di export
+CSV, dan Excel mengeksekusi sel seperti itu sebagai formula. Serangannya butuh
+korban membuka file di Excel dan menyetujui prompt, jadi dampaknya terbatas —
+tapi ini export yang memang dibuat untuk dibuka di Excel.
+
+**Bayar dengan:** prefiks `'` pada sel yang diawali keempat karakter itu, di
+`csv-exporter.ts`. Satu fungsi, satu test.
+
+### Semua halaman sekarang dinamis
+
+Membaca `headers()` di root layout untuk mengambil nonce CSP membuat seluruh
+route jadi `ƒ (Dynamic)`, termasuk landing page yang tadinya statis. Ini harga
+yang dipilih sadar (lihat `docs/security-audit.md` bagian 7), dan Lighthouse
+mobile tetap 97.
+
+Efek sampingnya yang terukur: `cache-control: no-store` pada dokumen utama
+membuat halaman tidak bisa masuk back/forward cache browser.
+
+**Kalau nanti jadi masalah:** landing page bisa dipisah ke layout sendiri yang
+tidak membaca `headers()`, dengan ThemeProvider tanpa nonce — halaman itu tidak
+punya data dan tidak punya sesi.
+
+### Halaman login membawa RealtimeClient yang tidak dipakai
+
+`/login` dan `/signup` 210 kB first load. Chunk terbesarnya 245 kB mentah, dan
+`grep` menemukan `GoTrueClient` **dan** `RealtimeClient` di dalamnya:
+`@supabase/supabase-js` membundel klien realtime bersama klien auth, dan halaman
+login tidak pernah membuka websocket.
+
+Masih di bawah target 300 kB, jadi belum dibayar.
+
+**Bayar dengan:** memakai `@supabase/auth-js` langsung di halaman auth, atau
+memindahkan sign-in ke server action sehingga supabase-js tidak pernah masuk
+bundle client sama sekali.
+
+### Rate limit memakai jendela tetap
+
+Lonjakan tepat di batas jendela bisa sebentar mencapai dua kali limit. Diterima
+sadar: alternatifnya satu baris per request, yang membuat tabel tumbuh tanpa
+batas. Juga belum ada pembersihan baris `rate_limits` yang jendelanya sudah
+lewat — indeks `rate_limits_window_idx` sudah disiapkan untuk itu.
+
+### Tidak ada audit dependensi terjadwal
+
+`pnpm audit` belum jadi bagian CI, dan service role key belum pernah dirotasi.
+Kedua hal ini dicatat di `docs/security-audit.md` bagian 9 sebagai batas audit.
