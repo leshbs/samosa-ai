@@ -95,6 +95,12 @@ type ReportsRow = {
   created_at: string
 }
 
+type RateLimitsRow = {
+  bucket: string
+  window_start: string
+  request_count: number
+}
+
 /** Columns with a database default are optional on insert. */
 type Table<Row, Generated extends keyof Row> = {
   Row: Row
@@ -134,9 +140,15 @@ export type Database = {
         'id' | 'topics' | 'keywords' | 'summary' | 'created_at'
       >
       reports: Table<ReportsRow, 'id' | 'summary' | 'insights' | 'exported_at' | 'created_at'>
+      rate_limits: Table<RateLimitsRow, 'window_start' | 'request_count'>
     }
     Views: Record<never, never>
-    Functions: Record<never, never>
+    Functions: {
+      consume_rate_limit: {
+        Args: { p_bucket: string; p_limit: number; p_window_seconds: number }
+        Returns: Array<{ allowed: boolean; remaining: number; reset_at: string }>
+      }
+    }
     Enums: {
       sentiment: Sentiment
       job_status: JobStatus

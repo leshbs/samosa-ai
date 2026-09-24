@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { can, getSessionUser } from '@/modules/auth'
 import { previewDataset } from '@/modules/ingestion'
+import { enforceRateLimit } from '@/modules/security'
 import { ERROR_CODES, appError } from '@/modules/shared'
 import { datasetSourceSchema } from '@/types/domain'
 import { failure, success } from '@/app/api/_lib/respond'
@@ -16,6 +17,9 @@ export async function POST(request: NextRequest) {
   if (!can(session.value.role, 'dataset:create')) {
     return failure(appError(ERROR_CODES.FORBIDDEN, 'Kamu tidak bisa mengunggah dataset'))
   }
+
+  const budget = await enforceRateLimit('dataset:preview', session.value.organizationId)
+  if (!budget.ok) return failure(budget.error)
 
   const form = await request.formData()
   const file = form.get('file')

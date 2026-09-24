@@ -1,5 +1,6 @@
 import { can, getSessionUser } from '@/modules/auth'
 import { generateReportSummary } from '@/modules/reporting'
+import { enforceRateLimit } from '@/modules/security'
 import { ERROR_CODES, appError } from '@/modules/shared'
 import { failure, success } from '@/app/api/_lib/respond'
 
@@ -14,6 +15,9 @@ export async function POST(_request: Request, context: RouteContext) {
       appError(ERROR_CODES.FORBIDDEN, 'Kamu tidak bisa membuat ulang ringkasan'),
     )
   }
+
+  const budget = await enforceRateLimit('report:summary', session.value.organizationId)
+  if (!budget.ok) return failure(budget.error)
 
   const { id } = await context.params
   const result = await generateReportSummary({

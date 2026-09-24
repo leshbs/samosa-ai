@@ -1,6 +1,7 @@
 import { after, type NextRequest } from 'next/server'
 import { can, getSessionUser } from '@/modules/auth'
 import { createJob } from '@/modules/analysis'
+import { enforceRateLimit } from '@/modules/security'
 import { ERROR_CODES, appError, logger } from '@/modules/shared'
 import { createAnalysisSchema } from '@/types/api'
 import { runAnalysisJob } from '@/app/api/_lib/run-analysis'
@@ -17,6 +18,11 @@ export async function POST(request: NextRequest) {
       appError(ERROR_CODES.FORBIDDEN, 'Kamu tidak bisa menjalankan analisis'),
     )
   }
+
+  // Each run is billed per batch, so the ceiling is on starting one — not on
+  // reading the result afterwards.
+  const budget = await enforceRateLimit('analysis:start', session.value.organizationId)
+  if (!budget.ok) return failure(budget.error)
 
   const parsed = createAnalysisSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) {
