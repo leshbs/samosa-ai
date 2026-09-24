@@ -13,6 +13,14 @@ Reproducibility: prompt tidak pernah ditimpa. Perubahan berarti file `.vN` baru
 di `modules/analysis/prompts/` plus entry baru di registry, sehingga hasil lama
 tetap bisa ditelusuri ke prompt yang tepat.
 
+## Catatan yang sudah ada
+
+| Dokumen                                      | Isi                                                                   |
+| -------------------------------------------- | --------------------------------------------------------------------- |
+| [`prompt-v1-eval.md`](prompt-v1-eval.md)     | Evaluasi `analysis.v1` terhadap 20 kalimat uji                        |
+| [`phase-7-findings.md`](phase-7-findings.md) | Biaya dan latensi ringkasan `summary.v2`, ukuran export               |
+| [`phase-9-findings.md`](phase-9-findings.md) | Bundle, Lighthouse, dan tiga kegagalan yang hanya terlihat di browser |
+
 ## Baseline
 
 `modules/analysis/adapters/local.ts` adalah baseline leksikon non-LLM. Gunakan
