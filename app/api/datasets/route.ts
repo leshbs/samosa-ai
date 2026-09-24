@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { getSessionUser, can } from '@/modules/auth'
 import { uploadDataset } from '@/modules/ingestion'
+import { enforceRateLimit } from '@/modules/security'
 import { ERROR_CODES, appError } from '@/modules/shared'
 import { createDatasetSchema } from '@/types/api'
 import { failure, success } from '@/app/api/_lib/respond'
@@ -11,6 +12,11 @@ export async function POST(request: NextRequest) {
   if (!can(session.value.role, 'dataset:create')) {
     return failure(appError(ERROR_CODES.FORBIDDEN, 'Kamu tidak bisa mengunggah dataset'))
   }
+
+  // Before the body is read: a rejected request should not cost us the time
+  // and memory of buffering a 10 MB file.
+  const budget = await enforceRateLimit('dataset:upload', session.value.organizationId)
+  if (!budget.ok) return failure(budget.error)
 
   const form = await request.formData()
   const file = form.get('file')

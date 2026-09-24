@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { clientEnv } from '@/lib/env'
+import { isSameOrigin } from '@/lib/security/same-origin'
 
 /** Everything behind the dashboard shell requires a session. */
 const PROTECTED_PREFIXES = [
@@ -19,13 +20,93 @@ function isProtected(pathname: string): boolean {
 }
 
 /**
- * Refreshes the Supabase session cookie on every navigation and gates the
- * dashboard. Server Components cannot write cookies, so an expired token would
- * otherwise log users out. The layouts check again — this is a redirect for the
- * common case, not the security boundary (that is RLS).
+ * A fresh nonce per request. `btoa` and `crypto` both exist on the Edge
+ * runtime; `Buffer` does not, which is why this is not the usual one-liner.
+ */
+function createNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return btoa(String.fromCharCode(...bytes))
+}
+
+/**
+ * Content Security Policy.
+ *
+ * `strict-dynamic` with a per-request nonce is the form Next.js supports: it
+ * reads the nonce off the request header and stamps it onto the scripts it
+ * generates itself, so no build-time hash list has to be maintained.
+ *
+ * `style-src` keeps `unsafe-inline` because Radix positions its popovers by
+ * writing inline styles at runtime — there is no nonce to give them. Inline
+ * styles cannot execute script, so this costs far less than the script-src
+ * equivalent would.
+ *
+ * `connect-src` has to name the Supabase project twice: `https:` for PostgREST
+ * and auth, `wss:` for the realtime socket the report page subscribes to.
+ */
+function contentSecurityPolicy(nonce: string): string {
+  const supabase = new URL(clientEnv.NEXT_PUBLIC_SUPABASE_URL).origin
+  const supabaseSocket = supabase.replace(/^https:/, 'wss:')
+  const isDev = process.env.NODE_ENV !== 'production'
+
+  const directives = [
+    `default-src 'self'`,
+    // React Refresh compiles modules with eval; production never needs it.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ''}`,
+    `style-src 'self' 'unsafe-inline'`,
+    `img-src 'self' data: blob:`,
+    `font-src 'self' data:`,
+    `connect-src 'self' ${supabase} ${supabaseSocket}`,
+    // The report PDF is downloaded, never framed, so nothing needs to embed us.
+    `frame-ancestors 'none'`,
+    `frame-src 'none'`,
+    `object-src 'none'`,
+    `base-uri 'self'`,
+    `form-action 'self'`,
+  ]
+
+  if (!isDev) directives.push('upgrade-insecure-requests')
+
+  return directives.join('; ')
+}
+
+/**
+ * Refreshes the Supabase session cookie on every navigation, gates the
+ * dashboard, rejects cross-site writes, and sets the per-request CSP.
+ *
+ * The session check here is a redirect for the common case, not the security
+ * boundary — that is RLS. The origin check *is* a boundary.
  */
 export async function middleware(request: NextRequest) {
-  const response = NextResponse.next({ request })
+  const { pathname, search } = request.nextUrl
+
+  const originCheck = {
+    method: request.method,
+    pathname,
+    origin: request.headers.get('origin'),
+    host: request.headers.get('x-forwarded-host') ?? request.headers.get('host'),
+  }
+
+  if (!isSameOrigin(originCheck)) {
+    // Deliberately terse and deliberately not a redirect: a forged request
+    // should learn nothing about whether the session it rode in on was valid.
+    return new NextResponse(
+      JSON.stringify({
+        error: { code: 'FORBIDDEN', message: 'Permintaan lintas situs ditolak' },
+      }),
+      { status: 403, headers: { 'content-type': 'application/json' } },
+    )
+  }
+
+  const nonce = createNonce()
+  const csp = contentSecurityPolicy(nonce)
+
+  // Next reads these off the *request* to nonce its own inline bootstrap.
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set('x-nonce', nonce)
+  requestHeaders.set('content-security-policy', csp)
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } })
+  response.headers.set('content-security-policy', csp)
 
   const supabase = createServerClient(
     clientEnv.NEXT_PUBLIC_SUPABASE_URL,
@@ -48,13 +129,13 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { pathname, search } = request.nextUrl
-
   if (!user && isProtected(pathname)) {
     const login = new URL('/login', request.url)
     // Send them back where they were headed once they are signed in.
     login.searchParams.set('next', `${pathname}${search}`)
-    return NextResponse.redirect(login)
+    const redirect = NextResponse.redirect(login)
+    redirect.headers.set('content-security-policy', csp)
+    return redirect
   }
 
   // A signed-in user normally has no business on the login page. The exception
@@ -63,7 +144,9 @@ export async function middleware(request: NextRequest) {
   // /dashboard -> /login -> /dashboard until the browser gives up.
   const hasError = request.nextUrl.searchParams.has('error')
   if (user && AUTH_PAGES.includes(pathname) && !hasError) {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+    const redirect = NextResponse.redirect(new URL('/dashboard', request.url))
+    redirect.headers.set('content-security-policy', csp)
+    return redirect
   }
 
   return response
