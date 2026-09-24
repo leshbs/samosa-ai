@@ -43,7 +43,7 @@ function createNonce(): string {
  * `connect-src` has to name the Supabase project twice: `https:` for PostgREST
  * and auth, `wss:` for the realtime socket the report page subscribes to.
  */
-function contentSecurityPolicy(nonce: string): string {
+function contentSecurityPolicy(nonce: string, isSecure: boolean): string {
   const supabase = new URL(clientEnv.NEXT_PUBLIC_SUPABASE_URL).origin
   const supabaseSocket = supabase.replace(/^https:/, 'wss:')
   const isDev = process.env.NODE_ENV !== 'production'
@@ -64,7 +64,14 @@ function contentSecurityPolicy(nonce: string): string {
     `form-action 'self'`,
   ]
 
-  if (!isDev) directives.push('upgrade-insecure-requests')
+  /**
+   * Keyed to the scheme this request actually arrived on, not to NODE_ENV.
+   * A production build served over plain HTTP — `pnpm start` on localhost, or
+   * a self-hosted box on a LAN — had every same-origin navigation rewritten to
+   * `https://localhost` and failing with ERR_SSL_PROTOCOL_ERROR. The symptom
+   * was a dead "Mulai analisis" link, nowhere near anything labelled CSP.
+   */
+  if (isSecure) directives.push('upgrade-insecure-requests')
 
   return directives.join('; ')
 }
@@ -98,7 +105,11 @@ export async function middleware(request: NextRequest) {
   }
 
   const nonce = createNonce()
-  const csp = contentSecurityPolicy(nonce)
+  // Behind a proxy that terminates TLS the URL is http, so trust the header.
+  const isSecure =
+    request.headers.get('x-forwarded-proto') === 'https' ||
+    request.nextUrl.protocol === 'https:'
+  const csp = contentSecurityPolicy(nonce, isSecure)
 
   // Next reads these off the *request* to nonce its own inline bootstrap.
   const requestHeaders = new Headers(request.headers)
