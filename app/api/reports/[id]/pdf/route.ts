@@ -2,6 +2,7 @@ import { can, getSessionUser } from '@/modules/auth'
 import { exportReportToPdf } from '@/modules/reporting'
 import { ERROR_CODES, appError } from '@/modules/shared'
 import { loadReportExport } from '@/app/api/_lib/report-data'
+import { requestLog } from '@/app/api/_lib/request-log'
 import { failure } from '@/app/api/_lib/respond'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -9,7 +10,9 @@ type RouteContext = { params: Promise<{ id: string }> }
 /** Rendering a few pages of vector text; well inside the default limit. */
 export const maxDuration = 60
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
+  const log = requestLog(request, 'GET /api/reports/[id]/pdf')
+
   const session = await getSessionUser()
   if (!session.ok) return failure(session.error)
   if (!can(session.value.role, 'report:export')) {
@@ -18,10 +21,18 @@ export async function GET(_request: Request, context: RouteContext) {
 
   const { id } = await context.params
   const bundle = await loadReportExport(id, session.value.organizationName)
-  if (!bundle.ok) return failure(bundle.error)
+  if (!bundle.ok) {
+    log.warn('api.export.pdf.failed', { jobId: id, code: bundle.error.code })
+    return failure(bundle.error)
+  }
 
   const pdf = await exportReportToPdf(bundle.value.document)
-  if (!pdf.ok) return failure(pdf.error)
+  if (!pdf.ok) {
+    log.error('api.export.pdf.render_failed', { jobId: id })
+    return failure(pdf.error)
+  }
+
+  log.info('api.export.pdf.sent', { jobId: id, bytes: pdf.value.bytes.byteLength })
 
   return new Response(new Uint8Array(pdf.value.bytes), {
     headers: {
