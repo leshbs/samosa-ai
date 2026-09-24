@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { clientEnv } from '@/lib/env'
+import { REQUEST_ID_HEADER, readRequestId } from '@/lib/observability/request-id'
 import { isSameOrigin } from '@/lib/security/same-origin'
 
 /** Everything behind the dashboard shell requires a session. */
@@ -104,6 +105,10 @@ export async function middleware(request: NextRequest) {
     )
   }
 
+  // One id for this request, reused if the platform already assigned one so a
+  // single request has one id across Vercel's logs and ours.
+  const requestId = readRequestId(request.headers.get(REQUEST_ID_HEADER))
+
   const nonce = createNonce()
   // Behind a proxy that terminates TLS the URL is http, so trust the header.
   const isSecure =
@@ -115,9 +120,13 @@ export async function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-nonce', nonce)
   requestHeaders.set('content-security-policy', csp)
+  requestHeaders.set(REQUEST_ID_HEADER, requestId)
 
   const response = NextResponse.next({ request: { headers: requestHeaders } })
   response.headers.set('content-security-policy', csp)
+  // Echoed so a user can read the id off the network tab, or off an error
+  // response, and quote the exact request that failed.
+  response.headers.set(REQUEST_ID_HEADER, requestId)
 
   const supabase = createServerClient(
     clientEnv.NEXT_PUBLIC_SUPABASE_URL,
@@ -146,6 +155,7 @@ export async function middleware(request: NextRequest) {
     login.searchParams.set('next', `${pathname}${search}`)
     const redirect = NextResponse.redirect(login)
     redirect.headers.set('content-security-policy', csp)
+    redirect.headers.set(REQUEST_ID_HEADER, requestId)
     return redirect
   }
 
@@ -157,6 +167,7 @@ export async function middleware(request: NextRequest) {
   if (user && AUTH_PAGES.includes(pathname) && !hasError) {
     const redirect = NextResponse.redirect(new URL('/dashboard', request.url))
     redirect.headers.set('content-security-policy', csp)
+    redirect.headers.set(REQUEST_ID_HEADER, requestId)
     return redirect
   }
 

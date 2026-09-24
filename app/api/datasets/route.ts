@@ -4,9 +4,12 @@ import { uploadDataset } from '@/modules/ingestion'
 import { enforceRateLimit } from '@/modules/security'
 import { ERROR_CODES, appError } from '@/modules/shared'
 import { createDatasetSchema } from '@/types/api'
+import { requestLog } from '@/app/api/_lib/request-log'
 import { failure, success } from '@/app/api/_lib/respond'
 
 export async function POST(request: NextRequest) {
+  const log = requestLog(request, 'POST /api/datasets')
+
   const session = await getSessionUser()
   if (!session.ok) return failure(session.error)
   if (!can(session.value.role, 'dataset:create')) {
@@ -44,5 +47,14 @@ export async function POST(request: NextRequest) {
     ...parsed.data,
   })
 
-  return result.ok ? success(result.value, 201) : failure(result.error)
+  if (!result.ok) {
+    log.warn('api.dataset.upload_failed', { code: result.error.code })
+    return failure(result.error)
+  }
+
+  log.info('api.dataset.uploaded', {
+    datasetId: result.value.datasetId,
+    responseCount: result.value.responseCount,
+  })
+  return success(result.value, 201)
 }
