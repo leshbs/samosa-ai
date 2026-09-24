@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
+import { removeDatasetObject } from './dataset-storage'
 import { ERROR_CODES, appError, err, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
 import type { Dataset, DatasetSource, ResponseRecord } from '@/types/domain'
@@ -126,23 +127,41 @@ export async function listResponses(
   })
 }
 
-/** Responses cascade from the foreign key, so one delete is enough. */
+/**
+ * Responses, analysis results and reports cascade from the foreign key, so one
+ * delete clears the database. The raw upload does not cascade — nothing in
+ * Postgres knows about the storage bucket — so it is removed explicitly.
+ *
+ * That second step is not tidiness. The uploaded file still holds the
+ * respondent metadata columns (names, classes) that the analysis pipeline
+ * deliberately never sends anywhere, and the privacy policy tells users that
+ * deleting a dataset deletes its responses. Leaving the CSV behind makes that
+ * sentence false about the most sensitive data in the system.
+ *
+ * The delete returns the path instead of a count: a row the database refused
+ * to delete hands back nothing, so there is no way to remove a file whose
+ * dataset the caller was not allowed to touch.
+ */
 export async function deleteDataset(datasetId: string): Promise<Result<void, AppError>> {
   const supabase = await createClient()
 
-  const { error, count } = await supabase
+  const { data, error } = await supabase
     .from('datasets')
-    .delete({ count: 'exact' })
+    .delete()
     .eq('id', datasetId)
+    .select('storage_path')
 
   if (error) {
     return err(appError(ERROR_CODES.INTERNAL, 'Dataset tidak bisa dihapus'))
   }
 
   // RLS silently drops rows the caller may not delete; report that honestly.
-  if (!count) {
+  const deleted = data?.[0]
+  if (!deleted) {
     return err(appError(ERROR_CODES.NOT_FOUND, 'Dataset tidak ditemukan'))
   }
+
+  await removeDatasetObject(deleted.storage_path)
 
   return ok(undefined)
 }
