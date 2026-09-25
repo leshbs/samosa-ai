@@ -84,20 +84,49 @@ export async function runJob(
   const supabase = createAdminClient()
   const log = logger.child({ jobId })
 
-  const { data: job, error: jobError } = await supabase
-    .from('analysis_jobs')
-    .select('id, organization_id, dataset_id, prompt_version, status')
-    .eq('id', jobId)
-    .single()
-
-  if (jobError || !job) {
-    return err(appError(ERROR_CODES.NOT_FOUND, 'Job analisis tidak ditemukan'))
-  }
-
-  await supabase
+  /**
+   * Claims the job by compare-and-swap: the status moves to `running` only if
+   * it is still `queued`, and the same statement tells us whether we won.
+   *
+   * A read-then-write would not do. Two invocations of the same job — a retried
+   * webhook arriving while `after()` is still working, say — would both read
+   * `queued`, both proceed, and the second would collide with
+   * `unique (job_id, response_id)` when the results land. That insert failure
+   * then calls `failJob`, so a job that was about to succeed ends up marked
+   * failed. One statement makes exactly one caller the runner.
+   *
+   * Only `queued` is runnable, which also covers the terminal states: a job
+   * that already succeeded, failed or was cancelled is never re-run in place.
+   * Retrying is a new job row, so the failed attempt stays on the record.
+   */
+  const { data: claimed, error: claimError } = await supabase
     .from('analysis_jobs')
     .update({ status: 'running', started_at: new Date().toISOString() })
     .eq('id', jobId)
+    .eq('status', 'queued')
+    .select('id, organization_id, dataset_id, prompt_version')
+
+  if (claimError) {
+    return err(appError(ERROR_CODES.INTERNAL, 'Job analisis tidak bisa dimulai'))
+  }
+
+  const job = claimed?.[0]
+  if (!job) {
+    // Nothing was claimed. Read the row back only to say which of the two
+    // reasons it was — neither is recoverable by running the job anyway.
+    const { data: existing } = await supabase
+      .from('analysis_jobs')
+      .select('status')
+      .eq('id', jobId)
+      .maybeSingle()
+
+    if (!existing) {
+      return err(appError(ERROR_CODES.NOT_FOUND, 'Job analisis tidak ditemukan'))
+    }
+
+    log.warn('analysis.job.already_claimed', { status: String(existing.status) })
+    return err(appError(ERROR_CODES.CONFLICT, 'Job analisis ini sudah pernah dijalankan'))
+  }
 
   const { data: responses, error: responsesError } = await supabase
     .from('responses')

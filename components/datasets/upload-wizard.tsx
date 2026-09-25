@@ -47,6 +47,13 @@ export function UploadWizard() {
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<DatasetPreview | null>(null)
   const [textColumn, setTextColumn] = useState('')
+  /**
+   * Starts empty and stays empty unless the uploader ticks something. A Google
+   * Forms export puts names, classes and email addresses in the columns next to
+   * the aspiration, and none of them are needed to analyse it — so the safe
+   * state is the default state, not a checkbox someone has to remember to clear.
+   */
+  const [keepColumns, setKeepColumns] = useState<string[]>([])
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -77,6 +84,7 @@ export function UploadWizard() {
     setFile(picked)
     setPreview(previewed.value)
     setTextColumn(previewed.value.suggestedColumn ?? previewed.value.columns[0] ?? '')
+    setKeepColumns([])
     setName(defaultName(picked))
     setStep(2)
   }, [])
@@ -89,6 +97,9 @@ export function UploadWizard() {
     multiple: false,
   })
 
+  /** Never includes the text column, even if it was ticked before being chosen. */
+  const keptColumns = keepColumns.filter((column) => column !== textColumn)
+
   async function submit() {
     if (!file || !textColumn) return
 
@@ -100,6 +111,10 @@ export function UploadWizard() {
     body.append('name', name.trim())
     body.append('source', sourceOf(file))
     body.append('textColumn', textColumn)
+    // One entry per kept column; none appended means none stored.
+    for (const column of keptColumns) {
+      body.append('keepColumns', column)
+    }
 
     const created = await requestJson<{
       datasetId: string
@@ -124,6 +139,7 @@ export function UploadWizard() {
     setFile(null)
     setPreview(null)
     setTextColumn('')
+    setKeepColumns([])
     setError(null)
   }
 
@@ -204,6 +220,50 @@ export function UploadWizard() {
               ))}
             </div>
 
+            {preview.columns.filter((column) => column !== textColumn).length > 0 ? (
+              <div className="space-y-3 rounded-md border border-dashed p-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Kolom lain tidak disimpan</p>
+                  <p className="text-sm text-muted-foreground">
+                    Kolom selain aspirasi dibuang sebelum disimpan. Analisis tidak
+                    memerlukannya, dan kolom seperti nama atau email adalah data pribadi
+                    yang tidak perlu ikut. Centang hanya kalau kamu benar-benar
+                    membutuhkannya di laporan.
+                  </p>
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {preview.columns
+                    .filter((column) => column !== textColumn)
+                    .map((column) => (
+                      <label
+                        key={column}
+                        className="flex cursor-pointer items-start gap-3 rounded-md border p-2 text-sm"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={keepColumns.includes(column)}
+                          onChange={(event) =>
+                            setKeepColumns((current) =>
+                              event.target.checked
+                                ? [...current, column]
+                                : current.filter((kept) => kept !== column),
+                            )
+                          }
+                          className="mt-1"
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{column}</span>
+                          <span className="block truncate text-muted-foreground">
+                            {preview.sampleRows[0]?.[column] || '—'}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                </div>
+              </div>
+            ) : null}
+
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -266,6 +326,12 @@ export function UploadWizard() {
                 <p className="font-medium">{file.name}</p>
                 <p className="text-muted-foreground">
                   {preview.totalRows} baris · kolom teks: <strong>{textColumn}</strong>
+                </p>
+                {/* Stated on the last screen before it is irreversible. */}
+                <p className="text-muted-foreground">
+                  {keptColumns.length === 0
+                    ? 'Kolom lain tidak disimpan.'
+                    : `Kolom lain yang ikut disimpan: ${keptColumns.join(', ')}.`}
                 </p>
               </div>
             </div>

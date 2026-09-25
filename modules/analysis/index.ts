@@ -1,6 +1,11 @@
 /** Public API of the analysis module. Nothing else may be imported from outside. */
 export { createJob, runJob } from './services/job-runner'
 export {
+  sweepStuckJobs,
+  STUCK_AFTER_MS,
+  STUCK_JOB_MESSAGE,
+} from './services/stuck-job-sweeper'
+export {
   listJobs,
   getJob,
   listJobResults,

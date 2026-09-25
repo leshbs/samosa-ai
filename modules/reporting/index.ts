@@ -13,9 +13,15 @@ export { aggregateKeywords, DEFAULT_TOP_KEYWORDS } from './aggregators/keywords'
 export type { KeywordCount } from './aggregators/keywords'
 export { topResponsesByTopic, DEFAULT_QUOTES_PER_TOPIC } from './aggregators/quotes'
 export type { QuotableRecord, TopicQuotes } from './aggregators/quotes'
-export { crossTabTopicSentiment } from './aggregators/cross-tab'
-export type { TopicSentimentRow } from './aggregators/cross-tab'
-export type { AnalyzedRecord, CountedTerm } from './aggregators/types'
+export {
+  crossTabTopicSentiment,
+  crossTabTopicSentimentWithOther,
+  OTHER_TOPIC_LABEL,
+} from './aggregators/cross-tab'
+export type { TopicSentimentRow, TopicSentimentBreakdown } from './aggregators/cross-tab'
+export { distributeTopics } from './aggregators/topics'
+export { distributeTerms, summarizeTail } from './aggregators/types'
+export type { AnalyzedRecord, CountedTerm, TermDistribution } from './aggregators/types'
 export { generateReportSummary, getStoredSummary } from './services/summary-generator'
 export type {
   GenerateSummaryInput,

@@ -31,6 +31,9 @@ export async function POST(request: NextRequest) {
     name: form.get('name'),
     source: form.get('source'),
     textColumn: form.get('textColumn'),
+    // Repeated form field, one entry per column the uploader chose to keep.
+    // `getAll` returns [] when the field is absent, which is the safe default.
+    keepColumns: form.getAll('keepColumns').filter((v) => typeof v === 'string'),
   })
   if (!parsed.success) {
     return failure(

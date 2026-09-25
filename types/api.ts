@@ -28,6 +28,15 @@ export const createDatasetSchema = z.object({
     .string()
     .min(1, 'Pilih kolom yang berisi aspirasi')
     .max(200, 'Nama kolom maksimal 200 karakter'),
+  /**
+   * Columns to store alongside the text. Absent means store none — the caller
+   * opts data in rather than out, so a request that forgets this field stores
+   * the least, not the most.
+   */
+  keepColumns: z
+    .array(z.string().max(200))
+    .max(50, 'Maksimal 50 kolom tambahan')
+    .default([]),
 })
 export type CreateDatasetInput = z.infer<typeof createDatasetSchema>
 

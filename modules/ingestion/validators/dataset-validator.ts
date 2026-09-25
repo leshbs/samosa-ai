@@ -31,12 +31,22 @@ export function validateUploadSize(bytes: number): Result<void, AppError> {
 }
 
 /**
- * Pulls the aspiration column out of a parsed sheet and keeps the remaining
- * columns as respondent metadata (never logged, never sent to the model).
+ * Pulls the aspiration column out of a parsed sheet.
+ *
+ * Every other column is **dropped** unless it is named in `keepColumns`. That
+ * default is the point of this function, not a detail of it: a Google Forms
+ * export of student aspirations carries names, classes and email addresses in
+ * the columns beside the text, and the analysis pipeline never needs any of
+ * them. Keeping them by default meant every dataset stored identifiable data
+ * about minors in exchange for nothing.
+ *
+ * Opting a column back in is a deliberate act in the upload wizard, so the
+ * stored metadata is always something a person chose to keep.
  */
 export function extractResponses(
   sheet: ParsedSheet,
   textColumn: string,
+  keepColumns: readonly string[] = [],
 ): Result<ExtractionReport, AppError> {
   if (!sheet.columns.includes(textColumn)) {
     return err(
@@ -49,6 +59,12 @@ export function extractResponses(
       ),
     )
   }
+
+  // Resolved once, and only from columns the sheet actually has: a stale name
+  // in the request must not become an empty key on every row.
+  const kept = sheet.columns.filter(
+    (column) => column !== textColumn && keepColumns.includes(column),
+  )
 
   const responses: ExtractedResponse[] = []
   let skippedEmpty = 0
@@ -64,8 +80,7 @@ export function extractResponses(
     if (raw.length > MAX_RESPONSE_LENGTH) truncated += 1
 
     const respondentMeta: Record<string, string> = {}
-    for (const column of sheet.columns) {
-      if (column === textColumn) continue
+    for (const column of kept) {
       const value = row[column]
       if (value) respondentMeta[column] = value
     }
