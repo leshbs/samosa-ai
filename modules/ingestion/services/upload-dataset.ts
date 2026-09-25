@@ -15,6 +15,8 @@ export type UploadDatasetInput = {
   name: string
   source: DatasetSource
   textColumn: string
+  /** Columns stored beside the text. Empty — the default — stores none. */
+  keepColumns?: readonly string[]
   file: File
 }
 
@@ -46,7 +48,11 @@ export async function uploadDataset(
       : parseCsv(new TextDecoder('utf-8').decode(buffer))
   if (!parsed.ok) return parsed
 
-  const extracted = extractResponses(parsed.value, input.textColumn)
+  const extracted = extractResponses(
+    parsed.value,
+    input.textColumn,
+    input.keepColumns ?? [],
+  )
   if (!extracted.ok) return extracted
 
   const supabase = createAdminClient()
@@ -69,8 +75,13 @@ export async function uploadDataset(
       source: input.source,
       storage_path: storagePath,
       response_count: extracted.value.responses.length,
-      // Records which column the text came from, so a re-import is reproducible.
-      metadata: { text_column_name: input.textColumn },
+      metadata: {
+        // Records which column the text came from, so a re-import is reproducible.
+        text_column_name: input.textColumn,
+        // And which columns were deliberately kept, so "what personal data does
+        // this dataset hold" is answerable without opening the rows.
+        kept_columns: [...(input.keepColumns ?? [])],
+      },
     })
     .select('id')
     .single()

@@ -43,7 +43,12 @@ describe('parseCsv', () => {
 })
 
 describe('extractResponses', () => {
-  it('keeps non-text columns as respondent metadata', () => {
+  /**
+   * The default used to be the opposite — every non-text column was kept — so a
+   * Google Forms export stored names and classes about minors that nothing in
+   * the pipeline ever read. These cases pin the inversion in place.
+   */
+  it('drops every non-text column by default', () => {
     const parsed = parseCsv(CSV)
     if (!parsed.ok) throw new Error('fixture failed to parse')
 
@@ -52,7 +57,41 @@ describe('extractResponses', () => {
     if (!extracted.ok) return
     expect(extracted.value.responses).toHaveLength(2)
     expect(extracted.value.skippedEmpty).toBe(1)
-    expect(extracted.value.responses[0]?.respondentMeta).toMatchObject({
+    expect(extracted.value.responses[0]?.respondentMeta).toEqual({})
+  })
+
+  it('keeps only the columns it was explicitly asked to keep', () => {
+    const parsed = parseCsv(CSV)
+    if (!parsed.ok) throw new Error('fixture failed to parse')
+
+    const extracted = extractResponses(parsed.value, 'Aspirasi', ['Kelas'])
+    expect(extracted.ok).toBe(true)
+    if (!extracted.ok) return
+    // Kelas was asked for; Timestamp was not, so it does not come along.
+    expect(extracted.value.responses[0]?.respondentMeta).toEqual({
+      Kelas: 'XII IPA 1',
+    })
+  })
+
+  it('ignores a requested column the sheet does not have', () => {
+    const parsed = parseCsv(CSV)
+    if (!parsed.ok) throw new Error('fixture failed to parse')
+
+    const extracted = extractResponses(parsed.value, 'Aspirasi', ['Nama'])
+    expect(extracted.ok).toBe(true)
+    if (!extracted.ok) return
+    // A stale column name must not become an empty key on every row.
+    expect(extracted.value.responses[0]?.respondentMeta).toEqual({})
+  })
+
+  it('never stores the text column as metadata as well', () => {
+    const parsed = parseCsv(CSV)
+    if (!parsed.ok) throw new Error('fixture failed to parse')
+
+    const extracted = extractResponses(parsed.value, 'Aspirasi', ['Aspirasi', 'Kelas'])
+    expect(extracted.ok).toBe(true)
+    if (!extracted.ok) return
+    expect(extracted.value.responses[0]?.respondentMeta).toEqual({
       Kelas: 'XII IPA 1',
     })
   })

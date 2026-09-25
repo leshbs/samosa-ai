@@ -15,6 +15,7 @@ import { ExecutiveSummary } from '@/components/reports/executive-summary'
 import { ReportRealtime } from '@/components/reports/report-realtime'
 import { ResponseExplorer } from '@/components/reports/response-explorer'
 import { StatTile } from '@/components/reports/stat-tile'
+import { TopicTail } from '@/components/reports/topic-tail'
 import { Button } from '@/components/ui/button'
 import { formatDateTime, formatPercent } from '@/lib/utils'
 import { getJob, listJobResults } from '@/modules/analysis'
@@ -57,6 +58,19 @@ export default async function ReportDetailPage({
   const quotesById = new Map(rows.map((row) => [row.responseId, row.responseText]))
 
   const topThree = data.topics.slice(0, 3)
+
+  /**
+   * The "Lainnya" bucket is drawn as a bar like any other so the chart accounts
+   * for every tagged mention. Appended last, it reads as the floor the ranked
+   * topics sit on rather than competing with them for the top spot.
+   */
+  const topicRows = data.topicSentimentOther
+    ? [...data.topicSentiment, data.topicSentimentOther]
+    : data.topicSentiment
+
+  const topicChartDescription = data.topicSentimentOther
+    ? `Panjang batang menunjukkan berapa aspirasi menyebut topik itu; warnanya menunjukkan sentimennya. “Lainnya” menggabungkan ${data.topicTail.length} topik sisanya.`
+    : 'Panjang batang menunjukkan berapa aspirasi menyebut topik itu; warnanya menunjukkan sentimennya.'
 
   return (
     <section className="space-y-8">
@@ -145,14 +159,16 @@ export default async function ReportDetailPage({
 
       {/* ── 3. Topics ───────────────────────────────────────────────── */}
       <ChartFrame
-        title={`Topik teratas (${data.topicSentiment.length})`}
-        description="Panjang batang menunjukkan berapa aspirasi menyebut topik itu; warnanya menunjukkan sentimennya."
+        title={`Topik teratas (${data.topicSentiment.length} dari ${data.distinctTopicCount})`}
+        description={topicChartDescription}
         empty={data.topicSentiment.length === 0}
         emptyMessage="Model tidak menandai satu pun topik pada dataset ini."
-        table={<TopicSentimentTable rows={data.topicSentiment} />}
+        table={<TopicSentimentTable rows={topicRows} />}
       >
-        <TopicBar rows={data.topicSentiment} />
+        <TopicBar rows={topicRows} />
       </ChartFrame>
+
+      <TopicTail topics={data.topicTail} />
 
       {/* ── 4. Keywords ─────────────────────────────────────────────── */}
       <ChartFrame

@@ -20,6 +20,12 @@ const serverSchema = clientSchema.extend({
   SENTRY_DSN: z.string().optional(),
   /** Shared secret the background worker presents to the job webhook. */
   WORKER_SECRET: z.string().min(16),
+  /**
+   * Bearer token Vercel Cron presents to the stuck-job sweeper. Optional so an
+   * existing deployment keeps booting without it; the route itself fails closed
+   * when it is missing, which turns the sweeper off rather than opening it.
+   */
+  CRON_SECRET: z.string().min(16).optional(),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 })
 

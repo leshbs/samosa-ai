@@ -65,15 +65,24 @@ export default async function PrivacyPage({
         </p>
         <p>
           <strong className="text-foreground">Data yang kamu unggah.</strong> Isi kolom
-          aspirasi dari file CSV atau Excel yang kamu unggah, beserta kolom lain di file
-          yang sama (misalnya nama, kelas, atau cap waktu) yang disimpan sebagai metadata
-          responden.
+          aspirasi dari file CSV atau Excel yang kamu unggah.{' '}
+          <strong className="text-foreground">
+            Kolom lain di file yang sama — nama, kelas, email, cap waktu — tidak disimpan
+          </strong>{' '}
+          kecuali kamu mencentangnya satu per satu saat mengunggah. Defaultnya membuang
+          semuanya, karena analisis tidak membutuhkannya.
         </p>
         <p>
-          Bagian kedua ini bisa memuat data pribadi orang lain — siswa, anggota, peserta
-          acara. <strong className="text-foreground">Kamu yang bertanggung jawab</strong>{' '}
-          memastikan mereka tahu aspirasinya dikumpulkan dan dianalisis. Kalau kamu bisa
-          menghapus kolom nama sebelum mengunggah, lakukan.
+          File aslinya sendiri tetap tersimpan apa adanya, termasuk kolom yang dibuang
+          tadi, supaya unggahan bisa ditelusuri ulang kalau hasilnya dipertanyakan. File
+          itu ikut terhapus begitu datasetnya kamu hapus.
+        </p>
+        <p>
+          Aspirasi yang kamu unggah bisa memuat data pribadi orang lain — siswa, anggota,
+          peserta acara.{' '}
+          <strong className="text-foreground">Kamu yang bertanggung jawab</strong>{' '}
+          memastikan mereka tahu aspirasinya dikumpulkan dan dianalisis, terutama kalau
+          mereka mengisinya sebelum SAMOSA dipakai.
         </p>
       </LegalSection>
 
@@ -195,15 +204,25 @@ export default async function PrivacyPage({
         </p>
         <p>
           <strong className="text-foreground">What you upload.</strong> The aspiration
-          column of the CSV or Excel file you upload, along with the other columns in the
-          same file (a name, a class, a timestamp), stored as respondent metadata.
+          column of the CSV or Excel file you upload.{' '}
+          <strong className="text-foreground">
+            The other columns in that file — names, classes, emails, timestamps — are not
+            stored
+          </strong>{' '}
+          unless you tick them individually at upload time. The default discards all of
+          them, because the analysis does not need them.
         </p>
         <p>
-          That second kind can contain other people&apos;s personal data — students,
+          The original file itself is kept as uploaded, discarded columns included, so an
+          upload can be traced back if its results are ever questioned. It is deleted
+          along with the dataset.
+        </p>
+        <p>
+          What you upload can contain other people&apos;s personal data — students,
           members, event attendees.{' '}
           <strong className="text-foreground">You are responsible</strong> for making sure
-          they know their responses are collected and analysed. If you can strip the name
-          column before uploading, do.
+          they know their responses are collected and analysed, particularly if they
+          answered before SAMOSA was in use.
         </p>
       </LegalSection>
 

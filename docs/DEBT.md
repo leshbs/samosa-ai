@@ -36,8 +36,20 @@ kalimat uji goyah. Penyebabnya few-shot yang tidak memuat contoh permintaan.
 `pnpm db:types` belum pernah dijalankan terhadap project sungguhan, jadi tipe
 tabel dipelihara manual dan bisa menyimpang dari schema tanpa ketahuan.
 
-**Pemicu:** migrasi berikutnya yang menambah kolom. **Bayar dengan:** jalankan
-`pnpm db:types` dan commit hasilnya.
+**Diperbarui 2026-09-25:** script-nya dulu `supabase gen types --local`, yang
+menyasar stack Docker di port 54322 — bukan project hosted yang dipakai
+aplikasi. Jadi bukan cuma "belum dijalankan": kalaupun dijalankan, hasilnya
+datang dari database yang salah. Sekarang `pnpm db:types` memanggil
+[`scripts/gen-types.mjs`](../scripts/gen-types.mjs) yang memakai `--linked`,
+menolak menimpa file kalau outputnya bukan schema, dan menulis header
+"generated — do not edit" sendiri.
+
+**Yang menghalangi sekarang tinggal satu:** `--linked` butuh access token
+(`supabase login` atau `SUPABASE_ACCESS_TOKEN`), yang bukan bagian dari
+`.env.local`.
+
+**Pemicu:** migrasi berikutnya yang menambah kolom. **Bayar dengan:** `supabase
+login`, lalu `pnpm db:types`, lalu commit hasilnya bersama diff-nya.
 
 ### ~~`/reports` dan `/reports/[id]` masih placeholder~~ — lunas (Fase 4)
 
@@ -319,3 +331,58 @@ berisi path-nya.
 kolom `storage_path`, plus alert pada pesan log itu begitu Sentry terpasang.
 Sebelum perbaikan ini, kebocorannya permanen dan diam-diam: `deleteDataset`
 tidak pernah menyentuh storage sama sekali.
+
+---
+
+## Ditambahkan di Fase A (blocker pilot)
+
+### File unggahan asli masih memuat kolom yang dibuang
+
+Sejak A.4, kolom non-teks tidak lagi disimpan ke `respondent_meta` kecuali
+dicentang. Tapi file CSV/Excel aslinya tetap masuk bucket `datasets` **apa
+adanya**, lengkap dengan nama dan email yang baru saja dibuang dari baris.
+
+Ini disengaja — tanpa file asli, hasil analisis tidak bisa ditelusuri ulang —
+dan sudah ditulis terang-terangan di `/privacy` serta
+[`docs/pilot-data-posture.md`](pilot-data-posture.md). Tapi artinya minimisasi
+itu berlaku untuk database, bukan untuk storage.
+
+**Pemicu:** permintaan penghapusan dari satu responden, yang saat ini hanya
+bisa dipenuhi dengan menghapus seluruh dataset. **Bayar dengan:** simpan file
+yang sudah dipangkas kolomnya, bukan file mentah — atau hapus file asli
+otomatis setelah N hari, karena nilainya untuk audit habis jauh lebih cepat
+daripada nilainya sebagai data pribadi.
+
+### `lib/legal/controller.ts` masih placeholder
+
+Empat nilai masih `TODO`, dan `/privacy` menampilkannya apa adanya ke
+pengunjung: "Pengendali data untuk SAMOSA adalah TODO: nama penanggung jawab
+SAMOSA" dan "Permintaan dikirim ke TODO@example.com". Banner merah muncul
+selama itu terjadi, jadi ini kentara, bukan diam-diam.
+
+Tidak bisa diisi dari kode — butuh identitas hukum sungguhan.
+
+**Pemicu:** pengguna pertama yang bukan pembuatnya. **Bayar dengan:** isi empat
+nilai itu; banner-nya hilang sendiri.
+
+### Sweeper jalan tanpa jejak siapa yang menyapu
+
+[`sweepStuckJobs`](../modules/analysis/services/stuck-job-sweeper.ts) menandai
+job `failed` dan menulis satu baris log, tapi tidak mencatat di baris job-nya
+bahwa yang menandai adalah sweeper, bukan kegagalan analisis sungguhan.
+`error_message`-nya memang khas, tapi itu string, bukan kolom.
+
+**Pemicu:** pertanyaan "berapa sering job nyangkut?" yang tidak bisa dijawab
+dengan query. **Bayar dengan:** kolom `failure_reason` bertipe enum.
+
+### Tidak ada tombol "Coba lagi" di UI
+
+Guard di `runJob` membuat job yang sudah `failed` tidak bisa dijalankan ulang di
+tempat — dan itu memang disengaja, supaya percobaan yang gagal tetap tercatat.
+Konsekuensinya: mengulang analisis harus lewat membuat job baru, dan tombolnya
+belum ada. Sekarang pengguna harus kembali ke dataset dan menekan "Mulai
+analisis" lagi.
+
+**Pemicu:** job pertama yang disapu sweeper di depan pengguna sungguhan.
+**Bayar dengan:** tombol di halaman status analisis yang memanggil
+`POST /api/analysis` dengan `datasetId` yang sama.

@@ -147,9 +147,76 @@ describe('buildDashboardData', () => {
         dominant: null,
       },
       topics: [],
+      topicTail: [],
+      distinctTopicCount: 0,
       keywords: [],
       topicSentiment: [],
+      // No topics at all means nothing was cut, so there is no bucket to draw.
+      topicSentimentOther: null,
       untaggedCount: 0,
     })
+  })
+})
+
+describe('topic tail', () => {
+  /** Nine distinct topics, so a cap of three leaves a six-topic tail. */
+  const many: AnalyzedRecord[] = [
+    ...Array.from({ length: 5 }, () => record('negative', ['kantin'])),
+    ...Array.from({ length: 4 }, () => record('neutral', ['parkir'])),
+    ...Array.from({ length: 3 }, () => record('positive', ['perpustakaan'])),
+    record('negative', ['wifi']),
+    record('negative', ['toilet']),
+    record('neutral', ['jadwal']),
+    record('positive', ['guru']),
+    record('neutral', ['seragam']),
+    record('negative', ['kantin sekolah']),
+  ]
+
+  it('keeps every topic below the cap instead of discarding them', () => {
+    const data = buildDashboardData(many, { topTopics: 3 })
+
+    expect(data.topics).toHaveLength(3)
+    expect(data.distinctTopicCount).toBe(9)
+    expect(data.topicTail).toHaveLength(6)
+    // The tail is the evidence that "kantin" and "kantin sekolah" are one idea
+    // split in two — the whole reason it is kept rather than summed away.
+    expect(data.topicTail.map((topic) => topic.term)).toContain('kantin sekolah')
+  })
+
+  it('collapses the tail into one bucket that accounts for every mention', () => {
+    const data = buildDashboardData(many, { topTopics: 3 })
+    const other = data.topicSentimentOther
+
+    expect(other).not.toBeNull()
+    if (!other) return
+
+    expect(other.topic).toBe('Lainnya')
+    expect(other.total).toBe(6)
+    // Charted bars plus the bucket must equal the whole distribution, or the
+    // chart is quietly under-reporting again.
+    const charted = data.topicSentiment.reduce((sum, row) => sum + row.total, 0)
+    const everything = [...data.topics, ...data.topicTail].reduce(
+      (sum, topic) => sum + topic.count,
+      0,
+    )
+    expect(charted + other.total).toBe(everything)
+  })
+
+  it('splits the bucket by sentiment like any other bar', () => {
+    const data = buildDashboardData(many, { topTopics: 3 })
+    const other = data.topicSentimentOther
+
+    expect(other).not.toBeNull()
+    if (!other) return
+
+    expect(other.counts).toEqual({ negative: 3, neutral: 2, positive: 1 })
+    expect(other.shares.negative).toBeCloseTo(0.5)
+  })
+
+  it('draws no bucket when every topic already fits', () => {
+    const data = buildDashboardData(many, { topTopics: 20 })
+
+    expect(data.topicTail).toEqual([])
+    expect(data.topicSentimentOther).toBeNull()
   })
 })
