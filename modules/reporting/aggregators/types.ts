@@ -25,14 +25,42 @@ export function normalizeTerm(term: string): string {
 }
 
 /**
- * Counts terms across records, sorted by frequency then alphabetically so the
- * order is stable across renders — a bar chart that reshuffles ties on every
- * refresh looks like the data changed when it did not.
+ * A ranked set of terms split at the display cap, with nothing thrown away.
+ *
+ * The split is kept rather than sliced off because the two halves answer
+ * different questions. A chart needs a readable handful; deciding whether the
+ * model is fragmenting one idea into six near-synonyms needs the whole tail.
+ * Returning only the top N meant the second question could not be asked at
+ * all, and — worse — the chart silently implied the top N was the dataset.
  */
-export function countTerms(
+export type TermDistribution = {
+  top: CountedTerm[]
+  /** Everything ranked below the cap, in the same order. */
+  tail: CountedTerm[]
+  /** Distinct terms before the cap was applied. */
+  distinctCount: number
+}
+
+/** Sums a tail into the single bucket a chart can draw next to the top terms. */
+export function summarizeTail(tail: readonly CountedTerm[]): CountedTerm | null {
+  if (tail.length === 0) return null
+
+  return {
+    term: 'Lainnya',
+    count: tail.reduce((sum, item) => sum + item.count, 0),
+    share: tail.reduce((sum, item) => sum + item.share, 0),
+  }
+}
+
+/**
+ * Counts terms across records and splits them at `limit`, sorted by frequency
+ * then alphabetically so the order is stable across renders — a bar chart that
+ * reshuffles ties on every refresh looks like the data changed when it did not.
+ */
+export function distributeTerms(
   records: ReadonlyArray<{ terms: readonly string[] }>,
   limit: number,
-): CountedTerm[] {
+): TermDistribution {
   const counts = new Map<string, number>()
 
   for (const record of records) {
@@ -49,12 +77,25 @@ export function countTerms(
 
   const total = [...counts.values()].reduce((sum, count) => sum + count, 0)
 
-  return [...counts.entries()]
+  const ranked = [...counts.entries()]
     .map(([term, count]) => ({
       term,
       count,
       share: total === 0 ? 0 : count / total,
     }))
     .sort((a, b) => b.count - a.count || a.term.localeCompare(b.term))
-    .slice(0, limit)
+
+  return {
+    top: ranked.slice(0, limit),
+    tail: ranked.slice(limit),
+    distinctCount: ranked.length,
+  }
+}
+
+/** The ranked head only, for callers that have no room for a tail. */
+export function countTerms(
+  records: ReadonlyArray<{ terms: readonly string[] }>,
+  limit: number,
+): CountedTerm[] {
+  return distributeTerms(records, limit).top
 }

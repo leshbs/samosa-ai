@@ -27,7 +27,8 @@
     "db:migrate:new": "supabase migration new",
     "db:reset": "supabase db reset",
     "db:seed": "supabase db reset --no-backup",
-    "db:types": "supabase gen types typescript --local > types/database.ts",
+    "db:types": "node scripts/gen-types.mjs",
+    "db:types:local": "supabase gen types typescript --local > types/database.ts",
     "clean": "rimraf .next node_modules/.cache coverage playwright-report",
     "upgrade:check": "pnpm outdated",
     "prepare": "husky || true"
