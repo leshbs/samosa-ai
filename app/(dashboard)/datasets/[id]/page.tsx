@@ -1,10 +1,15 @@
+import { ShieldCheck } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { AnalyzeButton } from '@/components/analysis/analyze-button'
 import { DeleteDatasetButton } from '@/components/datasets/delete-dataset-button'
+import { InlineError } from '@/components/layout/inline-error'
+import { PageHeader } from '@/components/layout/page-header'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { StatusIndicator } from '@/components/ui/status-indicator'
 import {
   Table,
   TableBody,
@@ -40,12 +45,15 @@ export default async function DatasetDetailPage({
   if (!dataset.ok) notFound()
 
   const currentPage = Number.parseInt(page ?? '1', 10)
-  const responses = await listResponses(id, Number.isNaN(currentPage) ? 1 : currentPage)
-  const session = await getSessionUser()
+  const [responses, session, latestJob] = await Promise.all([
+    listResponses(id, Number.isNaN(currentPage) ? 1 : currentPage),
+    getSessionUser(),
+    getLatestJobForDataset(id),
+  ])
+
   const canDelete = session.ok && can(session.value.role, 'dataset:delete')
   const canAnalyze = session.ok && can(session.value.role, 'analysis:run')
 
-  const latestJob = await getLatestJobForDataset(id)
   // Pricing tables stay on the server; the button receives a formatted string.
   const estimatedCost = formatIdr(
     estimateJobCostMicroIdr('gpt-4o-mini', dataset.value.responseCount, BATCH_SIZE),
@@ -58,44 +66,49 @@ export default async function DatasetDetailPage({
     { label: 'Diunggah', value: formatDateTime(dataset.value.createdAt) },
   ]
 
+  const kept = dataset.value.keptColumns
+
   return (
-    <section className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <Link
-            href="/datasets"
-            className="text-sm text-muted-foreground hover:underline"
-          >
-            ← Semua dataset
-          </Link>
-          <h1 className="text-2xl font-semibold">{dataset.value.name}</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          {latestJob.ok && latestJob.value ? (
-            <Button asChild variant="outline">
-              <Link href={`/analysis/${latestJob.value.id}`}>Lihat analisis</Link>
-            </Button>
-          ) : null}
-          {canAnalyze ? (
-            <AnalyzeButton
-              datasetId={dataset.value.id}
-              responseCount={dataset.value.responseCount}
-              estimatedCost={estimatedCost}
-              estimatedSeconds={estimateJobSeconds(
-                dataset.value.responseCount,
-                BATCH_SIZE,
-              )}
-            />
-          ) : null}
-          {canDelete ? (
-            <DeleteDatasetButton
-              datasetId={dataset.value.id}
-              datasetName={dataset.value.name}
-              redirectTo="/datasets"
-            />
-          ) : null}
-        </div>
-      </div>
+    <section className="mx-auto max-w-wide space-y-6">
+      <PageHeader
+        title={dataset.value.name}
+        crumbs={[{ label: 'Dataset', href: '/datasets' }, { label: dataset.value.name }]}
+        actions={
+          <>
+            {latestJob.ok && latestJob.value ? (
+              <Button asChild variant="outline">
+                <Link href={`/analysis/${latestJob.value.id}`}>Lihat analisis</Link>
+              </Button>
+            ) : null}
+            {canAnalyze ? (
+              <AnalyzeButton
+                datasetId={dataset.value.id}
+                responseCount={dataset.value.responseCount}
+                estimatedCost={estimatedCost}
+                estimatedSeconds={estimateJobSeconds(
+                  dataset.value.responseCount,
+                  BATCH_SIZE,
+                )}
+              />
+            ) : null}
+            {canDelete ? (
+              <DeleteDatasetButton
+                datasetId={dataset.value.id}
+                datasetName={dataset.value.name}
+                redirectTo="/datasets"
+              />
+            ) : null}
+          </>
+        }
+      />
+
+      {latestJob.ok && latestJob.value ? (
+        <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          Analisis terakhir:
+          <StatusIndicator status={latestJob.value.status} size="sm" />
+          <span>· {formatDateTime(latestJob.value.createdAt)}</span>
+        </p>
+      ) : null}
 
       <Card>
         <CardContent className="grid gap-4 py-6 sm:grid-cols-4">
@@ -110,17 +123,56 @@ export default async function DatasetDetailPage({
         </CardContent>
       </Card>
 
+      {/**
+       * §P4 asks for an explicit kept-column summary. It belongs on this page and
+       * not only in the upload wizard: the question "what personal data is in
+       * this dataset?" is asked weeks after the upload, by someone who did not
+       * do it.
+       */}
+      <div className="flex flex-wrap items-start gap-3 rounded-card border bg-muted/40 px-4 py-3 text-sm">
+        <ShieldCheck aria-hidden className="mt-0.5 size-4 shrink-0 text-primary" />
+        {kept.length === 0 ? (
+          <p className="text-muted-foreground">
+            <span className="font-medium text-foreground">
+              Kolom lain tidak disimpan.
+            </span>{' '}
+            Hanya kolom teks aspirasi yang masuk ke basis data. Nama, kelas, atau email di
+            file aslinya tidak ikut tersimpan.
+          </p>
+        ) : (
+          <div className="space-y-1">
+            <p className="font-medium">
+              {kept.length} kolom tambahan disimpan bersama teks:
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {kept.map((column) => (
+                <Badge key={column} variant="outline">
+                  {column}
+                </Badge>
+              ))}
+            </div>
+            <p className="text-muted-foreground">
+              Kolom ini dipilih manual saat mengunggah. Kolom lain di file yang sama tidak
+              disimpan.
+            </p>
+          </div>
+        )}
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Aspirasi mentah</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {!responses.ok ? (
-            <p role="alert" className="text-sm text-destructive">
-              {responses.error.message}
-            </p>
+            <InlineError
+              what={responses.error.message}
+              recovery="Muat ulang halaman ini. Kalau dataset baru saja diunggah, tunggu sebentar lalu coba lagi."
+            />
           ) : responses.value.responses.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Dataset ini kosong.</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Dataset ini kosong.
+            </p>
           ) : (
             <>
               <Table>
@@ -144,13 +196,13 @@ export default async function DatasetDetailPage({
                 </TableBody>
               </Table>
 
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span>
+              <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+                <span className="tabular-nums">
                   Halaman {responses.value.page} dari {responses.value.pageCount} ·{' '}
                   {responses.value.total} aspirasi
                 </span>
                 {/* A disabled Button with asChild would still render a working
-                    link, so render plain text when there is nowhere to go. */}
+                      link, so render plain text when there is nowhere to go. */}
                 <div className="flex gap-2">
                   {responses.value.page > 1 ? (
                     <Button asChild variant="outline" size="sm">

@@ -1,9 +1,17 @@
 'use client'
 
 import { Search, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import * as m from 'motion/react-m'
 import { SentimentBadge } from '@/components/analysis/sentiment-badge'
 import { SENTIMENT_LABELS, SENTIMENT_ORDER } from '@/components/charts/palette'
+import { EASE } from '@/components/motion/motion-provider'
+import {
+  EXPLORER_ANCHOR_ID,
+  useExplorerFocus,
+  type ExplorerFocus,
+} from '@/components/reports/explorer-focus'
+import { Badge, filterChipVariants } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -14,18 +22,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Table, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn, formatPercent } from '@/lib/utils'
 import type { Sentiment } from '@/types/domain'
 
 const PAGE_SIZE = 20
+
+/** Below this, confidence is labelled rather than left to the reader (§11). */
+const LOW_CONFIDENCE = 0.6
 
 export type ExplorerRow = {
   responseId: string
@@ -45,10 +49,21 @@ const SORTS = [
 
 type Sort = (typeof SORTS)[number]['id']
 
-function toggle<T>(list: T[], value: T): T[] {
+function toggle<T>(list: readonly T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
 }
 
+const NO_FOCUS: ExplorerFocus = { sentiments: [], topics: [], query: '' }
+
+/**
+ * §8. Search, sentiment filter, topic chips, confidence sort, 20 per page, no
+ * infinite scroll — a report is read in pages and cited by position.
+ *
+ * The sentiment and topic filters live in `ExplorerFocusProvider` rather than in
+ * this component, so a stat tile or a chart bar can set them (§7 P1). When there
+ * is no provider the component falls back to its own state and behaves exactly
+ * as it did before, which is what lets it be reused outside the report page.
+ */
 export function ResponseExplorer({
   rows,
   topics,
@@ -57,23 +72,45 @@ export function ResponseExplorer({
   /** Topic vocabulary for the filter, already normalized and ranked. */
   topics: string[]
 }) {
-  const [query, setQuery] = useState('')
-  const [sentiments, setSentiments] = useState<Sentiment[]>([])
-  const [selectedTopics, setSelectedTopics] = useState<string[]>([])
+  const context = useExplorerFocus()
+  const [localFocus, setLocalFocus] = useState<ExplorerFocus>(NO_FOCUS)
+  const focus = context?.focus ?? localFocus
+  const setFocus = context?.setFocus ?? setLocalFocus
+
   const [sort, setSort] = useState<Sort>('dataset')
   const [page, setPage] = useState(0)
   const [open, setOpen] = useState<ExplorerRow | null>(null)
 
+  const query = focus.query
+  const setQuery = (next: string) => setFocus((current) => ({ ...current, query: next }))
+
+  /**
+   * Filtering scans every response's text, topics and keywords. On a 2,000-row
+   * dataset that is long enough to drop typed characters, so the input updates
+   * immediately and the table catches up: React keeps the previous results on
+   * screen while the new ones are computed instead of blocking the keystroke.
+   */
+  const deferredQuery = useDeferredValue(query)
+  const stale = deferredQuery !== query
+
+  // A tile or chart bar changing the filter must not land the reader on page 7
+  // of a list that is now three rows long.
+  useEffect(() => {
+    setPage(0)
+  }, [focus, deferredQuery, sort])
+
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase()
+    const needle = deferredQuery.trim().toLowerCase()
 
     const matched = rows.filter((row) => {
-      if (sentiments.length > 0 && !sentiments.includes(row.sentiment)) return false
+      if (focus.sentiments.length > 0 && !focus.sentiments.includes(row.sentiment)) {
+        return false
+      }
       if (
-        selectedTopics.length > 0 &&
+        focus.topics.length > 0 &&
         // Any-of, not all-of: picking two topics widens the view, which is
         // what a multi-select reads as.
-        !row.topics.some((topic) => selectedTopics.includes(topic.toLowerCase().trim()))
+        !row.topics.some((topic) => focus.topics.includes(topic.toLowerCase().trim()))
       ) {
         return false
       }
@@ -95,7 +132,7 @@ export function ResponseExplorer({
         ? b.confidence - a.confidence
         : a.confidence - b.confidence,
     )
-  }, [rows, query, sentiments, selectedTopics, sort])
+  }, [rows, deferredQuery, focus, sort])
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   // The filter may have shrunk the list under the current page; clamp on read
@@ -104,34 +141,37 @@ export function ResponseExplorer({
   const visible = filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)
 
   const hasFilters =
-    query.length > 0 || sentiments.length > 0 || selectedTopics.length > 0
+    query.length > 0 || focus.sentiments.length > 0 || focus.topics.length > 0
 
   function reset() {
-    setQuery('')
-    setSentiments([])
-    setSelectedTopics([])
+    setFocus(NO_FOCUS)
     setPage(0)
   }
 
   return (
-    <Card>
-      <CardHeader>
+    <Card id={EXPLORER_ANCHOR_ID} className="scroll-mt-40">
+      <CardHeader className="gap-1">
         <CardTitle className="text-base">Jelajah aspirasi</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Setiap angka di laporan ini berasal dari baris-baris di bawah. Klik satu baris
+          untuk melihat teks lengkapnya.
+        </p>
       </CardHeader>
+
       <CardContent className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div
+          className="flex flex-col gap-3 sm:flex-row sm:items-center"
+          data-print="hide"
+        >
           <div className="relative flex-1">
             <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
               aria-hidden
             />
             <Input
               type="search"
               value={query}
-              onChange={(event) => {
-                setQuery(event.target.value)
-                setPage(0)
-              }}
+              onChange={(event) => setQuery(event.target.value)}
               placeholder="Cari teks, topik, atau kata kunci"
               aria-label="Cari aspirasi"
               className="pl-9"
@@ -142,7 +182,7 @@ export function ResponseExplorer({
             <select
               value={sort}
               onChange={(event) => setSort(event.target.value as Sort)}
-              className="h-9 rounded-md border bg-background px-2 text-sm text-foreground"
+              className="h-9 rounded-control border bg-background px-2 text-sm text-foreground"
             >
               {SORTS.map((option) => (
                 <option key={option.id} value={option.id}>
@@ -153,114 +193,140 @@ export function ResponseExplorer({
           </label>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2" data-print="hide">
           <span className="text-xs uppercase tracking-wide text-muted-foreground">
             Sentimen
           </span>
           {SENTIMENT_ORDER.map((sentiment) => (
-            <FilterChip
+            <button
               key={sentiment}
-              active={sentiments.includes(sentiment)}
-              onClick={() => {
-                setSentiments(toggle(sentiments, sentiment))
-                setPage(0)
-              }}
+              type="button"
+              aria-pressed={focus.sentiments.includes(sentiment)}
+              onClick={() =>
+                setFocus((current) => ({
+                  ...current,
+                  sentiments: toggle(current.sentiments, sentiment),
+                }))
+              }
+              className={filterChipVariants({
+                active: focus.sentiments.includes(sentiment),
+              })}
             >
               {SENTIMENT_LABELS[sentiment]}
-            </FilterChip>
+            </button>
           ))}
         </div>
 
         {topics.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2" data-print="hide">
             <span className="text-xs uppercase tracking-wide text-muted-foreground">
               Topik
             </span>
             {topics.map((topic) => (
-              <FilterChip
+              <button
                 key={topic}
-                active={selectedTopics.includes(topic)}
-                onClick={() => {
-                  setSelectedTopics(toggle(selectedTopics, topic))
-                  setPage(0)
-                }}
+                type="button"
+                aria-pressed={focus.topics.includes(topic)}
+                onClick={() =>
+                  setFocus((current) => ({
+                    ...current,
+                    topics: toggle(current.topics, topic),
+                  }))
+                }
+                className={filterChipVariants({ active: focus.topics.includes(topic) })}
               >
                 {topic}
-              </FilterChip>
+              </button>
             ))}
           </div>
         ) : null}
 
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <p aria-live="polite">
+        <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+          <p aria-live="polite" className={cn(stale && 'opacity-60')}>
             {filtered.length} dari {rows.length} aspirasi
           </p>
           {hasFilters ? (
-            <Button variant="ghost" size="sm" onClick={reset}>
-              <X className="mr-1 h-3.5 w-3.5" aria-hidden />
+            <Button variant="ghost" size="sm" onClick={reset} data-print="hide">
+              <X aria-hidden />
               Hapus filter
             </Button>
           ) : null}
         </div>
 
         {visible.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">
-            Tidak ada aspirasi yang cocok dengan filter ini.
-          </p>
+          /* §10: an empty result teaches the way out of it. */
+          <div className="space-y-3 py-10 text-center">
+            <p className="text-sm text-muted-foreground">
+              Tidak ada aspirasi yang cocok dengan filter ini.
+            </p>
+            <Button variant="outline" size="sm" onClick={reset}>
+              Hapus semua filter
+            </Button>
+          </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-28">Sentimen</TableHead>
-                <TableHead>Aspirasi</TableHead>
-                <TableHead className="hidden w-48 md:table-cell">Topik</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {visible.map((row) => (
-                <TableRow
-                  key={row.responseId}
-                  tabIndex={0}
-                  role="button"
-                  aria-haspopup="dialog"
-                  onClick={() => setOpen(row)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      setOpen(row)
-                    }
-                  }}
-                  className="cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <TableCell className="align-top">
-                    <SentimentBadge sentiment={row.sentiment} />
-                    <span className="mt-1 block text-xs tabular-nums text-muted-foreground">
-                      {formatPercent(row.confidence)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="align-top">
-                    <span className="line-clamp-2">{row.responseText}</span>
-                  </TableCell>
-                  <TableCell className="hidden align-top md:table-cell">
-                    <div className="flex flex-wrap gap-1">
-                      {row.topics.map((topic) => (
-                        <span
-                          key={topic}
-                          className="rounded-full bg-secondary px-2 py-0.5 text-xs"
-                        >
-                          {topic}
-                        </span>
-                      ))}
-                    </div>
-                  </TableCell>
+          <div className={cn('transition-opacity', stale && 'opacity-60')}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-28">Sentimen</TableHead>
+                  <TableHead>Aspirasi</TableHead>
+                  <TableHead className="hidden w-48 md:table-cell">Topik</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              {/* Keyed on the page so a page turn fades rather than swapping
+                  twenty rows of text in one frame. */}
+              <m.tbody
+                key={`${currentPage}-${filtered.length}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.18, ease: EASE }}
+                className="[&_tr:last-child]:border-0"
+              >
+                {visible.map((row) => (
+                  <TableRow
+                    key={row.responseId}
+                    tabIndex={0}
+                    role="button"
+                    aria-haspopup="dialog"
+                    onClick={() => setOpen(row)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        setOpen(row)
+                      }
+                    }}
+                    className="cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <TableCell className="align-top">
+                      <SentimentBadge sentiment={row.sentiment} />
+                      <span className="mt-1 block text-xs tabular-nums text-muted-foreground">
+                        {formatPercent(row.confidence)}
+                        {row.confidence < LOW_CONFIDENCE ? (
+                          <span className="block text-notice">keyakinan rendah</span>
+                        ) : null}
+                      </span>
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <span className="line-clamp-2">{row.responseText}</span>
+                    </TableCell>
+                    <TableCell className="hidden align-top md:table-cell">
+                      <div className="flex flex-wrap gap-1">
+                        {row.topics.map((topic) => (
+                          <Badge key={topic} variant="muted">
+                            {topic}
+                          </Badge>
+                        ))}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </m.tbody>
+            </Table>
+          </div>
         )}
 
         {pageCount > 1 ? (
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between" data-print="hide">
             <Button
               variant="outline"
               size="sm"
@@ -293,6 +359,9 @@ export function ResponseExplorer({
                 <DialogDescription>
                   {SENTIMENT_LABELS[open.sentiment]} · keyakinan{' '}
                   {formatPercent(open.confidence)}
+                  {open.confidence < LOW_CONFIDENCE
+                    ? ' · keyakinan rendah, periksa manual'
+                    : ''}
                 </DialogDescription>
               </DialogHeader>
               <p className="whitespace-pre-wrap text-sm">{open.responseText}</p>
@@ -314,32 +383,6 @@ export function ResponseExplorer({
   )
 }
 
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        'rounded-full border px-3 py-1 text-xs transition-colors',
-        active
-          ? 'border-primary bg-primary text-primary-foreground'
-          : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-      )}
-    >
-      {children}
-    </button>
-  )
-}
-
 function DetailTerms({ title, terms }: { title: string; terms: string[] }) {
   if (terms.length === 0) return null
 
@@ -348,9 +391,9 @@ function DetailTerms({ title, terms }: { title: string; terms: string[] }) {
       <h3 className="text-xs uppercase tracking-wide text-muted-foreground">{title}</h3>
       <div className="mt-1 flex flex-wrap gap-1">
         {terms.map((term) => (
-          <span key={term} className="rounded-full bg-secondary px-2 py-0.5 text-xs">
+          <Badge key={term} variant="muted">
             {term}
-          </span>
+          </Badge>
         ))}
       </div>
     </div>

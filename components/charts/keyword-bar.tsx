@@ -10,11 +10,15 @@ import {
   YAxis,
 } from 'recharts'
 import type { KeywordCount } from '@/modules/reporting'
+import { useExplorerFocus } from '@/components/reports/explorer-focus'
 import { ChartTooltip } from './chart-tooltip'
 import { CHART_COLORS, MARK } from './palette'
 
 const AXIS_WIDTH = 132
 const MAX_LABEL = 18
+
+/** Recharts types its click state loosely; only this field is read. */
+type ChartClickState = { activeLabel?: string | number }
 
 /**
  * Keywords as ranked bars rather than a word cloud. A cloud encodes frequency
@@ -27,12 +31,29 @@ const MAX_LABEL = 18
  * identity channel on nothing.
  */
 export function KeywordBar({ keywords }: { keywords: KeywordCount[] }) {
+  const explorer = useExplorerFocus()
+
+  /**
+   * A keyword is not a filter dimension — keywords are free strings the model
+   * pulled out of each response, not a controlled vocabulary — so clicking one
+   * runs it as a search instead. The term lands in the search box where the
+   * reader can see and edit what was applied, rather than in an invisible filter.
+   */
+  const handleClick = (state: ChartClickState) => {
+    if (!explorer) return
+    const label = state.activeLabel
+    if (typeof label !== 'string' || label.length === 0) return
+    explorer.focusOn({ query: label })
+  }
+
   return (
     <ResponsiveContainer width="100%" height={keywords.length * MARK.rowHeight + 40}>
       <BarChart
         data={keywords}
         layout="vertical"
         margin={{ top: 4, right: 36, bottom: 4, left: 0 }}
+        onClick={handleClick}
+        className={explorer ? 'cursor-pointer' : undefined}
       >
         {/* No gridlines: the x-axis is hidden because every bar carries its own
             number, and a grid with no scale beside it is decoration. */}

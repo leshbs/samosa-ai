@@ -1,7 +1,11 @@
-import { FileText } from 'lucide-react'
+import { ArrowRight, FileText } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { EmptyState } from '@/components/layout/empty-state'
+import { InlineError } from '@/components/layout/inline-error'
+import { PageHeader } from '@/components/layout/page-header'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import {
   Table,
@@ -30,23 +34,21 @@ export default async function ReportsListPage() {
 
   if (!jobs.ok) {
     return (
-      <p role="alert" className="text-sm text-destructive">
-        {jobs.error.message}
-      </p>
+      <div className="mx-auto max-w-wide">
+        <InlineError what={jobs.error.message} />
+      </div>
     )
   }
 
   const reports = jobs.value.filter((job) => REPORTABLE.includes(job.status))
 
   return (
-    <section className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">Laporan</h1>
-        <p className="text-sm text-muted-foreground">
-          Setiap analisis yang selesai punya satu laporan: sebaran sentimen, topik, kata
-          kunci, dan penjelajah aspirasi.
-        </p>
-      </div>
+    <section className="mx-auto max-w-wide space-y-6">
+      <PageHeader
+        title="Laporan"
+        description="Setiap analisis yang selesai punya satu laporan: sebaran sentimen, topik, kata kunci, dan penjelajah aspirasi."
+        crumbs={[{ label: 'Laporan' }]}
+      />
 
       {reports.length === 0 ? (
         <EmptyState
@@ -56,7 +58,7 @@ export default async function ReportsListPage() {
           action={{ label: 'Pilih dataset', href: '/datasets' }}
         />
       ) : (
-        <Card>
+        <Card className="overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
@@ -70,12 +72,17 @@ export default async function ReportsListPage() {
               {reports.map((job) => (
                 <TableRow key={job.id}>
                   <TableCell className="font-medium">
-                    <Link href={`/reports/${job.id}`} className="hover:underline">
+                    <Link
+                      href={`/reports/${job.id}`}
+                      className="rounded-chip hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
                       {job.datasetName}
                     </Link>
                     {job.status === 'partial' ? (
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {job.failedCount} aspirasi gagal dianalisis
+                      <span className="mt-1 block">
+                        <Badge variant="notice">
+                          {job.failedCount} aspirasi gagal dianalisis
+                        </Badge>
                       </span>
                     ) : null}
                   </TableCell>
@@ -86,12 +93,12 @@ export default async function ReportsListPage() {
                     {formatDateTime(job.finishedAt ?? job.createdAt)}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Link
-                      href={`/reports/${job.id}`}
-                      className="text-sm text-primary hover:underline"
-                    >
-                      Buka
-                    </Link>
+                    <Button asChild variant="ghost" size="sm">
+                      <Link href={`/reports/${job.id}`}>
+                        Buka
+                        <ArrowRight aria-hidden />
+                      </Link>
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}

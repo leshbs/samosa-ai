@@ -1,21 +1,25 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { UploadWizard } from '@/components/datasets/upload-wizard'
+import { PageHeader } from '@/components/layout/page-header'
+import { can, getSessionUser } from '@/modules/auth'
 
 export const metadata: Metadata = { title: 'Unggah dataset' }
 
-export default function NewDatasetPage() {
+export default async function NewDatasetPage() {
+  const session = await getSessionUser()
+  // §5 hides the entry point for a role that cannot upload; this closes the door
+  // for anyone who reached the URL directly, rather than letting them fill in the
+  // whole wizard and collect a 403 at the end.
+  if (!session.ok || !can(session.value.role, 'dataset:create')) redirect('/datasets')
+
   return (
-    <section className="mx-auto max-w-3xl space-y-6">
-      <div className="space-y-1">
-        <Link href="/datasets" className="text-sm text-muted-foreground hover:underline">
-          ← Semua dataset
-        </Link>
-        <h1 className="text-2xl font-semibold">Unggah dataset</h1>
-        <p className="text-sm text-muted-foreground">
-          Ekspor Google Forms ke CSV atau Excel, lalu pilih kolom yang berisi aspirasi.
-        </p>
-      </div>
+    <section className="mx-auto max-w-wide space-y-6">
+      <PageHeader
+        title="Unggah dataset"
+        description="Ekspor Google Forms ke CSV atau Excel, lalu pilih kolom yang berisi aspirasi."
+        crumbs={[{ label: 'Dataset', href: '/datasets' }, { label: 'Unggah' }]}
+      />
 
       <UploadWizard />
     </section>
