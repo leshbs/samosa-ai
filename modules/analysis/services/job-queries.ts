@@ -3,7 +3,12 @@ import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { ERROR_CODES, appError, err, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
-import type { AnalysisJob, JobStatus, Sentiment } from '@/types/domain'
+import {
+  REPORTABLE_STATUSES,
+  type AnalysisJob,
+  type JobStatus,
+  type Sentiment,
+} from '@/types/domain'
 
 /**
  * Reads go through the request-scoped client so RLS scopes them to the
@@ -194,4 +199,71 @@ export async function getUsageSummary(
     outputTokens: rows.reduce((sum, row) => sum + Number(row.output_tokens), 0),
     costMicroIdr: rows.reduce((sum, row) => sum + Number(row.cost_micro_idr), 0),
   })
+}
+
+/**
+ * How many finished jobs have a report to open — the badge on the sidebar's
+ * "Laporan" entry. A HEAD count, so it costs one indexed scan and no rows.
+ */
+export async function countReports(): Promise<Result<number, AppError>> {
+  const supabase = await createClient()
+
+  const { count, error } = await supabase
+    .from('analysis_jobs')
+    .select('id', { count: 'exact', head: true })
+    .in('status', [...REPORTABLE_STATUSES])
+
+  if (error || count === null)
+    return err(appError(ERROR_CODES.INTERNAL, 'Jumlah laporan tidak bisa dimuat'))
+
+  return ok(count)
+}
+
+/**
+ * Upper bound on jobs counted in one call. Each job is its own HEAD request,
+ * and the home page — the only caller — shows six at most.
+ */
+export const MAX_COUNTED_JOBS = 6
+
+/**
+ * Results carrying one sentiment, per job, without fetching the rows.
+ *
+ * The home page needs a positive share for a handful of reports. Selecting the
+ * `sentiment` column would transfer every row — and PostgREST caps a response
+ * at 1,000 rows, so a 5,000-response job would be silently undercounted. A
+ * HEAD count per job is exact and transfers nothing. There is no stored
+ * per-job tally to read instead: an RPC would mean a migration for arithmetic
+ * this small (see getUsageSummary).
+ *
+ * The denominator is the job's `processedCount`, which the runner sets to the
+ * number of result rows it stored, so callers need only the numerator.
+ */
+export async function countResultsBySentiment(
+  jobIds: readonly string[],
+  sentiment: Sentiment,
+): Promise<Result<Record<string, number>, AppError>> {
+  const ids = [...new Set(jobIds)].slice(0, MAX_COUNTED_JOBS)
+  if (ids.length === 0) return ok({})
+
+  const supabase = await createClient()
+
+  const counts = await Promise.all(
+    ids.map(async (jobId) => {
+      const { count, error } = await supabase
+        .from('analysis_results')
+        .select('id', { count: 'exact', head: true })
+        .eq('job_id', jobId)
+        .eq('sentiment', sentiment)
+
+      return error || count === null ? null : ([jobId, count] as const)
+    }),
+  )
+
+  const complete = counts.filter((entry) => entry !== null)
+  // All or nothing: a share computed for four of six reports would put a
+  // plausible-looking wrong average on the home page.
+  if (complete.length !== ids.length)
+    return err(appError(ERROR_CODES.INTERNAL, 'Sebaran sentimen tidak bisa dimuat'))
+
+  return ok(Object.fromEntries(complete))
 }

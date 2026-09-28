@@ -32,6 +32,24 @@ function textColumnOf(metadata: unknown): string | null {
   return typeof value === 'string' ? value : null
 }
 
+/**
+ * The columns the uploader deliberately chose to keep beside the text.
+ *
+ * Read-only projection of a key `uploadDataset` already writes — nothing new is
+ * stored and no behaviour changes. It is surfaced because the dataset page has to
+ * answer "what personal data does this dataset hold?" without opening the rows,
+ * which is the whole reason `kept_columns` is recorded. An older dataset written
+ * before the key existed returns an empty list, which is also the truth for it:
+ * those were uploaded under the keep-everything default and the honest answer is
+ * on the row, not in the metadata.
+ */
+function keptColumnsOf(metadata: unknown): string[] {
+  if (typeof metadata !== 'object' || metadata === null) return []
+  const value = (metadata as Record<string, unknown>).kept_columns
+  if (!Array.isArray(value)) return []
+  return value.filter((entry): entry is string => typeof entry === 'string')
+}
+
 function toDataset(row: DatasetRow): Dataset {
   return {
     id: row.id,
@@ -42,6 +60,7 @@ function toDataset(row: DatasetRow): Dataset {
     responseCount: row.response_count,
     uploaderId: row.uploader_id,
     textColumnName: textColumnOf(row.metadata),
+    keptColumns: keptColumnsOf(row.metadata),
     createdAt: row.created_at,
   }
 }
@@ -62,6 +81,25 @@ export async function listDatasets(): Promise<Result<Dataset[], AppError>> {
   }
 
   return ok((data as DatasetRow[]).map(toDataset))
+}
+
+/**
+ * The badge on the sidebar's "Dataset" entry. The shell renders on every page,
+ * so this is a HEAD count rather than `listDatasets().length`: no rows cross
+ * the wire just to be counted.
+ */
+export async function countDatasets(): Promise<Result<number, AppError>> {
+  const supabase = await createClient()
+
+  const { count, error } = await supabase
+    .from('datasets')
+    .select('id', { count: 'exact', head: true })
+
+  if (error || count === null) {
+    return err(appError(ERROR_CODES.INTERNAL, 'Jumlah dataset tidak bisa dimuat'))
+  }
+
+  return ok(count)
 }
 
 export async function getDataset(datasetId: string): Promise<Result<Dataset, AppError>> {
