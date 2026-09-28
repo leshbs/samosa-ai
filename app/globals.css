@@ -2,78 +2,218 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * Tokens follow design_system.md: a warm cream canvas, a charcoal sidebar, and
+ * one fire colour (Ember) that is allowed to shout. Every neutral has a brown
+ * undertone — there is no pure grey anywhere, including the borders.
+ *
+ * Two layers live here. The raw ramps (--ember-500, --sand-25 …) are the
+ * design system's vocabulary, used directly by gradients and by the handful of
+ * places that need an exact step. The shadcn semantic tokens underneath
+ * (--primary, --muted-foreground …) are what components consume, mapped onto
+ * those ramps so every existing page picks up the palette without being edited.
+ */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    --primary: 24 94% 50%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 24 94% 50%;
-    --radius: 0.625rem;
+    /* Ember — brand and the one primary action per screen. */
+    --ember-50: #fef4ed;
+    --ember-100: #fde6d5;
+    --ember-200: #fac9a9;
+    --ember-300: #f7a674;
+    --ember-400: #f4883f;
+    --ember-500: #f26b24;
+    --ember-600: #c24e16;
+    --ember-700: #9e3f11;
+    --ember-800: #7a300c;
+    --ember-900: #561f07;
 
-    /* Chart palette — a diverging blue↔red scale with a recessive gray
-       midpoint, validated for protanopia/deuteranopia against this surface.
-       Green↔red was rejected: it is the one pair red-green colour blindness
-       collapses, and sentiment is the chart people act on. The neutral step
-       sits below 3:1 on purpose — "neither" should recede — so every chart
-       that uses it also carries direct labels and a table view. */
-    --chart-positive: #2a78d6;
-    --chart-neutral: #c3c2b7;
-    --chart-negative: #e34948;
-    --chart-series-1: #2a78d6;
-    --chart-grid: #e1e0d9;
-    --chart-axis: #898781;
-    /* Badge tints: the same three hues at reading weight, so a sentiment
-       means one colour everywhere on the page. */
-    --sentiment-positive-bg: #e8f1fc;
-    --sentiment-positive-fg: #17508f;
-    --sentiment-neutral-bg: #f1f0ec;
-    --sentiment-neutral-fg: #4a4a47;
-    --sentiment-negative-bg: #fde9e9;
-    --sentiment-negative-fg: #a3201f;
+    /* Teal — positive data and the secondary accent. */
+    --teal-50: #ecf8f6;
+    --teal-100: #d2efe9;
+    --teal-500: #3a9e8d;
+    --teal-700: #27685c;
+
+    /* Sand — surfaces. Ink — structure and text. */
+    --sand-25: #fdf7f2;
+    --sand-50: #fbf2ea;
+    --sand-100: #f6e9dd;
+    --sand-200: #efdccb;
+    --sand-300: #e3cbb4;
+    --ink-200: #ddd4c9;
+    --ink-500: #7a6e64;
+    --ink-900: #1a1613;
+    --ink-950: #12100e;
+
+    /* Gradients are atmosphere on large surfaces only (§3): never under data,
+       never on anything smaller than 120px, never across two hue families. */
+    --grad-primary: linear-gradient(135deg, #c24e16 0%, #9e3f11 100%);
+    --grad-primary-hover: linear-gradient(135deg, #d15a1c 0%, #ac4614 100%);
+    --grad-primary-bright: linear-gradient(135deg, #f4883f 0%, #e05e1c 100%);
+    --grad-banner: linear-gradient(145deg, #f4e5d6 0%, #ebd7c2 60%, #e5cdb4 100%);
+    --grad-sidebar: linear-gradient(180deg, #1a1613 0%, #12100e 45%, #0f0d0b 100%);
+    --grad-hero-glow: radial-gradient(
+      ellipse 80% 55% at 50% 0%,
+      rgba(242, 107, 36, 0.14) 0%,
+      rgba(242, 107, 36, 0.05) 45%,
+      transparent 75%
+    );
+    --grad-stat-teal: linear-gradient(160deg, #f0faf8 0%, #dff2ee 100%);
+    --grad-stat-ember: linear-gradient(160deg, #fef6f0 0%, #fbe7d8 100%);
+    --grad-divider: linear-gradient(
+      90deg,
+      transparent 0%,
+      #ddd4c9 18%,
+      #ddd4c9 82%,
+      transparent 100%
+    );
+    --grad-text-ember: linear-gradient(120deg, #f26b24 0%, #c24e16 100%);
+
+    /* ── shadcn semantic tokens, as HSL triplets ─────────────────────────── */
+
+    --background: 27 73.3% 97.1%; /* sand-25 */
+    --foreground: 26 15.6% 8.8%; /* ink-900, 15.8:1 on the canvas */
+    --card: 0 0% 100%;
+    --card-foreground: 26 15.6% 8.8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 26 15.6% 8.8%;
+
+    /* ember-600, not -500: white on -500 is 3.0:1 and fails on every button
+       label (§2.2). White on -600 is 4.78:1, and -600 on the canvas is 4.5:1,
+       so `text-primary` links still pass too. */
+    --primary: 20 79.6% 42.4%;
+    --primary-foreground: 0 0% 100%;
+
+    /* sand-50: the alternate section background on the landing page (§11.3). */
+    --alt: 28 68% 95.1%;
+    --secondary: 29 58.1% 91.6%; /* sand-100 */
+    --secondary-foreground: 26 15.6% 8.8%;
+    --muted: 29 58.1% 91.6%;
+    /* ink-500: 4.66:1 on the canvas, 4.95:1 on white. It drops to 4.15:1 on
+       sand-100, so muted text never sits on a tan surface — those use ink-600. */
+    --muted-foreground: 27 9.9% 43.5%;
+    --accent: 29 58.1% 91.6%;
+    --accent-foreground: 26 15.6% 8.8%;
+
+    /* `danger` (#B4322E) for destructive actions. Negative *sentiment* is a
+       separate, pinker hue: it is data, not an alarm (§2.1). */
+    --destructive: 2 59.3% 44.3%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 169 46.6% 34.5%; /* teal-600, white text 4.66:1 */
+    --success-foreground: 0 0% 100%;
+    /* attention-fg on its own tint: information, not alarm (§P2). */
+    --notice: 37 76.9% 30.6%;
+    --notice-surface: 38 87.1% 93.9%;
+    --negative-surface: 345 64% 96%; /* #FBEEF1 */
+
+    --border: 33 22.7% 82.7%; /* ink-200 */
+    --input: 30 14.9% 71%; /* ink-300 */
+    --ring: 21 88.8% 54.5%; /* ember-500 — focus rings are graphics, 3:1 is the bar */
+
+    /* Card 14px, controls 8px, chips 6px (§5.2). */
+    --radius-card: 14px;
+    --radius-control: 8px;
+    --radius-chip: 6px;
+    --radius: 10px;
+
+    /* Borders do the separating; shadows are only for things that float (§5.3). */
+    --shadow-card: none;
+    --shadow-overlay: 0 2px 8px rgba(26, 22, 19, 0.07);
+
+    /* Reading spine: prose at 680px, charts and tables at 1100px. */
+    --spine-narrative: 42.5rem;
+    --spine-wide: 68.75rem;
+
+    /* Sentiment is always teal → amber → rosella, in that order (§2.3).
+       Negative is rosella rather than a red-orange because red-orange is
+       indistinguishable from Ember — the brand would read as "bad". */
+    --chart-positive: #3a9e8d;
+    --chart-neutral: #e8a63c;
+    --chart-negative: #be4a63;
+    --chart-series-1: #3a9e8d;
+    --chart-grid: #ddd4c9;
+    --chart-axis: #7a6e64;
+    --sentiment-positive-bg: #ecf8f6;
+    --sentiment-positive-fg: #27685c;
+    --sentiment-neutral-bg: #fdf3e2;
+    --sentiment-neutral-fg: #8a5d12;
+    --sentiment-negative-bg: #fbeef1;
+    --sentiment-negative-fg: #8f2f44;
   }
 
+  /**
+   * Not an inversion: cream becomes warm charcoal, and the brand colours are
+   * lifted until they clear contrast on it rather than reused at the same hex.
+   */
   .dark {
-    --background: 222 47% 7%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 10%;
-    --card-foreground: 210 40% 98%;
-    --primary: 24 94% 55%;
-    --primary-foreground: 222 47% 7%;
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
-    --destructive: 0 63% 45%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217 33% 20%;
-    --input: 217 33% 20%;
-    --ring: 24 94% 55%;
+    --ember-500: #f5854a;
+    --teal-500: #4fb8a6;
 
-    /* Re-stepped for the dark surface, not flipped: the same three hues
-       validated again against the dark card colour. */
-    --chart-positive: #3987e5;
-    --chart-neutral: #4a4a47;
-    --chart-negative: #e66767;
-    --chart-series-1: #3987e5;
-    --chart-grid: #2c2c2a;
-    --chart-axis: #898781;
-    --sentiment-positive-bg: #14283d;
-    --sentiment-positive-fg: #93c0f2;
-    --sentiment-neutral-bg: #2a2a28;
-    --sentiment-neutral-fg: #c9c8c0;
-    --sentiment-negative-bg: #3a1c1c;
-    --sentiment-negative-fg: #f0a3a3;
+    --grad-banner: linear-gradient(145deg, #2a211a 0%, #221b15 100%);
+    /* §2.4: the sidebar goes darker than the dark canvas, not level with it —
+       otherwise the one edge that says "navigation lives here" disappears. */
+    --grad-sidebar: linear-gradient(180deg, #13100e 0%, #0d0b0a 45%, #0a0908 100%);
+    --grad-stat-teal: linear-gradient(160deg, #172421 0%, #13201d 100%);
+    --grad-stat-ember: linear-gradient(160deg, #2a1d15 0%, #221710 100%);
+    --grad-hero-glow: radial-gradient(
+      ellipse 80% 55% at 50% 0%,
+      rgba(245, 133, 74, 0.16) 0%,
+      rgba(245, 133, 74, 0.05) 45%,
+      transparent 75%
+    );
+    --grad-divider: linear-gradient(
+      90deg,
+      transparent 0%,
+      #332c26 18%,
+      #332c26 82%,
+      transparent 100%
+    );
+    --grad-text-ember: linear-gradient(120deg, #f5854a 0%, #f4883f 100%);
+
+    --background: 24 14.3% 6.9%; /* #14110F */
+    --foreground: 32 45.9% 92.7%; /* #F5EDE4 */
+    --card: 26 14.3% 9.6%; /* #1C1815 */
+    --card-foreground: 32 45.9% 92.7%;
+    --popover: 27 15.3% 11.6%;
+    --popover-foreground: 32 45.9% 92.7%;
+
+    /* #F5854A with canvas-dark text on it: 7.46:1. */
+    --primary: 21 89.5% 62.5%;
+    --primary-foreground: 24 14.3% 6.9%;
+
+    --alt: 26 14% 8.6%;
+    --secondary: 35 19.4% 12.2%; /* #252019 */
+    --secondary-foreground: 32 45.9% 92.7%;
+    --muted: 35 19.4% 12.2%;
+    --muted-foreground: 29 12.4% 60.6%; /* #A79A8E, 6.4:1 on the card */
+    --accent: 30 16% 15%;
+    --accent-foreground: 32 45.9% 92.7%;
+
+    --destructive: 2 62% 58%;
+    --destructive-foreground: 24 14.3% 6.9%;
+    --success: 170 42.5% 51.6%; /* #4FB8A6 */
+    --success-foreground: 24 14.3% 6.9%;
+    --notice: 38 70% 60%;
+    --notice-surface: 38 24% 15%;
+    --negative-surface: 345 30% 14%;
+
+    --border: 28 14.6% 17.5%; /* #332C26 */
+    --input: 28 14% 21%;
+    --ring: 21 89.5% 62.5%;
+
+    --shadow-overlay: 0 8px 24px -8px hsl(0 0% 0% / 0.6);
+
+    --chart-positive: #4fb8a6;
+    --chart-neutral: #edb65a;
+    --chart-negative: #d0637b;
+    --chart-series-1: #4fb8a6;
+    --chart-grid: #332c26;
+    --chart-axis: #a79a8e;
+    --sentiment-positive-bg: #173b35;
+    --sentiment-positive-fg: #a6dfd4;
+    --sentiment-neutral-bg: #3a2c12;
+    --sentiment-neutral-fg: #f2cb85;
+    --sentiment-negative-bg: #3b1b23;
+    --sentiment-negative-fg: #efa3b5;
   }
 
   * {
@@ -81,6 +221,218 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    /* 15px body (§4.2). Set on body rather than html so rem-based spacing
+       stays on the 4px grid. */
+    @apply bg-background text-[15px] leading-[1.6] text-foreground antialiased;
+    /* Tabular figures everywhere: a count that shifts width as it ticks from
+       99 to 100 reads as the layout twitching, and this app counts things. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* A visible focus ring is not optional (§9.1): 2px Ember, offset 2px. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Anchored scrolling clears the sticky headers instead of hiding the
+     heading underneath them. */
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
+  }
+}
+
+@layer components {
+  /* The system's signature (§4.3): mono, 11px, uppercase, 0.14em. Colour is
+     set per surface — ember-700 on landing, ink-500 in the app. */
+  .eyebrow {
+    @apply font-mono text-eyebrow uppercase;
+  }
+
+  /* Gradient text is for display type ≥40px only, one phrase at a time. The
+     solid colour underneath is what forced-colors and print fall back to. */
+  .text-grad-ember {
+    color: var(--ember-600);
+    background-image: var(--grad-text-ember);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* §9.6: skeletons shimmer, spinners are only ever inside buttons. */
+  .skeleton-shimmer {
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(0 0% 100% / 0.55) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    background-repeat: no-repeat;
+    animation: shimmer 1.4s linear infinite;
+  }
+
+  .dark .skeleton-shimmer {
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(0 0% 100% / 0.05) 50%,
+      transparent 100%
+    );
+  }
+
+  /* First-paint entrance, in CSS rather than JS so the largest heading on the
+     page is never waiting on a bundle before it becomes visible. Stagger with
+     `[animation-delay:…]`. */
+  .enter-rise {
+    animation: rise 560ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .enter-fade {
+    animation: fade 560ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* The landing product shot starts tilted back and GSAP flattens it as the
+     page scrolls (components/landing/landing-motion.tsx). The start state is
+     here, not in JS, so the first painted frame and GSAP's first frame agree
+     and nothing jumps when the animation chunk arrives. */
+  .shot-tilt {
+    transform: rotateX(10deg) scale(0.95);
+    transform-origin: 50% 0%;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .shot-tilt {
+      transform: none;
+    }
+  }
+}
+
+@layer utilities {
+  /* The two reading-spine widths, as utilities so a page declares which spine
+     it is on rather than repeating a magic max-width. */
+  .spine-narrative {
+    max-width: var(--spine-narrative);
+  }
+
+  .spine-wide {
+    max-width: var(--spine-wide);
+  }
+}
+
+/**
+ * The theme switch (components/layout/theme-transition.ts) animates the new
+ * snapshot with a growing clip-path. The browser's default cross-fade would run
+ * underneath it and wash the edge of the circle out, so it is turned off — only
+ * for this transition, which is why it hangs off a class.
+ */
+html.theme-switching::view-transition-old(root),
+html.theme-switching::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/**
+ * Everyone who asked not to be animated gets no animation — including the
+ * framer-motion work, which reads the same media query through
+ * MotionConfig reducedMotion="user", and GSAP, which only builds its timelines
+ * inside gsap.matchMedia('(prefers-reduced-motion: no-preference)').
+ */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Windows High Contrast paints its own palette; a gradient behind text would
+   be dropped and leave the text colour it was clipped to — transparent. */
+@media (forced-colors: active) {
+  .text-grad-ember {
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
+/**
+ * Print (§13). The report is the deliverable, so printing drops the
+ * application around it and keeps the document: summary, insights, charts,
+ * tables, provenance.
+ *
+ * Colour-adjust is exact so the sentiment fills survive; the charts also carry
+ * text labels and a table, so a black-and-white printer still produces a
+ * readable page. Gradients do not survive: every one becomes flat (§3.1).
+ */
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  :root {
+    --background: 0 0% 100%;
+    --card: 0 0% 100%;
+    --foreground: 26 15.6% 8.8%;
+    --muted-foreground: 27 12% 30%;
+    --border: 33 22.7% 78%;
+    --shadow-card: none;
+  }
+
+  html {
+    font-size: 11pt;
+  }
+
+  body {
+    background: #fff !important;
+    color: #1a1613 !important;
+  }
+
+  [class*='bg-grad-'] {
+    background-image: none !important;
+  }
+
+  .text-grad-ember {
+    background-image: none !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+
+  [data-print='hide'] {
+    display: none !important;
+  }
+
+  /* The sticky report header must not repeat down every printed page. */
+  [data-print='static'] {
+    position: static !important;
+    box-shadow: none !important;
+    border-bottom: 1px solid #ddd4c9 !important;
+  }
+
+  /* A chart split across a page break is worse than a chart on the next page. */
+  [data-print='keep-together'] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Print the table fallback rather than the canvas (§13, §P8). */
+  [data-print='table-only'] {
+    display: block !important;
+  }
+
+  a[href^='http']::after {
+    content: ' (' attr(href) ')';
+    font-size: 9pt;
+    color: #5a5048;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    box-shadow: none !important;
   }
 }
