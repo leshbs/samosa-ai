@@ -56,6 +56,26 @@ login`, lalu `pnpm db:types`, lalu commit hasilnya bersama diff-nya.
 Keduanya sekarang berisi dashboard lengkap. Disimpan di sini sebagai catatan
 bahwa utang ini memang dibayar, bukan dihapus diam-diam.
 
+### Email auth menunggu SMTP dan template di dashboard
+
+Alur verifikasi email dan reset password sudah benar di kode dan sudah diuji
+di project hosted (ADR-0009), tapi pengirim email bawaan Supabase hanya mengirim
+ke anggota tim project. Selama itu, pengguna sungguhan yang mendaftar pakai
+email tidak menerima tautan verifikasi.
+
+**Pemicu:** sebelum pengguna pertama di luar tim. **Bayar dengan:**
+`docs/auth-setup.md` langkah 1–7.
+
+### Ganti password dari pengaturan tidak meminta password lama
+
+"Ganti password" di pengaturan membuka `/reset-password`, yang hanya butuh sesi.
+Siapa pun yang memegang sesi yang tercuri bisa mengganti password tanpa tahu
+password lamanya. Ini perilaku default Supabase (_Secure password change_ mati).
+
+**Pemicu:** organisasi pertama yang datanya sensitif, atau laporan sesi dicuri.
+**Bayar dengan:** menyalakan _Secure password change_ dan menambah langkah
+`reauthenticate()` (kode OTP ke email) di form ganti password.
+
 ### E2E hanya menguji landing page
 
 `tests/e2e/upload-analyze-report.spec.ts` punya satu test aktif; alur
@@ -64,6 +84,11 @@ terbukti jalan, tapi lewat pengujian manual, bukan lewat CI.
 
 **Pemicu:** regresi pertama yang lolos ke main. **Bayar dengan:** fixture yang
 membuat user terkonfirmasi lewat admin API lalu menyimpan storage state.
+
+Alur auth (daftar → verifikasi → login, lupa → reset password) sudah diuji
+end-to-end sekali di project hosted dengan `admin.generateLink`, yang
+menghasilkan token email tanpa mengirim email. Skrip itu belum jadi test CI:
+ia membuat dan menghapus akun sungguhan, jadi butuh project terpisah untuk CI.
 
 ### Seed tidak bisa dipakai untuk project hosted
 

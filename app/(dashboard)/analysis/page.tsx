@@ -2,7 +2,10 @@ import { Sparkles } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { EmptyState } from '@/components/layout/empty-state'
+import { InlineError } from '@/components/layout/inline-error'
+import { PageHeader } from '@/components/layout/page-header'
 import { Card } from '@/components/ui/card'
+import { StatusIndicator } from '@/components/ui/status-indicator'
 import {
   Table,
   TableBody,
@@ -13,38 +16,27 @@ import {
 } from '@/components/ui/table'
 import { formatDateTime } from '@/lib/utils'
 import { formatIdr, listJobs } from '@/modules/analysis'
-import type { JobStatus } from '@/types/domain'
 
 export const metadata: Metadata = { title: 'Analisis' }
-
-const STATUS_LABELS: Record<JobStatus, string> = {
-  queued: 'Menunggu',
-  running: 'Berjalan',
-  succeeded: 'Selesai',
-  partial: 'Selesai sebagian',
-  failed: 'Gagal',
-  cancelled: 'Dibatalkan',
-}
 
 export default async function AnalysisListPage() {
   const jobs = await listJobs()
 
   if (!jobs.ok) {
     return (
-      <p role="alert" className="text-sm text-destructive">
-        {jobs.error.message}
-      </p>
+      <div className="mx-auto max-w-wide">
+        <InlineError what={jobs.error.message} />
+      </div>
     )
   }
 
   return (
-    <section className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">Analisis</h1>
-        <p className="text-sm text-muted-foreground">
-          Riwayat job analisis beserta status dan biayanya.
-        </p>
-      </div>
+    <section className="mx-auto max-w-wide space-y-6">
+      <PageHeader
+        title="Analisis"
+        description="Riwayat job analisis beserta status dan biayanya."
+        crumbs={[{ label: 'Analisis' }]}
+      />
 
       {jobs.value.length === 0 ? (
         <EmptyState
@@ -54,35 +46,46 @@ export default async function AnalysisListPage() {
           action={{ label: 'Pilih dataset', href: '/datasets' }}
         />
       ) : (
-        <Card>
+        <Card className="overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Dataset</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Dianalisis</TableHead>
-                <TableHead className="text-right">Biaya</TableHead>
-                <TableHead>Dimulai</TableHead>
+                <TableHead className="hidden text-right sm:table-cell">Biaya</TableHead>
+                <TableHead className="hidden md:table-cell">Dimulai</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {jobs.value.map((job) => (
                 <TableRow key={job.id}>
                   <TableCell className="font-medium">
-                    <Link href={`/analysis/${job.id}`} className="hover:underline">
+                    <Link
+                      href={`/analysis/${job.id}`}
+                      className="rounded-chip hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
                       {job.datasetName}
                     </Link>
+                    <span className="mt-0.5 block text-xs text-muted-foreground md:hidden">
+                      {formatDateTime(job.createdAt)}
+                    </span>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {STATUS_LABELS[job.status]}
+                  <TableCell>
+                    <StatusIndicator status={job.status} size="sm" />
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {job.processedCount} / {job.totalCount}
+                    {job.failedCount > 0 ? (
+                      <span className="block text-xs text-notice">
+                        {job.failedCount} gagal
+                      </span>
+                    ) : null}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="hidden text-right tabular-nums sm:table-cell">
                     {job.costMicroIdr > 0 ? formatIdr(job.costMicroIdr) : '—'}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="hidden text-muted-foreground md:table-cell">
                     {formatDateTime(job.createdAt)}
                   </TableCell>
                 </TableRow>
