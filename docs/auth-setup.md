@@ -8,6 +8,35 @@ Kerjakan urut. Setiap langkah punya cara mengeceknya.
 
 ---
 
+## 0. Mode sementara: tanpa email (berlaku sekarang)
+
+Selama belum punya domain untuk Resend, email verifikasi dan reset password
+**dimatikan**. Dua saklar harus sepakat:
+
+| Saklar                                                                      | Mode tanpa email      | Mode email (langkah 1–7) |
+| --------------------------------------------------------------------------- | --------------------- | ------------------------ |
+| Supabase → Authentication → Sign In / Providers → Email → **Confirm email** | Off                   | On                       |
+| Env `NEXT_PUBLIC_EMAIL_LINKS_ENABLED` (Vercel + `.env.local`)               | kosong / tidak di-set | `true`                   |
+
+Dalam mode ini:
+
+- Daftar pakai email langsung masuk ke dashboard, tanpa verifikasi.
+- "Lupa password?" disembunyikan; `/forgot-password` dan `/verify-email`
+  dialihkan ke `/login`.
+- Ganti password tetap bisa dari **Pengaturan**, karena hanya butuh sesi login.
+- Pengguna yang lupa password tidak bisa memulihkannya sendiri, dan tombol
+  _Send password recovery_ di dashboard Supabase juga tidak akan sampai. Admin
+  menyetel password baru lewat admin API
+  (`auth.admin.updateUserById(id, { password })` dengan service-role key).
+
+Kalau saklar Supabase masih On tapi env kosong, form daftar menampilkan
+"server masih meminta verifikasi email" — itu tanda keduanya belum sepakat.
+
+Untuk kembali ke mode email: kerjakan langkah 1–7, set env ke `true`,
+redeploy, lalu nyalakan lagi _Confirm email_.
+
+---
+
 ## 1. Resend (pengirim email)
 
 Pengirim bawaan Supabase **hanya mengirim ke alamat anggota tim project** dan
