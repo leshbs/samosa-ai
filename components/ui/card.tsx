@@ -2,11 +2,18 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 
+/**
+ * A single surface: white, 1px ink-200 border, 14px radius, and no shadow
+ * (design_system.md §9.3) — on the cream canvas the border already separates
+ * it, and shadows are reserved for things that genuinely float. Cards are never
+ * nested: a card inside a card reads as two levels of importance where there is
+ * only one, so sub-sections use dividers and whitespace instead.
+ */
 const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn('rounded-xl border bg-card text-card-foreground shadow', className)}
+      className={cn('rounded-card border bg-card text-card-foreground', className)}
       {...props}
     />
   ),
