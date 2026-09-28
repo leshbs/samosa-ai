@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { clientEnv } from '@/lib/env'
 import { describeAuthError, isEmailNotConfirmed } from '@/lib/supabase/auth-error'
 import { createClient } from '@/lib/supabase/client'
 import { requestJson } from '@/modules/shared'
@@ -24,6 +25,8 @@ type LoginValues = z.infer<typeof loginSchema>
 export function LoginForm({ redirectTo }: { redirectTo: string }) {
   const router = useRouter()
   const [unconfirmed, setUnconfirmed] = useState(false)
+  // No reset or verification email to send without a domain (docs/auth-setup.md).
+  const emailLinks = clientEnv.NEXT_PUBLIC_EMAIL_LINKS_ENABLED
   const {
     register,
     handleSubmit,
@@ -98,12 +101,14 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
       <div className="space-y-2">
         <div className="flex items-baseline justify-between gap-4">
           <Label htmlFor="password">Password</Label>
-          <Link
-            href="/forgot-password"
-            className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-          >
-            Lupa password?
-          </Link>
+          {emailLinks ? (
+            <Link
+              href="/forgot-password"
+              className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              Lupa password?
+            </Link>
+          ) : null}
         </div>
         <Input
           id="password"
@@ -118,12 +123,25 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
 
       {unconfirmed ? (
         <div role="alert" className="space-y-1 text-sm">
-          <p className="text-destructive">
-            Email kamu belum diverifikasi. Buka tautan yang kami kirim saat mendaftar.
-          </p>
-          <Link href="/verify-email" className="font-medium text-foreground underline">
-            Kirim ulang email verifikasi
-          </Link>
+          {emailLinks ? (
+            <>
+              <p className="text-destructive">
+                Email kamu belum diverifikasi. Buka tautan yang kami kirim saat mendaftar.
+              </p>
+              <Link
+                href="/verify-email"
+                className="font-medium text-foreground underline"
+              >
+                Kirim ulang email verifikasi
+              </Link>
+            </>
+          ) : (
+            // Only an account made while verification was on can get here; there
+            // is no email to resend, so a person has to confirm it by hand.
+            <p className="text-destructive">
+              Akun ini belum diaktifkan. Hubungi admin SAMOSA untuk mengaktifkannya.
+            </p>
+          )}
         </div>
       ) : null}
 
