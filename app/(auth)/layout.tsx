@@ -1,16 +1,11 @@
-import Link from 'next/link'
+import { Logo } from '@/components/brand/logo'
 import { LegalFooter } from '@/components/layout/legal-footer'
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-5 bg-muted/40 p-4">
       {/* §5 wants a way back from everywhere, including the doors. */}
-      <Link
-        href="/"
-        className="rounded-chip text-lg font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-      >
-        SAMOSA
-      </Link>
+      <Logo />
       <div className="w-full max-w-sm rounded-card border bg-card p-6 shadow-card">
         {children}
       </div>
