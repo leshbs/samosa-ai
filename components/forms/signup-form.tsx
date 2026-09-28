@@ -7,12 +7,15 @@ import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { describeAuthError } from '@/lib/supabase/auth-error'
+import { authRedirectUrl } from '@/lib/supabase/auth-links'
 import { createClient } from '@/lib/supabase/client'
 import {
-  BACKEND_UNREACHABLE_MESSAGE,
-  isBackendUnreachable,
-} from '@/lib/supabase/auth-error'
+  FULL_NAME_METADATA_KEY,
+  ORGANIZATION_NAME_METADATA_KEY,
+} from '@/lib/supabase/user-metadata'
 import { requestJson } from '@/modules/shared'
+import { rememberPendingEmail } from './pending-email'
 
 const signupSchema = z.object({
   fullName: z.string().trim().min(2, 'Nama minimal 2 karakter').max(120),
@@ -22,7 +25,11 @@ const signupSchema = z.object({
     .min(2, 'Nama organisasi minimal 2 karakter')
     .max(120),
   email: z.string().email('Masukkan email yang valid'),
-  password: z.string().min(8, 'Password minimal 8 karakter'),
+  // 72 is bcrypt's input limit; GoTrue rejects anything longer.
+  password: z
+    .string()
+    .min(8, 'Password minimal 8 karakter')
+    .max(72, 'Password maksimal 72 karakter'),
 })
 
 type SignupValues = z.infer<typeof signupSchema>
@@ -41,23 +48,33 @@ export function SignupForm() {
     const { data, error } = await supabase.auth.signUp({
       email: values.email,
       password: values.password,
-      options: { data: { full_name: values.fullName } },
+      options: {
+        // Without this the confirmation link lands on the Site URL — the
+        // landing page — where nothing redeems it.
+        emailRedirectTo: authRedirectUrl('/confirm', '/dashboard'),
+        // The organization name rides along in metadata: with confirmation on
+        // there is no session yet, and /confirm creates the organization from it.
+        data: {
+          [FULL_NAME_METADATA_KEY]: values.fullName,
+          [ORGANIZATION_NAME_METADATA_KEY]: values.organizationName,
+        },
+      },
     })
 
     if (error) {
       // "Coba email lain" is bad advice when the server is simply down.
       setError('root', {
-        message: isBackendUnreachable(error)
-          ? BACKEND_UNREACHABLE_MESSAGE
-          : 'Pendaftaran gagal. Coba email lain.',
+        message: describeAuthError(error, 'Pendaftaran gagal. Coba email lain.'),
       })
       return
     }
 
-    // With email confirmation on there is no session yet; /callback provisions
-    // the organization instead once the user clicks the link in their inbox.
+    // With email confirmation on there is no session yet. This is also what an
+    // already-registered address gets back — Supabase will not say which, and
+    // neither do we.
     if (!data.session) {
-      router.replace('/login?pending=confirm')
+      rememberPendingEmail(values.email)
+      router.replace('/verify-email')
       return
     }
 

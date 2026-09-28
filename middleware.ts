@@ -12,7 +12,14 @@ const PROTECTED_PREFIXES = [
   '/reports',
   '/settings',
 ]
-const AUTH_PAGES = ['/login', '/signup']
+/** Pages for signed-out users; a signed-in visitor is sent to the dashboard. */
+const AUTH_PAGES = ['/login', '/signup', '/forgot-password', '/verify-email']
+/**
+ * Outside the dashboard shell but still needs a session — the one the recovery
+ * link created. Without it the form has nothing to update, so the only useful
+ * place to send the user is back to asking for a fresh link.
+ */
+const RECOVERY_PAGE = '/reset-password'
 
 function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some(
@@ -149,14 +156,23 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
+  // A redirect replaces `response`, so it has to carry the same headers.
+  const redirectTo = (url: URL) => {
+    const redirect = NextResponse.redirect(url)
+    redirect.headers.set('content-security-policy', csp)
+    redirect.headers.set(REQUEST_ID_HEADER, requestId)
+    return redirect
+  }
+
   if (!user && isProtected(pathname)) {
     const login = new URL('/login', request.url)
     // Send them back where they were headed once they are signed in.
     login.searchParams.set('next', `${pathname}${search}`)
-    const redirect = NextResponse.redirect(login)
-    redirect.headers.set('content-security-policy', csp)
-    redirect.headers.set(REQUEST_ID_HEADER, requestId)
-    return redirect
+    return redirectTo(login)
+  }
+
+  if (!user && pathname === RECOVERY_PAGE) {
+    return redirectTo(new URL('/forgot-password?error=expired', request.url))
   }
 
   // A signed-in user normally has no business on the login page. The exception
@@ -165,10 +181,7 @@ export async function middleware(request: NextRequest) {
   // /dashboard -> /login -> /dashboard until the browser gives up.
   const hasError = request.nextUrl.searchParams.has('error')
   if (user && AUTH_PAGES.includes(pathname) && !hasError) {
-    const redirect = NextResponse.redirect(new URL('/dashboard', request.url))
-    redirect.headers.set('content-security-policy', csp)
-    redirect.headers.set(REQUEST_ID_HEADER, requestId)
-    return redirect
+    return redirectTo(new URL('/dashboard', request.url))
   }
 
   return response
