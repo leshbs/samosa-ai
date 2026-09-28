@@ -1,9 +1,21 @@
+import Link from 'next/link'
+import { LegalFooter } from '@/components/layout/legal-footer'
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
-      <div className="w-full max-w-sm rounded-xl border bg-card p-6 shadow-sm">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-5 bg-muted/40 p-4">
+      {/* §5 wants a way back from everywhere, including the doors. */}
+      <Link
+        href="/"
+        className="rounded-chip text-lg font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      >
+        SAMOSA
+      </Link>
+      <div className="w-full max-w-sm rounded-card border bg-card p-6 shadow-card">
         {children}
       </div>
+      {/* Right under the sign-up form: the moment someone decides to trust us. */}
+      <LegalFooter />
     </div>
   )
 }

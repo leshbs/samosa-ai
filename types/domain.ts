@@ -12,11 +12,27 @@ export const JOB_STATUSES = [
   'queued',
   'running',
   'succeeded',
+  /** Some batches failed; the results that did land are still usable. */
+  'partial',
   'failed',
   'cancelled',
 ] as const
 export const jobStatusSchema = z.enum(JOB_STATUSES)
 export type JobStatus = z.infer<typeof jobStatusSchema>
+
+/**
+ * A job with something to read. `partial` earns its place: some batches
+ * failed, but the aspirations that did come back are still worth reading, and
+ * the report says so at the top.
+ */
+export const REPORTABLE_STATUSES = [
+  'succeeded',
+  'partial',
+] as const satisfies readonly JobStatus[]
+
+export function isReportable(status: JobStatus): boolean {
+  return (REPORTABLE_STATUSES as readonly JobStatus[]).includes(status)
+}
 
 export const ORG_ROLES = ['owner', 'admin', 'member', 'viewer'] as const
 export const orgRoleSchema = z.enum(ORG_ROLES)
@@ -45,6 +61,14 @@ export type Dataset = {
   storagePath: string | null
   responseCount: number
   uploaderId: string
+  /** Header the responses were taken from; null for datasets created before mapping. */
+  textColumnName: string | null
+  /**
+   * Extra columns the uploader ticked to keep beside the text. Empty is the
+   * default and the common case — §P4 requires the UI to state which columns a
+   * dataset holds, and "none" is the answer that most needs stating.
+   */
+  keptColumns: string[]
   createdAt: string
 }
 
@@ -66,6 +90,11 @@ export type AnalysisJob = {
   modelId: string
   processedCount: number
   totalCount: number
+  failedCount: number
+  inputTokens: number
+  outputTokens: number
+  /** Estimated spend in millionths of IDR; integer to avoid float drift. */
+  costMicroIdr: number
   errorMessage: string | null
   startedAt: string | null
   finishedAt: string | null

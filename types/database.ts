@@ -6,7 +6,13 @@
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[]
 
 export type Sentiment = 'positive' | 'neutral' | 'negative'
-export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+export type JobStatus =
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'partial'
+  | 'failed'
+  | 'cancelled'
 export type DatasetSource = 'csv' | 'xlsx' | 'google_forms' | 'manual'
 export type OrgRole = 'owner' | 'admin' | 'member' | 'viewer'
 
@@ -32,6 +38,7 @@ type DatasetsRow = {
   source: DatasetSource
   storage_path: string | null
   response_count: number
+  metadata: Json
   created_at: string
 }
 
@@ -53,6 +60,10 @@ type AnalysisJobsRow = {
   model_id: string | null
   processed_count: number
   total_count: number
+  failed_count: number
+  input_tokens: number
+  output_tokens: number
+  cost_micro_idr: number
   error_message: string | null
   started_at: string | null
   finished_at: string | null
@@ -84,6 +95,12 @@ type ReportsRow = {
   created_at: string
 }
 
+type RateLimitsRow = {
+  bucket: string
+  window_start: string
+  request_count: number
+}
+
 /** Columns with a database default are optional on insert. */
 type Table<Row, Generated extends keyof Row> = {
   Row: Row
@@ -97,7 +114,10 @@ export type Database = {
     Tables: {
       organizations: Table<OrganizationsRow, 'id' | 'created_at'>
       organization_members: Table<OrganizationMembersRow, 'role' | 'created_at'>
-      datasets: Table<DatasetsRow, 'id' | 'storage_path' | 'response_count' | 'created_at'>
+      datasets: Table<
+        DatasetsRow,
+        'id' | 'storage_path' | 'response_count' | 'metadata' | 'created_at'
+      >
       responses: Table<ResponsesRow, 'id' | 'respondent_meta' | 'created_at'>
       analysis_jobs: Table<
         AnalysisJobsRow,
@@ -106,6 +126,10 @@ export type Database = {
         | 'model_id'
         | 'processed_count'
         | 'total_count'
+        | 'failed_count'
+        | 'input_tokens'
+        | 'output_tokens'
+        | 'cost_micro_idr'
         | 'error_message'
         | 'started_at'
         | 'finished_at'
@@ -116,9 +140,15 @@ export type Database = {
         'id' | 'topics' | 'keywords' | 'summary' | 'created_at'
       >
       reports: Table<ReportsRow, 'id' | 'summary' | 'insights' | 'exported_at' | 'created_at'>
+      rate_limits: Table<RateLimitsRow, 'window_start' | 'request_count'>
     }
     Views: Record<never, never>
-    Functions: Record<never, never>
+    Functions: {
+      consume_rate_limit: {
+        Args: { p_bucket: string; p_limit: number; p_window_seconds: number }
+        Returns: Array<{ allowed: boolean; remaining: number; reset_at: string }>
+      }
+    }
     Enums: {
       sentiment: Sentiment
       job_status: JobStatus

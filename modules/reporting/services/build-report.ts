@@ -27,10 +27,10 @@ export async function buildReport(
     .eq('organization_id', input.organizationId)
 
   if (error) {
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not load analysis results'))
+    return err(appError(ERROR_CODES.INTERNAL, 'Hasil analisis tidak bisa dimuat'))
   }
   if (!rows || rows.length === 0) {
-    return err(appError(ERROR_CODES.NOT_FOUND, 'No analysis results for this job'))
+    return err(appError(ERROR_CODES.NOT_FOUND, 'Analisis ini belum punya hasil'))
   }
 
   const aggregate = aggregateResults(
