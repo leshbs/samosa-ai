@@ -99,7 +99,7 @@ samosa/
 
 ## 3. Build & Development Commands
 
-Prerequisites: **Node.js 20 LTS**, **pnpm 9+**, akses Supabase project.
+Prerequisites: **Node.js 22 LTS**, **pnpm 9+**, akses Supabase project.
 
 ```bash
 # ─── Setup awal ────────────────────────────

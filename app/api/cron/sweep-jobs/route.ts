@@ -8,7 +8,8 @@ export const maxDuration = 30
 
 /**
  * Fails analysis jobs that have been `running` far longer than any real job
- * could be. Scheduled every five minutes (`vercel.json`).
+ * could be. Scheduled once a day (`vercel.json`) — the most Vercel's Hobby plan
+ * allows; see docs/DEBT.md.
  *
  * Vercel Cron sends `Authorization: Bearer $CRON_SECRET` when that variable is
  * set. The check is fail-closed: with no secret configured the endpoint
