@@ -1,4 +1,4 @@
-import type { Report } from '@/types/domain'
+import type { Report, Sentiment } from '@/types/domain'
 
 /** RFC 4180 quoting: double the quotes, wrap whenever a delimiter can appear. */
 function escapeCell(value: string | number): string {
@@ -37,4 +37,32 @@ export function exportReportToCsv(report: Report): string {
   }
 
   return UTF8_BOM + toCsv(rows)
+}
+
+export type ExportableResponse = {
+  responseText: string
+  sentiment: Sentiment
+  confidence: number
+  topics: readonly string[]
+  keywords: readonly string[]
+}
+
+/**
+ * One row per aspiration, for the reader who wants to sort and pivot it
+ * themselves. Semicolons join the multi-value columns: a comma inside a cell is
+ * legal but turns every topic list into a quoting puzzle in a spreadsheet.
+ */
+export function exportResponsesToCsv(rows: readonly ExportableResponse[]): string {
+  const table: Array<Array<string | number>> = [
+    ['response', 'sentiment', 'sentiment_score', 'topics', 'keywords'],
+    ...rows.map((row) => [
+      row.responseText,
+      row.sentiment,
+      row.confidence.toFixed(2),
+      row.topics.join('; '),
+      row.keywords.join('; '),
+    ]),
+  ]
+
+  return UTF8_BOM + toCsv(table)
 }

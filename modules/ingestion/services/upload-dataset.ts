@@ -1,13 +1,13 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { DATASET_BUCKET, removeDatasetObject } from './dataset-storage'
 import { parseCsv, parseXlsx } from '../parsers'
 import { extractResponses, validateUploadSize } from '../validators/dataset-validator'
+import { validateFileSignature, validateUploadFile } from '../validators/file-signature'
 import { ERROR_CODES, appError, err, logger, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
 import type { DatasetSource } from '@/types/domain'
-
-const DATASET_BUCKET = 'datasets'
 
 export type UploadDatasetInput = {
   organizationId: string
@@ -15,6 +15,8 @@ export type UploadDatasetInput = {
   name: string
   source: DatasetSource
   textColumn: string
+  /** Columns stored beside the text. Empty — the default — stores none. */
+  keepColumns?: readonly string[]
   file: File
 }
 
@@ -27,17 +29,30 @@ export type UploadDatasetOutput = {
 export async function uploadDataset(
   input: UploadDatasetInput,
 ): Promise<Result<UploadDatasetOutput, AppError>> {
+  const nameCheck = validateUploadFile(input.file)
+  if (!nameCheck.ok) return nameCheck
+
   const sizeCheck = validateUploadSize(input.file.size)
   if (!sizeCheck.ok) return sizeCheck
 
   const buffer = await input.file.arrayBuffer()
+
+  // `source` arrives in the request body, so the bytes are the only honest
+  // account of what was actually uploaded.
+  const signatureCheck = validateFileSignature(buffer, input.source)
+  if (!signatureCheck.ok) return signatureCheck
+
   const parsed =
     input.source === 'xlsx'
       ? parseXlsx(buffer)
       : parseCsv(new TextDecoder('utf-8').decode(buffer))
   if (!parsed.ok) return parsed
 
-  const extracted = extractResponses(parsed.value, input.textColumn)
+  const extracted = extractResponses(
+    parsed.value,
+    input.textColumn,
+    input.keepColumns ?? [],
+  )
   if (!extracted.ok) return extracted
 
   const supabase = createAdminClient()
@@ -48,7 +63,7 @@ export async function uploadDataset(
     .upload(storagePath, buffer, { contentType: input.file.type, upsert: false })
 
   if (uploadError) {
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not store the uploaded file'))
+    return err(appError(ERROR_CODES.INTERNAL, 'File yang diunggah tidak bisa disimpan'))
   }
 
   const { data: dataset, error: datasetError } = await supabase
@@ -60,12 +75,21 @@ export async function uploadDataset(
       source: input.source,
       storage_path: storagePath,
       response_count: extracted.value.responses.length,
+      metadata: {
+        // Records which column the text came from, so a re-import is reproducible.
+        text_column_name: input.textColumn,
+        // And which columns were deliberately kept, so "what personal data does
+        // this dataset hold" is answerable without opening the rows.
+        kept_columns: [...(input.keepColumns ?? [])],
+      },
     })
     .select('id')
     .single()
 
   if (datasetError || !dataset) {
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not create the dataset record'))
+    // The bytes are already in the bucket and no row will ever point at them.
+    await removeDatasetObject(storagePath)
+    return err(appError(ERROR_CODES.INTERNAL, 'Dataset tidak bisa dibuat'))
   }
 
   const datasetId = String(dataset.id)
@@ -79,9 +103,14 @@ export async function uploadDataset(
   )
 
   if (responsesError) {
-    // Leave no half-ingested dataset behind; the row cascade removes responses.
+    // Leave no half-ingested dataset behind; the row cascade removes responses,
+    // and the upload has to go with it or the file outlives everything that
+    // referenced it.
     await supabase.from('datasets').delete().eq('id', datasetId)
-    return err(appError(ERROR_CODES.INTERNAL, 'Could not store dataset responses'))
+    await removeDatasetObject(storagePath)
+    return err(
+      appError(ERROR_CODES.INTERNAL, 'Aspirasi dari dataset tidak bisa disimpan'),
+    )
   }
 
   logger.info('ingestion.dataset.created', {

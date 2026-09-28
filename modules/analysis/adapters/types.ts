@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { AppError, Result } from '@/modules/shared'
 import { sentimentSchema } from '@/types/domain'
+import type { NormalizedSummary, SummaryPromptInput } from '../prompts'
 
 export const analyzedItemSchema = z.object({
   /** Index within the submitted batch — lets us map results back to responses. */
@@ -29,10 +30,24 @@ export type AdapterUsage = {
   outputTokens: number
 }
 
+export type SummaryInput = {
+  /** Aggregate figures plus the quotes the model may cite. */
+  data: SummaryPromptInput
+  promptVersion: string
+}
+
+export type SummaryOutput = NormalizedSummary & {
+  modelId: string
+  usage: AdapterUsage
+  costMicroIdr: number
+}
+
 export type BatchOutput = {
   items: AnalyzedItem[]
   modelId: string
   usage: AdapterUsage
+  /** Estimated spend for this call, in millionths of IDR. */
+  costMicroIdr: number
 }
 
 /**
@@ -42,4 +57,6 @@ export type BatchOutput = {
 export type LlmAdapter = {
   readonly name: string
   analyzeBatch(input: BatchInput): Promise<Result<BatchOutput, AppError>>
+  /** One call per report, not per response: the executive narrative. */
+  summarize(input: SummaryInput): Promise<Result<SummaryOutput, AppError>>
 }

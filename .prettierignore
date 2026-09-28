@@ -4,3 +4,14 @@ node_modules
 pnpm-lock.yaml
 playwright-report
 types/database.ts
+
+# Third-party agent tooling, checked out into the repo but not ours to format.
+.agents
+.aider-desk
+skills-lock.json
+
+# The design system spec, kept byte-for-byte as supplied. Reformatting it would
+# silently edit the document the UI is reviewed against — docs/design-system.md
+# is extracted verbatim from design_system.md, so both are left alone.
+design_system.md
+docs/design-system.md

@@ -21,9 +21,38 @@ file_size_limit = "10MiB"
 [auth]
 enabled = true
 site_url = "http://localhost:3000"
-additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+# /callback is the OAuth landing point, /confirm the one for every emailed link.
+additional_redirect_urls = [
+  "http://localhost:3000/callback",
+  "http://localhost:3000/confirm",
+]
 jwt_expiry = 3600
 enable_signup = true
+# Matches the signup and reset forms.
+minimum_password_length = 8
+
+[auth.email]
+enable_signup = true
+# On, as on the hosted project. Off locally is how the broken confirmation flow
+# went unnoticed: every local signup got a session straight away.
+enable_confirmations = true
+# Supabase refuses a second email to one address inside this window; the
+# resend buttons count down the same 60 seconds.
+max_frequency = "60s"
+
+[auth.email.template.confirmation]
+subject = "Konfirmasi email akun SAMOSA"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "Atur ulang password SAMOSA"
+content_path = "./supabase/templates/recovery.html"
+
+# Local mail catcher: every email the local stack sends lands at
+# http://localhost:54324 instead of a real inbox.
+[inbucket]
+enabled = true
+port = 54324
 
 [auth.external.google]
 enabled = true
