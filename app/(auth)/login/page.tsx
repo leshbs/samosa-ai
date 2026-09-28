@@ -3,27 +3,25 @@ import Link from 'next/link'
 import { GoogleButton } from '@/components/forms/google-button'
 import { LoginForm } from '@/components/forms/login-form'
 import { SignOutButton } from '@/components/forms/sign-out-button'
+import { safeNextPath } from '@/lib/security/safe-next-path'
 
 export const metadata: Metadata = { title: 'Masuk' }
 
-const MESSAGES: Record<string, string> = {
-  confirm: 'Cek email kamu untuk menyelesaikan pendaftaran.',
-}
-
 const ERRORS: Record<string, string> = {
   missing_code: 'Tautan masuk tidak lengkap. Coba lagi.',
-  invalid_code: 'Tautan masuk sudah kedaluwarsa. Minta tautan baru.',
+  invalid_code: 'Tautan masuk sudah kedaluwarsa atau sudah dipakai. Minta tautan baru.',
+  other_browser:
+    'Tautan ini tidak bisa dipakai di browser ini. Kalau email kamu sudah terverifikasi, masuk saja dengan password-mu.',
   provisioning: 'Akun kamu belum punya organisasi. Hubungi admin.',
 }
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; pending?: string; error?: string }>
+  searchParams: Promise<{ next?: string; error?: string }>
 }) {
   const params = await searchParams
-  const next = params.next?.startsWith('/') ? params.next : '/dashboard'
-  const notice = params.pending ? MESSAGES[params.pending] : undefined
+  const next = safeNextPath(params.next)
   const error = params.error ? ERRORS[params.error] : undefined
 
   return (
@@ -35,10 +33,12 @@ export default async function LoginPage({
         </p>
       </div>
 
-      {notice ? <p className="text-sm text-muted-foreground">{notice}</p> : null}
       {error ? (
         <div className="space-y-3">
-          <p role="alert" className="text-sm text-destructive">
+          <p
+            role="alert"
+            className="rounded-control border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+          >
             {error}
           </p>
           {params.error === 'provisioning' ? (
@@ -55,7 +55,7 @@ export default async function LoginPage({
         <span className="h-px flex-1 bg-border" />
       </div>
 
-      <GoogleButton label="Masuk dengan Google" />
+      <GoogleButton label="Masuk dengan Google" next={next} />
 
       <p className="text-center text-sm text-muted-foreground">
         Belum punya akun?{' '}

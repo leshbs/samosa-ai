@@ -1,0 +1,46 @@
+<!--
+  Supabase → Authentication → Emails → "Confirm signup".
+  Subject: Konfirmasi email akun SAMOSA
+
+  The link goes to our /confirm with a token hash rather than Supabase's
+  {{ .ConfirmationURL }}: the hash is redeemed server-side, so it works when the
+  email is opened on a different device from the one that signed up.
+  /confirm sends a confirmed signup to /dashboard.
+-->
+<div
+  style="
+    font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 24px;
+    color: #1a1a1a;
+  "
+>
+  <p style="font-size: 18px; font-weight: 600; margin: 0 0 16px">SAMOSA</p>
+  <p style="margin: 0 0 12px">Halo,</p>
+  <p style="margin: 0 0 20px">
+    Terima kasih sudah mendaftar. Klik tombol di bawah untuk memverifikasi email kamu dan
+    mengaktifkan akun.
+  </p>
+  <p style="margin: 0 0 24px">
+    <a
+      href="{{ .SiteURL }}/confirm?token_hash={{ .TokenHash }}&type=email"
+      style="
+        display: inline-block;
+        background: #1a1a1a;
+        color: #ffffff;
+        text-decoration: none;
+        padding: 10px 18px;
+        border-radius: 8px;
+        font-weight: 600;
+      "
+      >Verifikasi email</a
+    >
+  </p>
+  <p style="margin: 0 0 8px; font-size: 13px; color: #6b6b6b">
+    Tautan ini hanya bisa dipakai sekali dan kedaluwarsa dalam 24 jam.
+  </p>
+  <p style="margin: 0; font-size: 13px; color: #6b6b6b">
+    Kalau kamu tidak merasa mendaftar di SAMOSA, abaikan saja email ini.
+  </p>
+</div>

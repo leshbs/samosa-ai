@@ -18,6 +18,11 @@ export type SessionUser = {
   organizationId: string
   organizationName: string
   role: OrgRole
+  /**
+   * `true` when the account can sign in with a password. A Google-only account
+   * has no password to change, and its email is owned by Google.
+   */
+  hasPassword: boolean
 }
 
 /**
@@ -33,6 +38,11 @@ export async function getAuthUser(): Promise<Result<AuthUser, AppError>> {
   }
 
   return ok({ userId: data.user.id, email: data.user.email ?? '' })
+}
+
+/** Supabase lists every linked sign-in method in `app_metadata.providers`. */
+function hasEmailIdentity(providers: unknown): boolean {
+  return Array.isArray(providers) && providers.includes('email')
 }
 
 /**
@@ -78,6 +88,7 @@ export async function getSessionUser(): Promise<Result<SessionUser, AppError>> {
     organizationId,
     organizationName: organization?.name ?? 'Organisasi',
     role: membership.role as OrgRole,
+    hasPassword: hasEmailIdentity(auth.user.app_metadata?.providers),
   })
 }
 

@@ -2,14 +2,14 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { authRedirectUrl } from '@/lib/supabase/auth-links'
 import { createClient } from '@/lib/supabase/client'
-import { clientEnv } from '@/lib/env'
 
 /**
  * Google is configured in the Supabase dashboard, so the whole flow is a
  * redirect: Supabase → Google → back to /callback, which mints the session.
  */
-export function GoogleButton({ label }: { label: string }) {
+export function GoogleButton({ label, next }: { label: string; next?: string }) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -20,7 +20,7 @@ export function GoogleButton({ label }: { label: string }) {
     const supabase = createClient()
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${clientEnv.NEXT_PUBLIC_APP_URL}/callback` },
+      options: { redirectTo: authRedirectUrl('/callback', next) },
     })
 
     if (oauthError) {
