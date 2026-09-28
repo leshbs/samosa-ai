@@ -3,6 +3,9 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { DeleteDatasetButton } from '@/components/datasets/delete-dataset-button'
 import { EmptyState } from '@/components/layout/empty-state'
+import { InlineError } from '@/components/layout/inline-error'
+import { PageHeader } from '@/components/layout/page-header'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import {
@@ -20,49 +23,58 @@ import { listDatasets } from '@/modules/ingestion'
 export const metadata: Metadata = { title: 'Dataset' }
 
 export default async function DatasetsPage() {
-  const session = await getSessionUser()
-  const datasets = await listDatasets()
+  const [session, datasets] = await Promise.all([getSessionUser(), listDatasets()])
 
   if (!datasets.ok) {
     return (
-      <p role="alert" className="text-sm text-destructive">
-        {datasets.error.message}
-      </p>
+      <div className="mx-auto max-w-wide">
+        <InlineError what={datasets.error.message} />
+      </div>
     )
   }
 
   const canDelete = session.ok && can(session.value.role, 'dataset:delete')
+  // §5: an action this role cannot take is absent, not disabled.
+  const canUpload = session.ok && can(session.value.role, 'dataset:create')
 
   return (
-    <section className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold">Dataset</h1>
-          <p className="text-sm text-muted-foreground">
-            Semua aspirasi yang sudah diunggah organisasimu.
-          </p>
-        </div>
-        <Button asChild>
-          <Link href="/datasets/new">Unggah dataset</Link>
-        </Button>
-      </div>
+    <section className="mx-auto max-w-wide space-y-6">
+      <PageHeader
+        title="Dataset"
+        description="Semua aspirasi yang sudah diunggah organisasimu."
+        crumbs={[{ label: 'Dataset' }]}
+        actions={
+          canUpload ? (
+            <Button asChild>
+              <Link href="/datasets/new">
+                <Upload aria-hidden />
+                Unggah dataset
+              </Link>
+            </Button>
+          ) : null
+        }
+      />
 
       {datasets.value.length === 0 ? (
         <EmptyState
           icon={Upload}
           title="Belum ada dataset"
           description="Unggah hasil Google Forms dalam format CSV atau Excel untuk mulai menganalisis aspirasi."
-          action={{ label: 'Unggah dataset pertama', href: '/datasets/new' }}
+          action={
+            canUpload
+              ? { label: 'Unggah dataset pertama', href: '/datasets/new' }
+              : undefined
+          }
         />
       ) : (
-        <Card>
+        <Card className="overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Nama</TableHead>
-                <TableHead>Sumber</TableHead>
+                <TableHead className="hidden sm:table-cell">Sumber</TableHead>
                 <TableHead className="text-right">Aspirasi</TableHead>
-                <TableHead>Diunggah</TableHead>
+                <TableHead className="hidden md:table-cell">Diunggah</TableHead>
                 {canDelete ? <TableHead className="w-10" /> : null}
               </TableRow>
             </TableHeader>
@@ -70,17 +82,23 @@ export default async function DatasetsPage() {
               {datasets.value.map((dataset) => (
                 <TableRow key={dataset.id}>
                   <TableCell className="font-medium">
-                    <Link href={`/datasets/${dataset.id}`} className="hover:underline">
+                    <Link
+                      href={`/datasets/${dataset.id}`}
+                      className="rounded-chip hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
                       {dataset.name}
                     </Link>
+                    <span className="mt-0.5 block text-xs text-muted-foreground sm:hidden">
+                      {dataset.source.toUpperCase()} · {formatDateTime(dataset.createdAt)}
+                    </span>
                   </TableCell>
-                  <TableCell className="uppercase text-muted-foreground">
-                    {dataset.source}
+                  <TableCell className="hidden sm:table-cell">
+                    <Badge variant="muted">{dataset.source.toUpperCase()}</Badge>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {dataset.responseCount}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="hidden text-muted-foreground md:table-cell">
                     {formatDateTime(dataset.createdAt)}
                   </TableCell>
                   {canDelete ? (

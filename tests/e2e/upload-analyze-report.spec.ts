@@ -29,8 +29,16 @@ Hadi,Guru matematika menjelaskan dengan sangat jelas dan sabar
 test.describe('upload to report', () => {
   test('landing page invites the user to start an analysis', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: 'SAMOSA' })).toBeVisible()
-    await expect(page.getByRole('link', { name: 'Mulai analisis' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(
+      'laporan siap-cetak',
+    )
+    // The same call to action appears in the nav, the hero and the closing
+    // section; the hero's is the one that has to be visible on arrival.
+    await expect(
+      page.getByRole('main').getByRole('link', { name: 'Mulai gratis' }).first(),
+    ).toBeVisible()
+    // The page states its limits up front rather than in a footnote.
+    await expect(page.getByText('Maksimal 5.000 aspirasi')).toBeAttached()
   })
 
   test('the legal pages are reachable and bilingual', async ({ page }) => {

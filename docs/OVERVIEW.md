@@ -35,26 +35,28 @@ samosa/
 
 ### Tech stack
 
-| Layer         | Tech                            | Rasional                                                              |
-| ------------- | ------------------------------- | --------------------------------------------------------------------- |
-| Framework     | Next.js 15 (App Router)         | React SSR/RSC, TS-first, single deploy                                |
-| UI runtime    | React 19                        | Dipasangkan dengan Next 15; wajib untuk export PDF (ADR-0007)         |
-| Language      | TypeScript strict               | Type safety, portfolio-grade                                          |
-| Styling       | Tailwind CSS + shadcn/ui        | Utility-first, fully customizable                                     |
-| Charts        | Recharts / Tremor               | Dashboard-oriented                                                    |
-| Data fetching | TanStack Query                  | Cache, retry, realtime state                                          |
-| Validation    | Zod                             | Schema-first DTO validation                                           |
-| Database      | Supabase (Postgres)             | Managed, RLS built-in, generous free tier                             |
-| Auth          | Supabase Auth + Google OAuth    | Siap untuk Google Forms API                                           |
-| Storage       | Supabase Storage                | Upload CSV/Excel                                                      |
-| AI Provider   | **OpenAI API**                  | JSON mode / structured output, biaya per token kompetitif             |
-| Jobs          | Inngest atau Vercel cron        | Async LLM batch processing                                            |
-| Hosting       | Vercel                          | CI/CD dari GitHub, edge                                               |
-| Monitoring    | Log terstruktur + `requestId`   | Korelasi edge ke log line. Sentry belum dipasang, lihat `DEBT.md`     |
-| Rate limiting | Postgres (`consume_rate_limit`) | Tanpa vendor kedua; penghitung in-process tidak berguna di serverless |
-| PDF export    | @react-pdf/renderer             | Jalan di Node function biasa, tanpa binary Chromium (ADR-0004)        |
-| Testing       | Vitest + Playwright             | Unit + E2E                                                            |
-| Package mgr   | pnpm                            | Fast, disk-efficient                                                  |
+| Layer         | Tech                            | Rasional                                                               |
+| ------------- | ------------------------------- | ---------------------------------------------------------------------- |
+| Framework     | Next.js 15 (App Router)         | React SSR/RSC, TS-first, single deploy                                 |
+| UI runtime    | React 19                        | Dipasangkan dengan Next 15; wajib untuk export PDF (ADR-0007)          |
+| Language      | TypeScript strict               | Type safety, portfolio-grade                                           |
+| Styling       | Tailwind CSS + shadcn/ui        | Utility-first, fully customizable                                      |
+| Design system | `design_system.md`              | Token warna, tipe, gradien, dan layout; komponen Watermelon UI di-port |
+| Animation     | motion (`m.*`) + GSAP (lazy)    | Motion untuk state komponen, GSAP untuk scroll/pointer (ADR-0008)      |
+| Charts        | Recharts / Tremor               | Dashboard-oriented                                                     |
+| Data fetching | TanStack Query                  | Cache, retry, realtime state                                           |
+| Validation    | Zod                             | Schema-first DTO validation                                            |
+| Database      | Supabase (Postgres)             | Managed, RLS built-in, generous free tier                              |
+| Auth          | Supabase Auth + Google OAuth    | Siap untuk Google Forms API                                            |
+| Storage       | Supabase Storage                | Upload CSV/Excel                                                       |
+| AI Provider   | **OpenAI API**                  | JSON mode / structured output, biaya per token kompetitif              |
+| Jobs          | Inngest atau Vercel cron        | Async LLM batch processing                                             |
+| Hosting       | Vercel                          | CI/CD dari GitHub, edge                                                |
+| Monitoring    | Log terstruktur + `requestId`   | Korelasi edge ke log line. Sentry belum dipasang, lihat `DEBT.md`      |
+| Rate limiting | Postgres (`consume_rate_limit`) | Tanpa vendor kedua; penghitung in-process tidak berguna di serverless  |
+| PDF export    | @react-pdf/renderer             | Jalan di Node function biasa, tanpa binary Chromium (ADR-0004)         |
+| Testing       | Vitest + Playwright             | Unit + E2E                                                             |
+| Package mgr   | pnpm                            | Fast, disk-efficient                                                   |
 
 ### External APIs
 
@@ -154,6 +156,8 @@ GOOGLE_OAUTH_CLIENT_SECRET=
 SENTRY_DSN=
 ```
 
+> **Auth butuh setelan di luar repo** — SMTP (Resend), Site URL, redirect URL, template email, dan consent screen Google. Langkahnya di **[`docs/auth-setup.md`](auth-setup.md)**; tanpa itu email verifikasi dan reset tidak sampai ke pengguna.
+
 > **`pnpm build` membutuhkan env vars.** `lib/env.ts` memvalidasi saat module load (sesuai Security standards: crash on startup, bukan crash on first request), jadi build tanpa env akan gagal di tahap "Collecting page data". Di CI dan Vercel, set env vars sebagai secrets sebelum build. Ini disengaja — jangan "diperbaiki" dengan membuat validasi jadi lazy.
 
 ---
@@ -165,7 +169,9 @@ SENTRY_DSN=
 ```
 samosa/
 ├── app/                             # Routing & pages only — NO business logic
-│   ├── (auth)/                      # Login, signup
+│   ├── (auth)/                      # Login, signup, lupa/reset password, verifikasi email
+│   │   ├── callback/route.ts        # Landing OAuth (Google)
+│   │   └── confirm/route.ts         # Landing setiap tautan email (ADR-0009)
 │   ├── (dashboard)/                 # Authenticated app shell
 │   │   ├── datasets/
 │   │   ├── analysis/[id]/
@@ -442,6 +448,7 @@ Audit penuh beserta buktinya ada di **[`docs/security-audit.md`](security-audit.
 - ✅ **Sanitasi unggahan file** — magic bytes, whitelist ekstensi dan MIME, batas ukuran dan jumlah baris (`modules/ingestion/validators/file-signature.ts`). `source` datang dari body request, jadi byte-nya satu-satunya keterangan jujur soal isi file.
 - ✅ **CSRF** — pengecekan `Origin` untuk setiap metode tulis di middleware; `/api/webhooks/*` dikecualikan karena memakai shared secret.
 - ✅ **Content Security Policy** — nonce per request, `strict-dynamic`, plus header konstan di `next.config.ts`. Nol pelanggaran di enam route, diperiksa di browser sungguhan.
+- ✅ **Auth** — email wajib diverifikasi; tautan email ditebus di server lewat `token_hash` (ADR-0009); reset password mengeluarkan sesi di perangkat lain; form lupa-password tidak membocorkan email mana yang terdaftar; setiap `?next=` lewat `safeNextPath()` (menutup open redirect `//` dan `/\`). Diverifikasi end-to-end di project hosted dengan akun sekali pakai. Pengiriman email sungguhan menunggu SMTP — lihat `DEBT.md`.
 - ✅ **Korelasi log** — satu `requestId` dari edge sampai ke log line, dikembalikan sebagai header `x-request-id`.
 - 🟡 **Rate limiting di endpoint upload dan analysis** — kodenya ada dan gagal-terbuka dengan benar, tapi migrasinya belum diterapkan ke project hosted. Postgres, bukan Upstash: penghitung in-process tidak berguna di serverless. Lihat `DEBT.md`.
 - ⬜ **PII handling** — belum diimplementasi. Rencana: opsi anonymize (hapus nama, email) sebelum data disimpan. Saat ini `respondent_meta` disimpan apa adanya dan **tidak** ikut dikirim ke LLM.
