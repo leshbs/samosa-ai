@@ -84,6 +84,7 @@ describe('getSessionUser', () => {
         organizationId: 'org-1',
         organizationName: 'OSIS Nusantara',
         role: 'admin',
+        hasPassword: false,
       },
     })
   })
@@ -112,6 +113,35 @@ describe('getSessionUser', () => {
 
     expect(result.ok).toBe(true)
     if (result.ok) expect(result.value.displayName).toBe('Rani Putri')
+  })
+
+  it('knows whether the account has a password to change', async () => {
+    const membership = (table: string) =>
+      table === 'organization_members'
+        ? membershipQuery({
+            data: { organization_id: 'org-1', role: 'owner' },
+            error: null,
+          })
+        : organizationQuery({ data: { name: 'OSIS Nusantara' }, error: null })
+    from.mockImplementation(membership)
+
+    const withProviders = (providers: unknown) => ({
+      data: {
+        user: { id: 'user-1', email: 'ketua@osis.test', app_metadata: { providers } },
+      },
+      error: null,
+    })
+
+    getUser.mockResolvedValue(withProviders(['google']))
+    const googleOnly = await getSessionUser()
+    getUser.mockResolvedValue(withProviders(['google', 'email']))
+    const linked = await getSessionUser()
+    getUser.mockResolvedValue(SIGNED_IN)
+    const unknown = await getSessionUser()
+
+    expect(googleOnly.ok && googleOnly.value.hasPassword).toBe(false)
+    expect(linked.ok && linked.value.hasPassword).toBe(true)
+    expect(unknown.ok && unknown.value.hasPassword).toBe(false)
   })
 
   it('fails as UNAUTHORIZED when the session is missing', async () => {
