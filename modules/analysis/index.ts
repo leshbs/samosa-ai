@@ -11,6 +11,9 @@ export {
   listJobResults,
   getLatestJobForDataset,
   getUsageSummary,
+  countReports,
+  countResultsBySentiment,
+  MAX_COUNTED_JOBS,
 } from './services/job-queries'
 export type { JobListItem, AnalysisResultRow, UsageSummary } from './services/job-queries'
 export { analyzeResponses, BATCH_SIZE, MAX_CONCURRENCY } from './services/orchestrator'

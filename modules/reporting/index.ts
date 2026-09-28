@@ -5,6 +5,14 @@ export { aggregateResults } from './aggregators/report-aggregator'
 export type { AggregateInput, ReportAggregate } from './aggregators/report-aggregator'
 export { buildDashboardData } from './aggregators/dashboard'
 export type { DashboardData, DashboardOptions } from './aggregators/dashboard'
+export { buildHomeSummary, RECENT_LIMIT, TREND_POINTS } from './aggregators/home'
+export type {
+  HomeJob,
+  HomeSummary,
+  HomeSummaryInput,
+  LatestReport,
+  RecentAnalysis,
+} from './aggregators/home'
 export { aggregateSentiment } from './aggregators/sentiment'
 export type { SentimentDistribution } from './aggregators/sentiment'
 export { aggregateTopics, DEFAULT_TOP_TOPICS } from './aggregators/topics'
