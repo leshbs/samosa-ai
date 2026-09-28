@@ -11,7 +11,7 @@ siap-print.
 
 ## Prerequisites
 
-- Node.js 20 LTS
+- Node.js 22 LTS
 - pnpm 9+ (`corepack enable pnpm`)
 - Akses ke sebuah project Supabase (atau Docker untuk Supabase lokal)
 - OpenAI API key

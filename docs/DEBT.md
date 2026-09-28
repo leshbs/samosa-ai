@@ -390,6 +390,18 @@ Tidak bisa diisi dari kode — butuh identitas hukum sungguhan.
 **Pemicu:** pengguna pertama yang bukan pembuatnya. **Bayar dengan:** isi empat
 nilai itu; banner-nya hilang sendiri.
 
+### Sweeper hanya jalan sekali sehari
+
+Paket Hobby Vercel menolak deployment yang punya cron lebih sering dari sekali
+sehari, jadi `sweep-jobs` dijadwalkan `0 3 * * *` (10.00 WIB), bukan tiap lima
+menit. Akibatnya job yang mati di tengah jalan bisa terlihat "berjalan" sampai
+~24 jam sebelum ditandai gagal, dan halaman laporannya menunggu selama itu.
+
+**Pemicu:** job nyangkut pertama yang dilaporkan penguji, atau pindah ke paket
+Pro. **Bayar dengan:** kembalikan jadwal ke `*/5 * * * *` di Pro, atau panggil
+`sweepStuckJobs()` saat status job dibaca, supaya pembacanya sendiri yang
+memicu penyapuan.
+
 ### Sweeper jalan tanpa jejak siapa yang menyapu
 
 [`sweepStuckJobs`](../modules/analysis/services/stuck-job-sweeper.ts) menandai
