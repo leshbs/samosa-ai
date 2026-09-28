@@ -390,6 +390,20 @@ Tidak bisa diisi dari kode — butuh identitas hukum sungguhan.
 **Pemicu:** pengguna pertama yang bukan pembuatnya. **Bayar dengan:** isi empat
 nilai itu; banner-nya hilang sendiri.
 
+### Email verifikasi dan reset password dimatikan
+
+Belum ada domain untuk mengirim email (Resend), jadi _Confirm email_ di
+Supabase Off dan `NEXT_PUBLIC_EMAIL_LINKS_ENABLED` kosong
+([`docs/auth-setup.md`](auth-setup.md) §0). Akibatnya:
+
+- Siapa pun bisa mendaftar memakai alamat email orang lain; tidak ada yang
+  membuktikan pemilik alamatnya.
+- Pengguna yang lupa password tidak bisa memulihkannya sendiri.
+
+**Pemicu:** ada domain, atau penguji pertama yang lupa password. **Bayar
+dengan:** langkah 1–7 di `docs/auth-setup.md`, env ke `true`, _Confirm email_
+On. Kodenya (ADR-0009) sudah ada dan tidak perlu diubah.
+
 ### Sweeper hanya jalan sekali sehari
 
 Paket Hobby Vercel menolak deployment yang punya cron lebih sering dari sekali

@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { clientEnv } from '@/lib/env'
 import { describeAuthError } from '@/lib/supabase/auth-error'
 import { authRedirectUrl } from '@/lib/supabase/auth-links'
 import { createClient } from '@/lib/supabase/client'
@@ -73,8 +74,18 @@ export function SignupForm() {
     // already-registered address gets back — Supabase will not say which, and
     // neither do we.
     if (!data.session) {
-      rememberPendingEmail(values.email)
-      router.replace('/verify-email')
+      if (clientEnv.NEXT_PUBLIC_EMAIL_LINKS_ENABLED) {
+        rememberPendingEmail(values.email)
+        router.replace('/verify-email')
+        return
+      }
+      // Email links are off in the app but Supabase still wants a confirmation:
+      // the two switches disagree (docs/auth-setup.md). Say so rather than send
+      // the user to wait for an email that will never be sent.
+      setError('root', {
+        message:
+          'Akun dibuat, tapi server masih meminta verifikasi email. Hubungi admin SAMOSA.',
+      })
       return
     }
 
