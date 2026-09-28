@@ -9,6 +9,16 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname),
   // Keep heavy server-only deps out of the client bundle.
   serverExternalPackages: ['openai', 'xlsx'],
+  /**
+   * Rewrites barrel imports to deep ones at build time. These four are all
+   * re-export barrels: `import { LineChart } from 'recharts'` otherwise pulls
+   * the module graph for every chart type recharts ships, and date-fns pulls
+   * every locale. lucide-react is on Next's default list already; it is repeated
+   * here so the set is visible in one place rather than half-inherited.
+   */
+  experimental: {
+    optimizePackageImports: ['recharts', 'motion', 'date-fns', 'lucide-react'],
+  },
   eslint: {
     dirs: ['app', 'components', 'lib', 'modules', 'tests'],
   },
