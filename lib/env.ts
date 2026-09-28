@@ -9,6 +9,16 @@ const clientSchema = z.object({
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
   NEXT_PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
   NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),
+  /**
+   * Whether the app sends email links: signup verification and password reset.
+   * Off until there is a domain to send from (docs/auth-setup.md); the Supabase
+   * "Confirm email" switch has to agree with it, or signups wait on an email
+   * that never comes. Anything but the literal "true" is off.
+   */
+  NEXT_PUBLIC_EMAIL_LINKS_ENABLED: z
+    .string()
+    .optional()
+    .transform((value) => value === 'true'),
 })
 
 const serverSchema = clientSchema.extend({
@@ -50,6 +60,7 @@ export const clientEnv: ClientEnv = parse(clientSchema, {
   NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
   NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY,
+  NEXT_PUBLIC_EMAIL_LINKS_ENABLED: process.env.NEXT_PUBLIC_EMAIL_LINKS_ENABLED,
 })
 
 let cachedServerEnv: ServerEnv | undefined

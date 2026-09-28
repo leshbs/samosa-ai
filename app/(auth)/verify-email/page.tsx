@@ -1,10 +1,15 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { ResendConfirmationForm } from '@/components/forms/resend-confirmation-form'
+import { clientEnv } from '@/lib/env'
 
 export const metadata: Metadata = { title: 'Verifikasi email' }
 
 export default function VerifyEmailPage() {
+  // With email links off nothing was sent, so there is no inbox to check.
+  if (!clientEnv.NEXT_PUBLIC_EMAIL_LINKS_ENABLED) redirect('/login')
+
   return (
     <div className="space-y-6">
       <div className="space-y-1">

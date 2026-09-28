@@ -40,6 +40,8 @@ const USER_FIXABLE: Partial<Record<string, string>> = {
   weak_password: 'Password terlalu lemah. Pakai minimal 8 karakter yang sulit ditebak.',
   same_password: 'Password baru harus berbeda dari password lama.',
   email_address_invalid: 'Alamat email ini tidak bisa dipakai. Coba email lain.',
+  // Only reported with email confirmation off; with it on, Supabase hides it.
+  user_already_exists: 'Email ini sudah terdaftar. Silakan masuk.',
 }
 
 /**

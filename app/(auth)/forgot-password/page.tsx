@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { ForgotPasswordForm } from '@/components/forms/forgot-password-form'
+import { clientEnv } from '@/lib/env'
 
 export const metadata: Metadata = { title: 'Lupa password' }
 
@@ -15,6 +17,11 @@ export default async function ForgotPasswordPage({
 }: {
   searchParams: Promise<{ error?: string }>
 }) {
+  // No reset email can be sent without a domain; a form that pretends to send
+  // one would leave the user waiting. Signed-in users change their password
+  // from Settings, which needs no email.
+  if (!clientEnv.NEXT_PUBLIC_EMAIL_LINKS_ENABLED) redirect('/login')
+
   const params = await searchParams
   const error = params.error ? ERRORS[params.error] : undefined
 
