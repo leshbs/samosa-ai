@@ -5,6 +5,7 @@ export { parseCsv, parseXlsx } from './parsers'
 export type { ParsedSheet, SheetRow } from './parsers'
 export {
   listDatasets,
+  countDatasets,
   getDataset,
   listResponses,
   deleteDataset,

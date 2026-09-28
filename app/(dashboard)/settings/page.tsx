@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { EditableNameForm } from '@/components/settings/editable-name-form'
+import { PageHeader } from '@/components/layout/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatIdr, getUsageSummary } from '@/modules/analysis'
 import { can, getSessionUser } from '@/modules/auth'
@@ -39,13 +41,12 @@ export default async function SettingsPage() {
     : []
 
   return (
-    <section className="max-w-2xl space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">Pengaturan</h1>
-        <p className="text-sm text-muted-foreground">
-          Detail akun, organisasi, dan pemakaian.
-        </p>
-      </div>
+    <section className="mx-auto max-w-narrative space-y-6">
+      <PageHeader
+        title="Pengaturan"
+        description="Detail akun, organisasi, dan pemakaian."
+        crumbs={[{ label: 'Pengaturan' }]}
+      />
 
       <Card>
         <CardHeader>
@@ -66,9 +67,22 @@ export default async function SettingsPage() {
             <span className="text-muted-foreground">Email</span>
             <span className="font-medium">{session.value.email}</span>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Email terikat ke akun Google-mu dan diubah dari sana.
-          </p>
+          {session.value.hasPassword ? (
+            <div className="flex items-center justify-between gap-4 text-sm">
+              <span className="text-muted-foreground">Password</span>
+              <Link
+                href="/reset-password"
+                className="font-medium underline underline-offset-4"
+              >
+                Ganti password
+              </Link>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Kamu masuk dengan Google. Email terikat ke akun Google-mu dan diubah dari
+              sana.
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -77,19 +91,34 @@ export default async function SettingsPage() {
           <CardTitle className="text-base">Organisasi</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <EditableNameForm
-            id="organization-name"
-            label="Nama organisasi"
-            endpoint="/api/settings/organization"
-            field="name"
-            initialValue={session.value.organizationName}
-            successMessage="Nama organisasi tersimpan."
-            description="Muncul di header dan di setiap laporan yang diekspor."
-            disabled={!canManageOrg}
-            disabledReason={`Hanya pemilik yang bisa mengubah ini. Peranmu: ${
-              ROLE_LABELS[session.value.role] ?? session.value.role
-            }.`}
-          />
+          {/**
+           * §5: no disabled controls for a role that cannot use them. A member
+           * used to get the full form with a dead Save button; now they get the
+           * value as text, which is the part they can actually use, and the
+           * reason it is not editable.
+           */}
+          {canManageOrg ? (
+            <EditableNameForm
+              id="organization-name"
+              label="Nama organisasi"
+              endpoint="/api/settings/organization"
+              field="name"
+              initialValue={session.value.organizationName}
+              successMessage="Nama organisasi tersimpan."
+              description="Muncul di header dan di setiap laporan yang diekspor."
+            />
+          ) : (
+            <div className="space-y-1">
+              <div className="flex justify-between gap-4 text-sm">
+                <span className="text-muted-foreground">Nama organisasi</span>
+                <span className="font-medium">{session.value.organizationName}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Hanya pemilik yang bisa mengubah ini. Peranmu:{' '}
+                {ROLE_LABELS[session.value.role] ?? session.value.role}.
+              </p>
+            </div>
+          )}
 
           <div className="flex justify-between gap-4 text-sm">
             <span className="text-muted-foreground">Peran</span>
