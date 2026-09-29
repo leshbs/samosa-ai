@@ -23,7 +23,10 @@ Dalam mode ini:
 - Daftar pakai email langsung masuk ke dashboard, tanpa verifikasi.
 - "Lupa password?" disembunyikan; `/forgot-password` dan `/verify-email`
   dialihkan ke `/login`.
-- Ganti password tetap bisa dari **Pengaturan**, karena hanya butuh sesi login.
+- Ganti password tetap bisa dari **Profil**, karena hanya butuh sesi login.
+- Undangan anggota tetap jalan: form undangan menampilkan tautannya untuk
+  dibagikan sendiri. Email aplikasi (undangan, serah terima, "analisis selesai")
+  menunggu `RESEND_API_KEY` dan `EMAIL_FROM` — langkah 1.4.
 - Pengguna yang lupa password tidak bisa memulihkannya sendiri, dan tombol
   _Send password recovery_ di dashboard Supabase juga tidak akan sampai. Admin
   menyetel password baru lewat admin API
@@ -49,6 +52,18 @@ verifikasi maupun reset sampai SMTP sendiri dipasang.
    di pengelola DNS domain. Tunggu sampai statusnya **Verified**.
 3. **API Keys → Create API Key**, izin _Sending access_ saja, dibatasi ke domain
    tadi. Simpan kuncinya — hanya ditampilkan sekali.
+4. **Email dari aplikasi sendiri** (ADR-0011: undangan anggota, pemberitahuan
+   serah terima kepemilikan, "analisis selesai"). Di Vercel → Settings →
+   Environment Variables, isi keduanya lalu redeploy:
+
+   | Env              | Isi                                               |
+   | ---------------- | ------------------------------------------------- |
+   | `RESEND_API_KEY` | kunci dari langkah 3 (atau kunci kedua, terpisah) |
+   | `EMAIL_FROM`     | `SAMOSA <noreply@mail.domainmu.id>`               |
+
+   Tanpa tanda kutip. Keduanya atau tidak sama sekali — satu saja dianggap mati.
+   Cek: tab **Pengaturan → Notifikasi** tidak lagi menampilkan "Server ini belum
+   bisa mengirim email".
 
 Batas paket gratis Resend saat dokumen ini ditulis: 3.000 email per bulan,
 100 per hari. Cukup untuk pilot; cek ulang sebelum dipakai banyak organisasi.
@@ -97,6 +112,9 @@ bawaan — itu yang membuat tautannya jalan di perangkat lain (ADR-0009).
 - **Email:** _Confirm email_ **On**. _Minimum password length_ **8** (sama dengan
   form). _Secure email change_ On.
 - **Google:** sudah On. Client ID dan secret dari langkah 6.
+- **Allow manual linking:** On. Dipakai tombol **Tautkan Google** di Profil
+  (`linkIdentity`); selama mati, tombol itu menampilkan "Menautkan akun belum
+  diaktifkan di server ini".
 
 ## 6. Google Cloud Console
 
@@ -117,6 +135,10 @@ bawaan — itu yang membuat tautannya jalan di perangkat lain (ADR-0009).
 4. Keluar → **Lupa password?** → email "Atur ulang password SAMOSA" datang →
    tautannya membuka "Atur password baru" → simpan → masuk dengan password baru.
 5. Masuk dengan Google dari akun yang bukan _test user_.
+6. **Pengaturan → Anggota → Undang anggota** ke alamat lain → email "Undangan
+   bergabung ke …" datang, tautannya membuka halaman undangan.
+7. Dari akun password: **Profil → Cara masuk → Tautkan Google** → kembali ke
+   Profil dengan Google tertaut.
 
 Kalau langkah 3 mendarat di landing page, Site URL atau template belum diganti.
 Kalau muncul "Tautan ini tidak bisa dipakai di browser ini", template masih yang

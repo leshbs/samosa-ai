@@ -21,10 +21,11 @@ function membershipQuery(result: { data: unknown; error: unknown }) {
   }
 }
 
+/** Serves both the organization (`single`) and the profile (`maybeSingle`). */
 function organizationQuery(result: { data: unknown; error: unknown }) {
   return {
     select: () => ({
-      eq: () => ({ single: async () => result }),
+      eq: () => ({ single: async () => result, maybeSingle: async () => result }),
     }),
   }
 }
@@ -81,8 +82,11 @@ describe('getSessionUser', () => {
         userId: 'user-1',
         email: 'ketua@osis.test',
         displayName: '',
+        title: '',
+        avatarPath: null,
         organizationId: 'org-1',
         organizationName: 'OSIS Nusantara',
+        organizationTimezone: 'Asia/Jakarta',
         role: 'admin',
         hasPassword: false,
       },
@@ -113,6 +117,77 @@ describe('getSessionUser', () => {
 
     expect(result.ok).toBe(true)
     if (result.ok) expect(result.value.displayName).toBe('Rani Putri')
+  })
+
+  it('prefers the profile name and carries title and timezone', async () => {
+    getUser.mockResolvedValue({
+      data: {
+        user: {
+          id: 'user-1',
+          email: 'ketua@osis.test',
+          user_metadata: { full_name: 'Nama Lama' },
+        },
+      },
+      error: null,
+    })
+    from.mockImplementation((table: string) => {
+      if (table === 'organization_members') {
+        return membershipQuery({
+          data: { organization_id: 'org-1', role: 'owner' },
+          error: null,
+        })
+      }
+      if (table === 'profiles') {
+        return organizationQuery({
+          data: {
+            display_name: 'Rani Putri',
+            title: 'Sekretaris OSIS 2026/2027',
+            avatar_path: 'user/user-1/avatar.png',
+          },
+          error: null,
+        })
+      }
+      return organizationQuery({
+        data: { name: 'OSIS Nusantara', timezone: 'Asia/Makassar' },
+        error: null,
+      })
+    })
+
+    const result = await getSessionUser()
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.value.displayName).toBe('Rani Putri')
+    expect(result.value.title).toBe('Sekretaris OSIS 2026/2027')
+    expect(result.value.avatarPath).toBe('user/user-1/avatar.png')
+    expect(result.value.organizationTimezone).toBe('Asia/Makassar')
+  })
+
+  it('survives a database that has not had the settings migration yet', async () => {
+    getUser.mockResolvedValue(SIGNED_IN)
+    from.mockImplementation((table: string) => {
+      if (table === 'organization_members') {
+        return membershipQuery({
+          data: { organization_id: 'org-1', role: 'owner' },
+          error: null,
+        })
+      }
+      if (table === 'profiles') {
+        return organizationQuery({
+          data: null,
+          error: { code: '42P01', message: 'relation "profiles" does not exist' },
+        })
+      }
+      // No timezone column: the row simply lacks the key.
+      return organizationQuery({ data: { name: 'OSIS Nusantara' }, error: null })
+    })
+
+    const result = await getSessionUser()
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.value.organizationTimezone).toBe('Asia/Jakarta')
+    expect(result.value.title).toBe('')
   })
 
   it('knows whether the account has a password to change', async () => {

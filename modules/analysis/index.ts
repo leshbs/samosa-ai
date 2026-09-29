@@ -11,11 +11,18 @@ export {
   listJobResults,
   getLatestJobForDataset,
   getUsageSummary,
+  getJobSnapshot,
   countReports,
   countResultsBySentiment,
   MAX_COUNTED_JOBS,
 } from './services/job-queries'
-export type { JobListItem, AnalysisResultRow, UsageSummary } from './services/job-queries'
+export type {
+  JobListItem,
+  JobSnapshot,
+  ListJobsOptions,
+  AnalysisResultRow,
+  UsageSummary,
+} from './services/job-queries'
 export { analyzeResponses, BATCH_SIZE, MAX_CONCURRENCY } from './services/orchestrator'
 export { planBatches, MAX_ANALYZED_LENGTH } from './services/batcher'
 export type { BatchPlan, Analyzable } from './services/batcher'

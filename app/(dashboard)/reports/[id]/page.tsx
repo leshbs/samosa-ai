@@ -24,7 +24,7 @@ import { StatTile } from '@/components/reports/stat-tile'
 import { TopicTail } from '@/components/reports/topic-tail'
 import { Button } from '@/components/ui/button'
 import { formatIdr, getJob, listJobResults } from '@/modules/analysis'
-import { can, getSessionUser } from '@/modules/auth'
+import { can, getPeople, getSessionUser } from '@/modules/auth'
 import { getDataset } from '@/modules/ingestion'
 import {
   OTHER_TOPIC_LABEL,
@@ -73,6 +73,15 @@ export default async function ReportDetailPage({
   // Regenerating spends the organization's OpenAI budget, so it is gated on the
   // same permission the endpoint checks rather than on a weaker read right.
   const canRegenerate = session.ok && can(session.value.role, 'analysis:run')
+  const timezone = session.ok ? session.value.organizationTimezone : undefined
+  // "Dijalankan oleh" in the provenance strip; read under RLS, so only a
+  // colleague's name comes back.
+  const runner = job.value.createdBy
+    ? (await getPeople([job.value.createdBy])).get(job.value.createdBy)
+    : undefined
+  const runBy = runner?.displayName.trim()
+    ? [runner.displayName.trim(), runner.title.trim()].filter(Boolean).join(' · ')
+    : null
 
   if (rows.length === 0) {
     return (
@@ -151,6 +160,7 @@ export default async function ReportDetailPage({
             summary={stored?.summary ?? null}
             generatedAt={stored?.createdAt ?? null}
             canRegenerate={canRegenerate}
+            timeZone={timezone}
           />
         </Reveal>
 
@@ -256,6 +266,8 @@ export default async function ReportDetailPage({
           promptVersion={job.value.promptVersion}
           summaryGeneratedAt={stored?.createdAt ?? null}
           analyzedAt={job.value.createdAt}
+          runBy={runBy}
+          timeZone={timezone}
           analyzed={data.sentiment.total}
           cost={job.value.costMicroIdr > 0 ? formatIdr(job.value.costMicroIdr) : null}
           datasetName={datasetName}

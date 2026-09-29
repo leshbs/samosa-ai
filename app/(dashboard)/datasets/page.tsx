@@ -34,6 +34,7 @@ export default async function DatasetsPage() {
   }
 
   const canDelete = session.ok && can(session.value.role, 'dataset:delete')
+  const timezone = session.ok ? session.value.organizationTimezone : undefined
   // §5: an action this role cannot take is absent, not disabled.
   const canUpload = session.ok && can(session.value.role, 'dataset:create')
 
@@ -89,7 +90,8 @@ export default async function DatasetsPage() {
                       {dataset.name}
                     </Link>
                     <span className="mt-0.5 block text-xs text-muted-foreground sm:hidden">
-                      {dataset.source.toUpperCase()} · {formatDateTime(dataset.createdAt)}
+                      {dataset.source.toUpperCase()} ·{' '}
+                      {formatDateTime(dataset.createdAt, timezone)}
                     </span>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">
@@ -99,7 +101,7 @@ export default async function DatasetsPage() {
                     {dataset.responseCount}
                   </TableCell>
                   <TableCell className="hidden text-muted-foreground md:table-cell">
-                    {formatDateTime(dataset.createdAt)}
+                    {formatDateTime(dataset.createdAt, timezone)}
                   </TableCell>
                   {canDelete ? (
                     <TableCell>

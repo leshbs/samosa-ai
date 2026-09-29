@@ -31,7 +31,8 @@
     "db:types:local": "supabase gen types typescript --local > types/database.ts",
     "clean": "rimraf .next node_modules/.cache coverage playwright-report",
     "upgrade:check": "pnpm outdated",
-    "prepare": "husky || true"
+    "prepare": "husky || true",
+    "db:check": "node scripts/check-migrations.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -49,6 +50,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "fflate": "^0.8.3",
     "gsap": "^3.13.0",
     "lucide-react": "^0.454.0",
     "motion": "^13.4.4",
@@ -69,6 +71,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@next/bundle-analyzer": "^16.3.6",
     "@playwright/test": "^1.48.2",
     "@testing-library/react": "^16.0.1",

@@ -10,7 +10,14 @@ import { createClient } from '@/lib/supabase/client'
  * an account with no organization. Without this they can read why they are
  * stuck but have no way to leave the state.
  */
-export function SignOutButton({ label }: { label: string }) {
+export function SignOutButton({
+  label,
+  redirectTo = '/login',
+}: {
+  label: string
+  /** Where to land afterwards; the invite page keeps the invitation in hand. */
+  redirectTo?: string
+}) {
   const router = useRouter()
   const [pending, setPending] = useState(false)
 
@@ -18,7 +25,7 @@ export function SignOutButton({ label }: { label: string }) {
     setPending(true)
     const supabase = createClient()
     await supabase.auth.signOut()
-    router.replace('/login')
+    router.replace(redirectTo)
     router.refresh()
   }
 
