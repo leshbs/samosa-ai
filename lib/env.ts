@@ -4,6 +4,22 @@ import { z } from 'zod'
  * Env vars are validated once at module load so a misconfigured deployment
  * fails on startup instead of at the first request that happens to need a key.
  */
+/**
+ * Strips what a dashboard paste leaves around a value: surrounding whitespace,
+ * a trailing newline, one pair of quotes copied along from a .env line. Only
+ * for values sent verbatim to a provider — OpenAI answers `"gpt-4o-mini"` or
+ * `gpt-4o-mini ` with a bare "400 invalid model ID", which failed every batch
+ * of every job in production without saying which setting was wrong. Blank
+ * after cleaning counts as unset, so a default still applies.
+ */
+export function unwrapPastedValue(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim()
+  const quoted = /^(["'])(.*)\1$/s.exec(trimmed)
+  const unwrapped = (quoted ? quoted[2] : trimmed)?.trim() ?? ''
+  return unwrapped === '' ? undefined : unwrapped
+}
+
 const clientSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
@@ -23,8 +39,8 @@ const clientSchema = z.object({
 
 const serverSchema = clientSchema.extend({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  OPENAI_API_KEY: z.string().min(1),
-  OPENAI_MODEL: z.string().default('gpt-4o-mini'),
+  OPENAI_API_KEY: z.preprocess(unwrapPastedValue, z.string().min(1)),
+  OPENAI_MODEL: z.preprocess(unwrapPastedValue, z.string().default('gpt-4o-mini')),
   GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
   SENTRY_DSN: z.string().optional(),
