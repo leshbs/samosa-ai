@@ -146,4 +146,29 @@ describe('analyzeResponses', () => {
     if (result.ok) return
     expect(result.error.code).toBe(ERROR_CODES.UPSTREAM)
   })
+
+  it('says why every batch failed, so the job row tells the admin what to fix', async () => {
+    const adapter = stubAdapter({
+      analyzeBatch: vi.fn(async () =>
+        err(
+          appError(ERROR_CODES.UPSTREAM, 'Kunci API OpenAI di server ditolak', {
+            details: { status: 401 },
+          }),
+        ),
+      ),
+    })
+
+    const result = await analyzeResponses(adapter, {
+      jobId: 'job-1',
+      promptVersion: 'v1',
+      responses: makeResponses(3),
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.message).toBe(
+      'Semua batch analisis gagal — Kunci API OpenAI di server ditolak',
+    )
+    expect(result.error.details).toEqual({ status: 401 })
+  })
 })

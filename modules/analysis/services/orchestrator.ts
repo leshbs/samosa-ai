@@ -125,10 +125,16 @@ export async function analyzeResponses(
   let totalInputTokens = 0
   let totalOutputTokens = 0
   let costMicroIdr = 0
+  let firstFailure: AppError | undefined
 
   for (const { batch, outcome } of batchOutcomes) {
     if (!outcome.ok) {
-      log.error('analysis.batch.failed', { code: outcome.error.code })
+      log.error('analysis.batch.failed', {
+        code: outcome.error.code,
+        reason: outcome.error.message,
+        ...outcome.error.details,
+      })
+      firstFailure ??= outcome.error
       failedResponseIds.push(...batch.items.map((item) => item.id))
       continue
     }
@@ -149,7 +155,15 @@ export async function analyzeResponses(
   }
 
   if (results.length === 0) {
-    return err(appError(ERROR_CODES.UPSTREAM, 'Semua batch analisis gagal'))
+    // Batches share one key and one model, so when all of them fail the first
+    // reason is almost always everyone's reason — and it is the part the job's
+    // error message needs for anyone to fix it.
+    const reason = firstFailure ? ` — ${firstFailure.message}` : ''
+    return err(
+      appError(ERROR_CODES.UPSTREAM, `Semua batch analisis gagal${reason}`, {
+        details: firstFailure?.details,
+      }),
+    )
   }
 
   return ok({

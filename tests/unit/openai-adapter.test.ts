@@ -12,8 +12,8 @@ vi.mock('openai', () => ({
 const { createOpenAiAdapter } = await import('@/modules/analysis/adapters/openai')
 
 /** Mirrors the shape of an OpenAI SDK error: a status plus optional headers. */
-function apiError(status: number, headers?: Record<string, string>) {
-  return Object.assign(new Error(`status ${status}`), { status, headers })
+function apiError(status: number, headers?: Record<string, string>, code?: string) {
+  return Object.assign(new Error(`status ${status}`), { status, headers, code })
 }
 
 function completion(
@@ -211,5 +211,58 @@ describe('createOpenAiAdapter', () => {
         promptVersion: 'v99',
       }),
     ).rejects.toThrow('Unknown analysis prompt version')
+  })
+
+  describe('names why the provider refused', () => {
+    const cases: Array<[string, unknown, string]> = [
+      [
+        'a rejected key',
+        apiError(401, undefined, 'invalid_api_key'),
+        'Kunci API OpenAI di server ditolak',
+      ],
+      [
+        'an empty balance',
+        apiError(429, undefined, 'insufficient_quota'),
+        'Kuota atau saldo akun OpenAI habis',
+      ],
+      [
+        'an unknown model',
+        apiError(404, undefined, 'model_not_found'),
+        'Model AI yang disetel di server tidak tersedia',
+      ],
+      [
+        'an unreachable provider',
+        Object.assign(new Error('fetch failed'), { code: 'ECONNRESET' }),
+        'Server tidak bisa menghubungi penyedia AI',
+      ],
+    ]
+
+    it.each(cases)('%s', async (_, failure, message) => {
+      create.mockRejectedValue(failure)
+
+      const result = await createOpenAiAdapter(noWait).analyzeBatch({
+        texts: ['Acaranya seru'],
+        promptVersion: 'analysis.v1',
+      })
+
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.error.message).toBe(message)
+    })
+
+    it('does not retry an empty balance, which will not refill in seconds', async () => {
+      create.mockRejectedValue(apiError(429, undefined, 'insufficient_quota'))
+
+      const result = await createOpenAiAdapter(noWait).analyzeBatch({
+        texts: ['Acaranya seru'],
+        promptVersion: 'analysis.v1',
+      })
+
+      expect(create).toHaveBeenCalledTimes(1)
+      expect(result.ok || result.error.details).toEqual({
+        status: 429,
+        providerCode: 'insufficient_quota',
+      })
+    })
   })
 })

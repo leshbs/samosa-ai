@@ -21,6 +21,9 @@ export function isRetryableStatus(status: number | undefined): boolean {
 export function isRetryableError(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false
   const status = (error as { status?: unknown }).status
+  // OpenAI sends an empty balance as a 429 too, but that one does not clear
+  // in seconds — retrying only makes the user wait three times for the no.
+  if ((error as { code?: unknown }).code === 'insufficient_quota') return false
   if (typeof status === 'number') return isRetryableStatus(status)
   return 'code' in error || 'errno' in error
 }

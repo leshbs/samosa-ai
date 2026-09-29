@@ -58,11 +58,46 @@ async function callWithRetry<T>(
     }
   }
 
+  const failure = describeProviderFailure(lastError)
   return err(
-    appError(ERROR_CODES.UPSTREAM, 'Permintaan ke penyedia AI gagal', {
+    appError(ERROR_CODES.UPSTREAM, failure.message, {
+      details: { status: failure.status, providerCode: failure.providerCode },
       cause: lastError,
     }),
   )
+}
+
+/**
+ * Names the reason in words an admin can act on. Every batch of a job hits the
+ * same key and the same model, so a configuration fault fails them all — and
+ * "the request failed" alone sent us digging through a database to learn it
+ * was a rejected key. Status and code are the provider's own labels, never the
+ * response body, so nothing a user wrote can leak through here.
+ */
+function describeProviderFailure(cause: unknown): {
+  message: string
+  status?: number
+  providerCode?: string
+} {
+  const fields = typeof cause === 'object' && cause !== null ? cause : {}
+  const status =
+    'status' in fields && typeof fields.status === 'number' ? fields.status : undefined
+  const providerCode =
+    'code' in fields && typeof fields.code === 'string' ? fields.code : undefined
+
+  const message = (() => {
+    if (status === 401) return 'Kunci API OpenAI di server ditolak'
+    if (providerCode === 'insufficient_quota') return 'Kuota atau saldo akun OpenAI habis'
+    if (status === 429) return 'Penyedia AI sedang membatasi permintaan'
+    if (status === 404 || providerCode === 'model_not_found') {
+      return 'Model AI yang disetel di server tidak tersedia'
+    }
+    if (status === 403) return 'Akun OpenAI tidak diizinkan memakai model ini'
+    if (status === undefined) return 'Server tidak bisa menghubungi penyedia AI'
+    return 'Permintaan ke penyedia AI gagal'
+  })()
+
+  return { message, status, providerCode }
 }
 
 /** Models sometimes wrap JSON in a code fence despite the instruction not to. */
