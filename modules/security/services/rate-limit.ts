@@ -18,6 +18,10 @@ export const RATE_LIMITS = {
   'analysis:start': { limit: 20, windowSeconds: 3600 },
   /** Regenerating a summary is a paid call the user can press repeatedly. */
   'report:summary': { limit: 20, windowSeconds: 3600 },
+  /** Each invitation can send an email from our domain; cap what one org can send. */
+  'member:invite': { limit: 30, windowSeconds: 3600 },
+  /** Renders every report as a PDF in one request — the heaviest thing a user can ask for. */
+  'org:export': { limit: 5, windowSeconds: 3600 },
 } as const
 
 export type RateLimitAction = keyof typeof RATE_LIMITS

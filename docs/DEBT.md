@@ -187,7 +187,12 @@ Bar di PDF disusun dari primitif `<View>`, terpisah dari komponen Recharts di
 web. Kalau bentuk chart berubah, dua tempat harus diubah. Trade-off ini diambil
 sadar di ADR-0004 dan masih wajar selama chart-nya bar sederhana.
 
-### Settings: foto profil, undang anggota, hapus akun
+### Settings: foto profil, undang anggota, hapus akun — sebagian lunas (Fase 5)
+
+Foto profil, undangan anggota, dan pemindahan nama tampilan ke tabel `profiles`
+dikerjakan di Fase 5 (ADR-0010). Yang tersisa hanya **hapus akun pribadi**: yang
+ada sekarang adalah hapus _organisasi_ (Pengaturan → Data & Privasi); akun
+setiap anggota tetap hidup setelahnya. Catatan aslinya:
 
 Checklist 7.5 menyebut empat hal yang belum ada:
 
@@ -203,7 +208,10 @@ Checklist 7.5 menyebut empat hal yang belum ada:
 - **Nama tampilan disimpan di `auth.users.user_metadata`**, bukan tabel
   `profiles`. Kalau profil nanti punya field kedua, pindahkan ke tabel sendiri.
 
-### RLS organisasi lebih longgar dari policy modul
+### ~~RLS organisasi lebih longgar dari policy modul~~ — lunas (Fase 5)
+
+`organizations_update` sekarang owner-only, sama dengan `can(role, 'org:manage')`
+(migrasi `20260929000100`, ADR-0010). Catatan aslinya:
 
 `organizations_update` di RLS mengizinkan `owner` dan `admin`, sedangkan
 `can(role, 'org:manage')` hanya `owner`. Route memakai yang lebih ketat, jadi
@@ -437,3 +445,98 @@ analisis" lagi.
 **Pemicu:** job pertama yang disapu sweeper di depan pengguna sungguhan.
 **Bayar dengan:** tombol di halaman status analisis yang memanggil
 `POST /api/analysis` dengan `datasetId` yang sama.
+
+---
+
+## Ditambahkan di Fase 5 (pengaturan & profil)
+
+### Migrasi pengaturan belum diterapkan ke project hosted
+
+`20260929000100_settings_members_profile.sql` menambah `profiles`,
+`organization_invitations`, kolom pengaturan di `organizations`,
+`analysis_jobs.created_by`, bucket `branding`, dan tiga fungsi. Sudah
+diverifikasi di PGlite (`pnpm db:check`, 57 cek), belum di project hosted.
+
+Kode yang dipakai di setiap halaman tetap jalan tanpa migrasi ini: sesi membaca
+`organizations` dengan `*` dan profil sebagai opsional, daftar job memakai `*`,
+dan `createJob` mengulang insert tanpa `created_by` kalau kolomnya belum ada
+(log `analysis.job.created_by_unavailable`). Yang tidak jalan sampai migrasi
+diterapkan: semua fitur baru di Pengaturan dan Profil.
+
+**Pemicu:** sekarang, sebelum merge. **Bayar dengan:** tempel file itu ke SQL
+Editor (idempoten), lalu `node --env-file=.env.local scripts/check-rls.mjs` —
+baris SKIP "profiles, invitations and membership writes" harus berubah jadi
+sepuluh PASS. Setelah itu fallback `created_by` di `createJob` boleh dihapus.
+
+### Kuota bulanan (checklist 5.4) — ditunda atas keputusan produk
+
+Tab Pemakaian menampilkan total dan biaya per analisis, tapi belum ada kuota
+("2 dari 3 analisis gratis bulan ini"): memblokir analisis adalah keputusan
+harga, bukan teknis, dan diputuskan ditunda selama pilot.
+
+Sketsa kalau nanti dikerjakan: batas dari env (`ANALYSIS_MONTHLY_QUOTA`, kosong =
+tanpa batas) atau kolom `organizations.monthly_analysis_quota` untuk pengecualian
+per sekolah; hitung `analysis_jobs` bulan berjalan (zona waktu organisasi) per
+`organization_id`, kecuali yang `failed` tanpa hasil; tolak di `POST
+/api/analysis` sebelum `createJob` dengan kalimat yang menyebut kapan kuota
+kembali; dan tampilkan sisa, bukan hanya yang terpakai, di tab Pemakaian dan di
+dialog "Mulai analisis".
+
+### Satu akun hanya bisa anggota satu organisasi
+
+Keputusan sadar di ADR-0010. Penerimaan undangan ditolak kalau akun itu sudah
+punya organisasi berisi data. Pembina yang mendampingi dua organisasi harus
+memakai dua akun.
+
+**Pemicu:** permintaan pertama dari pengguna yang benar-benar butuh dua
+organisasi. **Bayar dengan:** "organisasi aktif" di sesi (cookie), pemilih
+organisasi di sidebar, dan `getSessionUser()` yang memilih keanggotaan itu
+alih-alih `.limit(1)`. RLS tidak perlu berubah — `current_org_ids()` sudah
+mengembalikan himpunan.
+
+### Email aplikasi mati sampai ada domain
+
+Undangan, pemberitahuan serah terima, dan "analisis selesai" sudah ditulis dan
+diuji (ADR-0011), tapi tidak terkirim sampai `RESEND_API_KEY` dan `EMAIL_FROM`
+diisi. Undangan tetap bisa dipakai sebagai tautan yang dibagikan sendiri.
+
+**Pemicu:** sama dengan "Email verifikasi dan reset password dimatikan" —
+keduanya dibayar dengan domain yang sama. **Bayar dengan:** `docs/auth-setup.md`
+§1, lalu dua env var itu di Vercel dan redeploy.
+
+### Menautkan Google butuh "manual linking" di Supabase
+
+Tombol "Tautkan Google" di Profil memanggil `linkIdentity`, yang ditolak Supabase
+selama _Allow manual linking_ mati (default-nya mati). Tombolnya menjelaskan hal
+itu kalau ditolak, tapi belum pernah dicoba sukses end-to-end.
+
+**Bayar dengan:** `docs/auth-setup.md` §5, lalu coba tautkan dari akun password.
+
+### Job yang disapu sweeper tidak mengirim email
+
+"Analisis selesai" dikirim dari `runAnalysisJob`. Job yang mati di tengah jalan
+dan ditandai gagal oleh sweeper harian tidak lewat situ, jadi orang yang
+menjalankannya tidak diberi tahu.
+
+**Bayar dengan:** panggil `notifyAnalysisFinished` untuk setiap job yang disapu,
+di route cron.
+
+### Hasil analisis dibaca tanpa paginasi
+
+`listJobResults` memanggil satu `select` tanpa `range`, dan PostgREST berhenti di
+1.000 baris tanpa pesan. Laporan, export per laporan, dan arsip organisasi untuk
+job di atas 1.000 aspirasi akan kekurangan baris. Ditemukan saat membuat arsip
+(yang untuk dataset mentahnya sudah dipaginasi, `listAllResponses`); belum
+diukur di project hosted.
+
+**Pemicu:** dataset pertama di atas 1.000 aspirasi. **Bayar dengan:** loop
+`range()` seperti `listAllResponses`, lalu pecah `.in('id', ...)` untuk teks
+aspirasi menjadi potongan kecil — seribu UUID di satu URL juga terlalu panjang.
+
+### Arsip organisasi dibuat dalam satu request
+
+Semua PDF dirender berurutan di satu function (`maxDuration = 300`). Cukup untuk
+puluhan laporan; organisasi dengan ratusan laporan akan kena batas waktu.
+
+**Pemicu:** export pertama yang gagal karena timeout. **Bayar dengan:** job
+latar belakang yang menulis zip ke storage lalu mengirim tautannya.

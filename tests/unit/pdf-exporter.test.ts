@@ -95,3 +95,106 @@ describe('exportReportToPdf', () => {
     expect(result.value.fileName).toBe('samosa-laporan.pdf')
   }, 20_000)
 })
+
+/**
+ * The words on the page. react-pdf writes the standard fonts' text as hex
+ * strings inside TJ arrays of deflated content streams, so a byte search for
+ * "Asal data" finds nothing even when it is printed.
+ */
+function pdfText(bytes: Uint8Array): string {
+  const buffer = Buffer.from(bytes)
+  const pages: string[] = []
+  for (let from = 0; ;) {
+    const start = buffer.indexOf('stream', from)
+    if (start < 0) break
+    const body = buffer[start + 6] === 13 ? start + 8 : start + 7
+    const end = buffer.indexOf('endstream', body)
+    try {
+      pages.push(inflateSync(buffer.subarray(body, end)).toString('latin1'))
+    } catch {
+      // Not every stream is deflated content; fonts and images are skipped.
+    }
+    from = end + 9
+  }
+
+  return [...pages.join('\n').matchAll(/\[(.*?)\]\s*TJ/g)]
+    .map(([, array]) =>
+      [...(array ?? '').matchAll(/<([0-9a-f]+)>/gi)]
+        .map(([, hex]) => Buffer.from(hex ?? '', 'hex').toString('latin1'))
+        .join(''),
+    )
+    .join('\n')
+}
+
+/** 1×1 transparent PNG: the smallest thing react-pdf will embed. */
+const PIXEL_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+)
+
+const PROVENANCE = {
+  modelId: 'gpt-4o-mini',
+  promptVersion: 'analysis.v1',
+  analyzedAt: '22 Sep 2026 18.00 WIB',
+  analyzed: 120,
+  failed: 3,
+  runBy: 'Rani Putri · Sekretaris OSIS',
+  cost: 'Rp 42',
+}
+
+describe('exportReportToPdf report defaults (checklist 5.5)', () => {
+  it('prints the letterhead, the preparer and the provenance by default', async () => {
+    const result = await exportReportToPdf(
+      fixture({
+        preparedBy: { name: 'Rani Putri', title: 'Sekretaris OSIS 2026/2027' },
+        provenance: PROVENANCE,
+      }),
+    )
+    if (!result.ok) throw new Error('render failed')
+    const text = pdfText(result.value.bytes)
+
+    expect(text).toContain('OSIS SMA Nusantara')
+    expect(text).toContain('Disiapkan oleh Rani Putri')
+    expect(text).toContain('Sekretaris OSIS 2026/2027')
+    expect(text).toContain('Asal data')
+    expect(text).toContain('Rani Putri · Sekretaris OSIS')
+    expect(text).toContain('Gagal dianalisis')
+    // Quotes are on by default; the topic tail is not.
+    expect(text).toContain('Contoh aspirasi per topik')
+    expect(text).not.toContain('Topik lainnya')
+  }, 20_000)
+
+  it('leaves out exactly what the organization switched off', async () => {
+    const result = await exportReportToPdf(
+      fixture({
+        provenance: PROVENANCE,
+        topicTail: [{ term: 'parkir', count: 2, share: 0.02 }],
+        preferences: {
+          includeQuotes: false,
+          includeTopicTail: true,
+          includeProvenance: false,
+        },
+      }),
+    )
+    if (!result.ok) throw new Error('render failed')
+    const text = pdfText(result.value.bytes)
+
+    expect(text).not.toContain('Contoh aspirasi per topik')
+    expect(text).not.toContain('Asal data')
+    expect(text).toContain('Topik lainnya (1)')
+    expect(text).toContain('parkir')
+  }, 20_000)
+
+  it('embeds the organization logo as an image', async () => {
+    const withLogo = await exportReportToPdf(
+      fixture({ logo: { data: new Uint8Array(PIXEL_PNG), format: 'png' } }),
+    )
+    const without = await exportReportToPdf(fixture())
+    if (!withLogo.ok || !without.ok) throw new Error('render failed')
+
+    const hasImage = (bytes: Uint8Array) =>
+      Buffer.from(bytes).toString('latin1').includes('/Subtype /Image')
+    expect(hasImage(withLogo.value.bytes)).toBe(true)
+    expect(hasImage(without.value.bytes)).toBe(false)
+  }, 20_000)
+})

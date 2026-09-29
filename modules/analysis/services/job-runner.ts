@@ -12,7 +12,12 @@ export type CreateJobInput = {
   organizationId: string
   datasetId: string
   promptVersion?: string
+  /** The user who started it: provenance, "my activity", and who to email. */
+  createdBy?: string
 }
+
+/** PostgREST's answer to a column the schema cache has never heard of. */
+const UNKNOWN_COLUMN = 'PGRST204'
 
 /** Queues a job. The worker picks it up; the request returns immediately. */
 export async function createJob(
@@ -40,17 +45,36 @@ export async function createJob(
     )
   }
 
-  const { data, error } = await supabase
+  const row = {
+    organization_id: input.organizationId,
+    dataset_id: input.datasetId,
+    status: 'queued' as const,
+    prompt_version: input.promptVersion ?? DEFAULT_PROMPT_VERSION,
+    total_count: count,
+    ...(input.createdBy ? { created_by: input.createdBy } : {}),
+  }
+
+  let { data, error } = await supabase
     .from('analysis_jobs')
-    .insert({
-      organization_id: input.organizationId,
-      dataset_id: input.datasetId,
-      status: 'queued',
-      prompt_version: input.promptVersion ?? DEFAULT_PROMPT_VERSION,
-      total_count: count,
-    })
+    .insert(row)
     .select('id, status')
     .single()
+
+  /**
+   * `created_by` arrives with the settings migration. Until it has been run,
+   * the insert is refused for naming it — and refusing to start any analysis
+   * over a provenance column would be the wrong trade. Retry without it and
+   * say so in the logs; the job simply has no recorded author.
+   */
+  if (error?.code === UNKNOWN_COLUMN && 'created_by' in row) {
+    logger.warn('analysis.job.created_by_unavailable')
+    const { created_by: _dropped, ...withoutAuthor } = row
+    ;({ data, error } = await supabase
+      .from('analysis_jobs')
+      .insert(withoutAuthor)
+      .select('id, status')
+      .single())
+  }
 
   if (error || !data) {
     return err(appError(ERROR_CODES.INTERNAL, 'Job analisis tidak bisa dibuat'))

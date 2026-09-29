@@ -1,5 +1,10 @@
 import { clsx, type ClassValue } from 'clsx'
 import { extendTailwindMerge } from 'tailwind-merge'
+import {
+  DEFAULT_TIME_ZONE,
+  TIME_ZONE_ABBREVIATIONS,
+  type OrgTimeZone,
+} from '@/types/domain'
 
 /**
  * tailwind-merge only knows Tailwind's default scale. Without these groups it
@@ -74,10 +79,20 @@ export function formatShare(share: number): string {
   return formatPercent(share, share > 0 && share < SMALL_SHARE ? 1 : 0)
 }
 
-export function formatDateTime(value: string | Date): string {
+/**
+ * Always in an Indonesian zone, and always says which. Without `timeZone`,
+ * Intl uses the process's zone: UTC on Vercel, so a report analysed at 14.00
+ * WIB printed "07.00" on the server and "14.00" in the browser.
+ */
+export function formatDateTime(
+  value: string | Date,
+  timeZone: OrgTimeZone = DEFAULT_TIME_ZONE,
+): string {
   const date = typeof value === 'string' ? new Date(value) : value
-  return new Intl.DateTimeFormat('id-ID', {
+  const formatted = new Intl.DateTimeFormat('id-ID', {
     dateStyle: 'medium',
     timeStyle: 'short',
+    timeZone,
   }).format(date)
+  return `${formatted} ${TIME_ZONE_ABBREVIATIONS[timeZone]}`
 }

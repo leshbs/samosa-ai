@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { ERROR_CODES, appError, err, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
@@ -15,8 +16,13 @@ import {
  * caller's organization; none of these take a tenant id.
  */
 
-const JOB_COLUMNS =
-  'id, organization_id, dataset_id, status, prompt_version, model_id, processed_count, total_count, failed_count, input_tokens, output_tokens, cost_micro_idr, error_message, started_at, finished_at, created_at'
+/**
+ * `*` rather than a column list, because every page that lists jobs goes
+ * through here: naming `created_by` would break /analysis, /reports and the
+ * dashboard on a database that has not had the settings migration yet. toJob
+ * picks out what it needs and tolerates what is missing.
+ */
+const JOB_COLUMNS = '*'
 
 type JobRow = Record<string, unknown>
 
@@ -37,20 +43,34 @@ function toJob(row: JobRow): AnalysisJob {
     errorMessage: row.error_message ? String(row.error_message) : null,
     startedAt: row.started_at ? String(row.started_at) : null,
     finishedAt: row.finished_at ? String(row.finished_at) : null,
+    createdBy: row.created_by ? String(row.created_by) : null,
     createdAt: String(row.created_at),
   }
 }
 
 export type JobListItem = AnalysisJob & { datasetName: string }
 
-export async function listJobs(): Promise<Result<JobListItem[], AppError>> {
+export type ListJobsOptions = {
+  /** Only jobs this user started — the profile's "my recent activity". */
+  createdBy?: string
+  limit?: number
+}
+
+const DEFAULT_JOB_LIMIT = 50
+
+export async function listJobs(
+  options: ListJobsOptions = {},
+): Promise<Result<JobListItem[], AppError>> {
   const supabase = await createClient()
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('analysis_jobs')
     .select(JOB_COLUMNS)
     .order('created_at', { ascending: false })
-    .limit(50)
+    .limit(options.limit ?? DEFAULT_JOB_LIMIT)
+  if (options.createdBy) query = query.eq('created_by', options.createdBy)
+
+  const { data, error } = await query
 
   if (error)
     return err(appError(ERROR_CODES.INTERNAL, 'Daftar analisis tidak bisa dimuat'))
@@ -266,4 +286,58 @@ export async function countResultsBySentiment(
     return err(appError(ERROR_CODES.INTERNAL, 'Sebaran sentimen tidak bisa dimuat'))
 
   return ok(Object.fromEntries(complete))
+}
+
+export type JobSnapshot = {
+  jobId: string
+  organizationId: string
+  organizationName: string
+  /** Raw column value; the caller validates it against the known zones. */
+  organizationTimezone: unknown
+  datasetId: string
+  datasetName: string
+  status: JobStatus
+  processedCount: number
+  totalCount: number
+  failedCount: number
+  createdBy: string | null
+  finishedAt: string | null
+}
+
+/**
+ * A finished job as the notification after it needs to describe it. Service
+ * role: this runs in the background after the request that started the job
+ * has returned, so there is no session to read it with. The id comes from the
+ * runner, never from a request.
+ */
+export async function getJobSnapshot(jobId: string): Promise<JobSnapshot | null> {
+  const supabase = createAdminClient()
+
+  const { data } = await supabase
+    .from('analysis_jobs')
+    .select(JOB_COLUMNS)
+    .eq('id', jobId)
+    .maybeSingle()
+  if (!data) return null
+
+  const job = toJob(data as JobRow)
+  const [{ data: dataset }, { data: organization }] = await Promise.all([
+    supabase.from('datasets').select('name').eq('id', job.datasetId).maybeSingle(),
+    supabase.from('organizations').select('*').eq('id', job.organizationId).maybeSingle(),
+  ])
+
+  return {
+    jobId: job.id,
+    organizationId: job.organizationId,
+    organizationName: organization?.name ?? 'Organisasi',
+    organizationTimezone: (organization as Record<string, unknown> | null)?.timezone,
+    datasetId: job.datasetId,
+    datasetName: dataset?.name ?? 'Dataset',
+    status: job.status,
+    processedCount: job.processedCount,
+    totalCount: job.totalCount,
+    failedCount: job.failedCount,
+    createdBy: job.createdBy,
+    finishedAt: job.finishedAt,
+  }
 }

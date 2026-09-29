@@ -15,11 +15,13 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { formatDateTime } from '@/lib/utils'
+import { organizationTimezone } from '../_lib/timezone'
 import { formatIdr, listJobs } from '@/modules/analysis'
 
 export const metadata: Metadata = { title: 'Analisis' }
 
 export default async function AnalysisListPage() {
+  const timezone = await organizationTimezone()
   const jobs = await listJobs()
 
   if (!jobs.ok) {
@@ -68,7 +70,7 @@ export default async function AnalysisListPage() {
                       {job.datasetName}
                     </Link>
                     <span className="mt-0.5 block text-xs text-muted-foreground md:hidden">
-                      {formatDateTime(job.createdAt)}
+                      {formatDateTime(job.createdAt, timezone)}
                     </span>
                   </TableCell>
                   <TableCell>
@@ -86,7 +88,7 @@ export default async function AnalysisListPage() {
                     {job.costMicroIdr > 0 ? formatIdr(job.costMicroIdr) : '—'}
                   </TableCell>
                   <TableCell className="hidden text-muted-foreground md:table-cell">
-                    {formatDateTime(job.createdAt)}
+                    {formatDateTime(job.createdAt, timezone)}
                   </TableCell>
                 </TableRow>
               ))}

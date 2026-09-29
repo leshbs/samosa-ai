@@ -39,3 +39,41 @@ export async function removeDatasetObject(storagePath: string | null): Promise<v
     logger.error('ingestion.dataset.object_orphaned', { storagePath })
   }
 }
+
+/**
+ * Removes every raw upload an organization left behind, after the organization
+ * itself is gone. Uploads are keyed `<organization_id>/<file>`, so the folder is
+ * the whole tenant. Same contract as removeDatasetObject: never throws, and a
+ * failure is a loud log line naming what was left, because those files hold
+ * respondent data the privacy policy promises to delete.
+ */
+export async function purgeOrganizationFiles(organizationId: string): Promise<void> {
+  const PAGE = 100
+  // A bucket that lists the same files after removing them would otherwise
+  // spin this forever; 100 passes is 10,000 uploads, far past any school.
+  const MAX_PASSES = 100
+  try {
+    const bucket = createAdminClient().storage.from(DATASET_BUCKET)
+    for (let pass = 0; pass < MAX_PASSES; pass += 1) {
+      // Always offset 0: each pass removes what the last one listed.
+      const { data, error } = await bucket.list(organizationId, { limit: PAGE })
+      if (error) {
+        logger.error('ingestion.organization.files_orphaned', { organizationId })
+        return
+      }
+      if (!data || data.length === 0) return
+
+      const { error: removeError } = await bucket.remove(
+        data.map((entry) => `${organizationId}/${entry.name}`),
+      )
+      if (removeError) {
+        logger.error('ingestion.organization.files_orphaned', { organizationId })
+        return
+      }
+      if (data.length < PAGE) return
+    }
+    logger.error('ingestion.organization.files_orphaned', { organizationId })
+  } catch {
+    logger.error('ingestion.organization.files_orphaned', { organizationId })
+  }
+}

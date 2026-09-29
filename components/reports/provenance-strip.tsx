@@ -1,4 +1,5 @@
 import { formatDateTime } from '@/lib/utils'
+import type { OrgTimeZone } from '@/types/domain'
 
 /**
  * §6.8, the last section on the page. The Golden Rule is a report someone can
@@ -18,6 +19,8 @@ export function ProvenanceStrip({
   analyzed,
   cost,
   datasetName,
+  runBy = null,
+  timeZone,
 }: {
   modelId: string
   promptVersion: string
@@ -27,15 +30,24 @@ export function ProvenanceStrip({
   /** Already formatted on the server; pricing tables stay off the client. */
   cost: string | null
   datasetName: string
+  /** "Rani Putri · Sekretaris OSIS 2026/2027"; null for jobs from before it was recorded. */
+  runBy?: string | null
+  timeZone?: OrgTimeZone
 }) {
   const facts: Array<{ label: string; value: string }> = [
     { label: 'Dataset', value: datasetName },
     { label: 'Aspirasi dianalisis', value: String(analyzed) },
     { label: 'Model', value: modelId || 'tidak tercatat' },
     { label: 'Versi prompt', value: promptVersion },
-    { label: 'Dianalisis', value: formatDateTime(analyzedAt) },
+    { label: 'Dianalisis', value: formatDateTime(analyzedAt, timeZone) },
+    ...(runBy ? [{ label: 'Dijalankan oleh', value: runBy }] : []),
     ...(summaryGeneratedAt
-      ? [{ label: 'Ringkasan disusun', value: formatDateTime(summaryGeneratedAt) }]
+      ? [
+          {
+            label: 'Ringkasan disusun',
+            value: formatDateTime(summaryGeneratedAt, timeZone),
+          },
+        ]
       : []),
     ...(cost ? [{ label: 'Perkiraan biaya', value: cost }] : []),
   ]

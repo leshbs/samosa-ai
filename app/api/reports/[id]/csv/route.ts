@@ -1,7 +1,7 @@
 import { can, getSessionUser } from '@/modules/auth'
 import { exportResponsesToCsv } from '@/modules/reporting'
 import { ERROR_CODES, appError } from '@/modules/shared'
-import { loadReportExport } from '@/app/api/_lib/report-data'
+import { loadExportContext, loadReportExport } from '@/app/api/_lib/report-data'
 import { requestLog } from '@/app/api/_lib/request-log'
 import { failure } from '@/app/api/_lib/respond'
 
@@ -17,7 +17,10 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   const { id } = await context.params
-  const bundle = await loadReportExport(id, session.value.organizationName)
+  const bundle = await loadReportExport(
+    id,
+    await loadExportContext(session.value, { logo: false }),
+  )
   if (!bundle.ok) {
     log.warn('api.export.csv.failed', { jobId: id, code: bundle.error.code })
     return failure(bundle.error)

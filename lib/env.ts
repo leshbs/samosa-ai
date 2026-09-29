@@ -52,6 +52,15 @@ const serverSchema = clientSchema.extend({
    * when it is missing, which turns the sweeper off rather than opening it.
    */
   CRON_SECRET: z.string().min(16).optional(),
+  /**
+   * Transactional email (invitations, ownership notices, "analysis finished").
+   * Both or neither: without them every email is skipped and logged, and the
+   * UI says email is off instead of promising one. Resend's HTTP API, the same
+   * account docs/auth-setup.md sets up for Supabase's SMTP.
+   */
+  RESEND_API_KEY: z.preprocess(unwrapPastedValue, z.string().min(1).optional()),
+  /** e.g. `SAMOSA <noreply@samosa.example>`, on a domain verified in Resend. */
+  EMAIL_FROM: z.preprocess(unwrapPastedValue, z.string().min(3).optional()),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 })
 
