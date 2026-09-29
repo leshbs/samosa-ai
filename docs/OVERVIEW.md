@@ -150,7 +150,7 @@ NEXT_PUBLIC_APP_URL=
 NEXT_PUBLIC_EMAIL_LINKS_ENABLED=   # kosong = email verifikasi & reset mati
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
-OPENAI_MODEL=
+OPENAI_MODEL=                      # kosong = gpt-4o-mini; keluarga gpt-4o/gpt-4.1 saja
 WORKER_SECRET=
 GOOGLE_OAUTH_CLIENT_ID=
 GOOGLE_OAUTH_CLIENT_SECRET=
@@ -158,6 +158,8 @@ SENTRY_DSN=
 ```
 
 > **Auth butuh setelan di luar repo** — SMTP (Resend), Site URL, redirect URL, template email, dan consent screen Google. Langkahnya di **[`docs/auth-setup.md`](auth-setup.md)**; tanpa itu email verifikasi dan reset tidak sampai ke pengguna.
+
+> **`OPENAI_API_KEY` dan `OPENAI_MODEL` dirapikan saat dibaca** — spasi, baris baru, dan sepasang tanda kutip di ujung dibuang (`lib/env.ts`, `unwrapPastedValue`). Nilai yang ditempel ke dashboard Vercel sering membawa salah satunya, dan OpenAI membalasnya dengan `400 invalid model ID` yang menggagalkan semua batch. Model reasoning (gpt-5, o-series) belum didukung: mereka menolak `max_tokens` dan `temperature: 0` yang dipakai adapter.
 
 > **`pnpm build` membutuhkan env vars.** `lib/env.ts` memvalidasi saat module load (sesuai Security standards: crash on startup, bukan crash on first request), jadi build tanpa env akan gagal di tahap "Collecting page data". Di CI dan Vercel, set env vars sebagai secrets sebelum build. Ini disengaja — jangan "diperbaiki" dengan membuat validasi jadi lazy.
 
