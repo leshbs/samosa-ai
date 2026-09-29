@@ -18,6 +18,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { formatDateTime, formatPercent } from '@/lib/utils'
+import { organizationTimezone } from '../../_lib/timezone'
 import {
   BATCH_SIZE,
   estimateJobCostMicroIdr,
@@ -74,7 +75,7 @@ export default async function AnalysisDetailPage({
     <section className="mx-auto max-w-wide space-y-6">
       <PageHeader
         title="Hasil analisis"
-        description={`Dimulai ${formatDateTime(job.value.createdAt)} · dataset ${datasetName}`}
+        description={`Dimulai ${formatDateTime(job.value.createdAt, await organizationTimezone())} · dataset ${datasetName}`}
         crumbs={[
           { label: 'Analisis', href: '/analysis' },
           { label: 'Dataset', href: `/datasets/${job.value.datasetId}` },

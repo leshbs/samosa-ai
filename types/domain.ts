@@ -38,6 +38,67 @@ export const ORG_ROLES = ['owner', 'admin', 'member', 'viewer'] as const
 export const orgRoleSchema = z.enum(ORG_ROLES)
 export type OrgRole = z.infer<typeof orgRoleSchema>
 
+/**
+ * What the UI calls each role (checklist 5.3: never the internal names). Here
+ * rather than in a component because the invitation email says it too.
+ */
+export const ROLE_LABELS: Record<OrgRole, string> = {
+  owner: 'Pemilik',
+  admin: 'Admin',
+  member: 'Anggota',
+  viewer: 'Pengamat',
+}
+
+export const ROLE_DESCRIPTIONS: Record<OrgRole, string> = {
+  owner: 'Akses penuh, termasuk menghapus organisasi dan menyerahkan kepemilikan.',
+  admin: 'Semua hal kecuali mengelola organisasi — termasuk mengundang anggota.',
+  member: 'Mengunggah data, menjalankan analisis, dan mengekspor laporan.',
+  viewer: 'Hanya membaca dan mengekspor laporan.',
+}
+
+/** What an invitation can make someone. Ownership only ever moves by transfer. */
+export const INVITABLE_ROLES = ['admin', 'member', 'viewer'] as const
+export const invitableRoleSchema = z.enum(INVITABLE_ROLES)
+export type InvitableRole = z.infer<typeof invitableRoleSchema>
+
+/**
+ * The three zones an Indonesian school can sit in. Every date the app prints
+ * goes through one of these; before this setting existed, server-rendered
+ * dates came out in the server's zone, which on Vercel is UTC.
+ */
+export const ORG_TIME_ZONES = ['Asia/Jakarta', 'Asia/Makassar', 'Asia/Jayapura'] as const
+export const orgTimeZoneSchema = z.enum(ORG_TIME_ZONES)
+export type OrgTimeZone = z.infer<typeof orgTimeZoneSchema>
+export const DEFAULT_TIME_ZONE: OrgTimeZone = 'Asia/Jakarta'
+
+export const TIME_ZONE_ABBREVIATIONS: Record<OrgTimeZone, string> = {
+  'Asia/Jakarta': 'WIB',
+  'Asia/Makassar': 'WITA',
+  'Asia/Jayapura': 'WIT',
+}
+
+export function isOrgTimeZone(value: unknown): value is OrgTimeZone {
+  return (ORG_TIME_ZONES as readonly unknown[]).includes(value)
+}
+
+/**
+ * What a PDF export includes. Set once per organization so an export never
+ * asks: the person pressing "Unduh PDF" the night before a meeting should not
+ * be making layout decisions.
+ */
+export type ReportPreferences = {
+  includeQuotes: boolean
+  includeTopicTail: boolean
+  includeProvenance: boolean
+}
+
+/** Matches the column defaults, and what the PDF printed before the setting. */
+export const DEFAULT_REPORT_PREFERENCES: ReportPreferences = {
+  includeQuotes: true,
+  includeTopicTail: false,
+  includeProvenance: true,
+}
+
 export type Organization = {
   id: string
   name: string
@@ -98,6 +159,8 @@ export type AnalysisJob = {
   errorMessage: string | null
   startedAt: string | null
   finishedAt: string | null
+  /** Who pressed "Mulai analisis"; null for jobs from before it was recorded. */
+  createdBy: string | null
   createdAt: string
 }
 

@@ -89,9 +89,9 @@ export function SidebarAccountMenu({
         <DropdownMenuSeparator className="mx-1.5 my-0 bg-border" />
         <div className="pt-1">
           <DropdownMenuItem asChild className={ITEM}>
-            <Link href="/settings">
+            <Link href="/profile">
               <User aria-hidden className="text-muted-foreground" />
-              Profil &amp; pengaturan
+              Profil
             </Link>
           </DropdownMenuItem>
           <ThemeSwitchItem />

@@ -16,6 +16,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { formatDateTime } from '@/lib/utils'
+import { organizationTimezone } from '../_lib/timezone'
 import { listJobs } from '@/modules/analysis'
 import type { JobStatus } from '@/types/domain'
 
@@ -30,6 +31,7 @@ export const metadata: Metadata = { title: 'Laporan' }
 const REPORTABLE: readonly JobStatus[] = ['succeeded', 'partial']
 
 export default async function ReportsListPage() {
+  const timezone = await organizationTimezone()
   const jobs = await listJobs()
 
   if (!jobs.ok) {
@@ -90,7 +92,7 @@ export default async function ReportsListPage() {
                     {job.processedCount}
                   </TableCell>
                   <TableCell className="hidden text-muted-foreground sm:table-cell">
-                    {formatDateTime(job.finishedAt ?? job.createdAt)}
+                    {formatDateTime(job.finishedAt ?? job.createdAt, timezone)}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button asChild variant="ghost" size="sm">

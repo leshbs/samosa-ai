@@ -59,7 +59,10 @@ export default async function LoginPage({
 
       <p className="text-center text-sm text-muted-foreground">
         Belum punya akun?{' '}
-        <Link href="/signup" className="font-medium text-foreground underline">
+        <Link
+          href={params.next ? `/signup?next=${encodeURIComponent(next)}` : '/signup'}
+          className="font-medium text-foreground underline"
+        >
           Daftar
         </Link>
       </p>
