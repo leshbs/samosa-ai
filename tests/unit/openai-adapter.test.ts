@@ -231,6 +231,26 @@ describe('createOpenAiAdapter', () => {
         'Model AI yang disetel di server tidak tersedia',
       ],
       [
+        'a model name pasted with its quotes',
+        Object.assign(new Error('400 invalid model ID'), { status: 400 }),
+        'Nama model AI yang disetel di server tidak valid',
+      ],
+      [
+        'a reasoning model that refuses max_tokens',
+        apiError(400, undefined, 'unsupported_parameter'),
+        'Model AI yang disetel di server tidak mendukung pengaturan analisis ini',
+      ],
+      [
+        'anything else, by its status and code',
+        apiError(400, undefined, 'invalid_request_error'),
+        'Permintaan ke penyedia AI gagal (HTTP 400, invalid_request_error)',
+      ],
+      [
+        'anything else without a code, by its status',
+        apiError(422),
+        'Permintaan ke penyedia AI gagal (HTTP 422)',
+      ],
+      [
         'an unreachable provider',
         Object.assign(new Error('fetch failed'), { code: 'ECONNRESET' }),
         'Server tidak bisa menghubungi penyedia AI',

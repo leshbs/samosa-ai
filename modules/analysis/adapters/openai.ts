@@ -84,6 +84,13 @@ function describeProviderFailure(cause: unknown): {
     'status' in fields && typeof fields.status === 'number' ? fields.status : undefined
   const providerCode =
     'code' in fields && typeof fields.code === 'string' ? fields.code : undefined
+  // OpenAI gives a malformed model name no code at all, only this text. It is
+  // matched here, never echoed, so the rule above about bodies still holds.
+  const invalidModel =
+    status === 400 &&
+    'message' in fields &&
+    typeof fields.message === 'string' &&
+    /invalid model/i.test(fields.message)
 
   const message = (() => {
     if (status === 401) return 'Kunci API OpenAI di server ditolak'
@@ -93,8 +100,16 @@ function describeProviderFailure(cause: unknown): {
       return 'Model AI yang disetel di server tidak tersedia'
     }
     if (status === 403) return 'Akun OpenAI tidak diizinkan memakai model ini'
+    if (invalidModel) return 'Nama model AI yang disetel di server tidak valid'
+    // Reasoning models (gpt-5, o-series) refuse max_tokens and temperature 0.
+    if (
+      providerCode === 'unsupported_parameter' ||
+      providerCode === 'unsupported_value'
+    ) {
+      return 'Model AI yang disetel di server tidak mendukung pengaturan analisis ini'
+    }
     if (status === undefined) return 'Server tidak bisa menghubungi penyedia AI'
-    return 'Permintaan ke penyedia AI gagal'
+    return `Permintaan ke penyedia AI gagal (HTTP ${status}${providerCode ? `, ${providerCode}` : ''})`
   })()
 
   return { message, status, providerCode }
