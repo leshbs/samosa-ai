@@ -5,7 +5,10 @@ import { REQUEST_ID_HEADER, readRequestId } from '@/lib/observability/request-id
 import { safeNextPath } from '@/lib/security/safe-next-path'
 import { isSameOrigin } from '@/lib/security/same-origin'
 
-/** Everything behind the dashboard shell requires a session. */
+/**
+ * Everything behind the dashboard shell requires a session, and so does the
+ * page for an account that has lost its organization.
+ */
 const PROTECTED_PREFIXES = [
   '/dashboard',
   '/datasets',
@@ -13,6 +16,7 @@ const PROTECTED_PREFIXES = [
   '/reports',
   '/settings',
   '/profile',
+  '/no-organization',
 ]
 /** Pages for signed-out users; a signed-in visitor is sent to the dashboard. */
 const AUTH_PAGES = ['/login', '/signup', '/forgot-password', '/verify-email']
