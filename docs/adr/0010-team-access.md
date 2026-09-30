@@ -62,8 +62,12 @@ membatasi bentuk solusinya:
   organisasi lain tanpa menyerahkan atau menghapus miliknya dulu. Untuk OSIS
   (satu orang, satu kepengurusan) ini jarang; untuk pembina yang mendampingi
   beberapa organisasi, ini membatasi. Dicatat di `DEBT.md`.
-- Anggota yang dikeluarkan tetap punya akun, dan login berikutnya membuatkan
-  organisasi baru untuknya lewat jalur perbaikan ADR-0009.
+- Anggota yang dikeluarkan — atau yang organisasinya dihapus — tetap punya
+  akun. Selama sesinya masih hidup, dashboard mengarahkannya ke
+  `/no-organization`: halaman yang menjelaskan sebabnya, mengingatkan bahwa
+  tautan undangan tetap bisa dipakai, dan menawarkan membuat organisasi sendiri
+  lewat `/api/auth/provision`. Login berikutnya juga membuatkannya organisasi
+  baru lewat jalur perbaikan ADR-0009.
 - Email anggota lain dibaca dari `auth.users` dengan service role, satu panggilan
   per anggota, hanya untuk user id yang dikembalikan query ber-RLS. Wajar untuk
   selusin pengurus; perlu diganti kalau organisasi punya ratusan anggota.
