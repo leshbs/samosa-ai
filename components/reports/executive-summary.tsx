@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { RegenerateSummaryButton } from '@/components/reports/regenerate-summary-button'
 import { formatDateTime } from '@/lib/utils'
+import type { OrgTimeZone } from '@/types/domain'
 
 export type ExecutiveSummaryProps = {
   jobId: string
@@ -8,6 +9,7 @@ export type ExecutiveSummaryProps = {
   generatedAt: string | null
   /** §5: hidden entirely for a role that cannot spend the organization's budget. */
   canRegenerate: boolean
+  timeZone?: OrgTimeZone
 }
 
 /**
@@ -25,6 +27,7 @@ export function ExecutiveSummary({
   summary,
   generatedAt,
   canRegenerate,
+  timeZone,
 }: ExecutiveSummaryProps) {
   return (
     <Card data-print="keep-together">
@@ -33,7 +36,7 @@ export function ExecutiveSummary({
           <CardTitle className="text-base">Ringkasan eksekutif</CardTitle>
           <p className="text-xs text-muted-foreground">
             {generatedAt
-              ? `Disusun AI · ${formatDateTime(generatedAt)}`
+              ? `Disusun AI · ${formatDateTime(generatedAt, timeZone)}`
               : 'Belum ada ringkasan untuk laporan ini.'}
           </p>
         </div>

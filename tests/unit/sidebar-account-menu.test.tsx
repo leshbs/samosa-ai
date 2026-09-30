@@ -50,7 +50,9 @@ describe('SidebarAccountMenu', () => {
 
     expect(screen.getByText('Rani Putri')).toBeTruthy()
     expect(screen.getByText('ketua@osis.test')).toBeTruthy()
-    expect(screen.getByRole('menuitem', { name: /Profil & pengaturan/ })).toBeTruthy()
+    const profile = screen.getByRole('menuitem', { name: /^Profil$/ })
+    // Organization settings live in the sidebar; the account menu is about you.
+    expect(profile.getAttribute('href')).toBe('/profile')
     expect(screen.getByRole('menuitemcheckbox', { name: /Tema gelap/ })).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: 'Keluar' })).toBeTruthy()
   })

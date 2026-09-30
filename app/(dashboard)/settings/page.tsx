@@ -1,163 +1,67 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { EditableNameForm } from '@/components/settings/editable-name-form'
 import { PageHeader } from '@/components/layout/page-header'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { formatIdr, getUsageSummary } from '@/modules/analysis'
-import { can, getSessionUser } from '@/modules/auth'
+import {
+  SETTINGS_TABS,
+  SettingsTabs,
+  parseSettingsTab,
+} from '@/components/settings/settings-tabs'
+import { Button } from '@/components/ui/button'
+import { getSessionUser } from '@/modules/auth'
+import { DataTab } from './_tabs/data-tab'
+import { MembersTab } from './_tabs/members-tab'
+import { NotificationsTab } from './_tabs/notifications-tab'
+import { OrganizationTab } from './_tabs/organization-tab'
+import { ReportsTab } from './_tabs/reports-tab'
+import { UsageTab } from './_tabs/usage-tab'
 
 export const metadata: Metadata = { title: 'Pengaturan' }
 
-const ROLE_LABELS: Record<string, string> = {
-  owner: 'Pemilik',
-  admin: 'Admin',
-  member: 'Anggota',
-  viewer: 'Pengamat',
-}
+const TAB_PANELS = {
+  organisasi: OrganizationTab,
+  anggota: MembersTab,
+  pemakaian: UsageTab,
+  laporan: ReportsTab,
+  notifikasi: NotificationsTab,
+  data: DataTab,
+} as const
 
-export default async function SettingsPage() {
+/**
+ * Checklist 5.1: every organization setting on one page, the tab in the URL.
+ * Only the active tab's panel is rendered, so opening "Pemakaian" does not
+ * pay for the member list's email lookups.
+ */
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>
+}) {
   const session = await getSessionUser()
   if (!session.ok) redirect('/login')
 
-  const canManageOrg = can(session.value.role, 'org:manage')
-  const usage = await getUsageSummary(session.value.organizationId)
-
-  const usageRows = usage.ok
-    ? [
-        { label: 'Analisis dijalankan', value: String(usage.value.totalJobs) },
-        {
-          label: 'Aspirasi dianalisis',
-          value: usage.value.responsesAnalyzed.toLocaleString('id-ID'),
-        },
-        {
-          label: 'Token terpakai',
-          value: (usage.value.inputTokens + usage.value.outputTokens).toLocaleString(
-            'id-ID',
-          ),
-        },
-        { label: 'Perkiraan biaya', value: formatIdr(usage.value.costMicroIdr) },
-      ]
-    : []
+  const tab = parseSettingsTab((await searchParams).tab)
+  const Panel = TAB_PANELS[tab]
 
   return (
     <section className="mx-auto max-w-narrative space-y-6">
       <PageHeader
         title="Pengaturan"
-        description="Detail akun, organisasi, dan pemakaian."
+        description="Organisasi, anggota, pemakaian, dan laporan. Nama dan foto profilmu ada di halaman Profil."
         crumbs={[{ label: 'Pengaturan' }]}
+        actions={
+          <Button asChild variant="outline" size="sm">
+            <Link href="/profile">Profil saya</Link>
+          </Button>
+        }
       />
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Profil</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <EditableNameForm
-            id="display-name"
-            label="Nama"
-            endpoint="/api/settings/profile"
-            field="displayName"
-            initialValue={session.value.displayName}
-            placeholder="Nama yang dilihat anggota lain"
-            successMessage="Nama tersimpan."
-          />
-
-          <div className="flex justify-between gap-4 text-sm">
-            <span className="text-muted-foreground">Email</span>
-            <span className="font-medium">{session.value.email}</span>
-          </div>
-          {session.value.hasPassword ? (
-            <div className="flex items-center justify-between gap-4 text-sm">
-              <span className="text-muted-foreground">Password</span>
-              <Link
-                href="/reset-password"
-                className="font-medium underline underline-offset-4"
-              >
-                Ganti password
-              </Link>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              Kamu masuk dengan Google. Email terikat ke akun Google-mu dan diubah dari
-              sana.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Organisasi</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/**
-           * §5: no disabled controls for a role that cannot use them. A member
-           * used to get the full form with a dead Save button; now they get the
-           * value as text, which is the part they can actually use, and the
-           * reason it is not editable.
-           */}
-          {canManageOrg ? (
-            <EditableNameForm
-              id="organization-name"
-              label="Nama organisasi"
-              endpoint="/api/settings/organization"
-              field="name"
-              initialValue={session.value.organizationName}
-              successMessage="Nama organisasi tersimpan."
-              description="Muncul di header dan di setiap laporan yang diekspor."
-            />
-          ) : (
-            <div className="space-y-1">
-              <div className="flex justify-between gap-4 text-sm">
-                <span className="text-muted-foreground">Nama organisasi</span>
-                <span className="font-medium">{session.value.organizationName}</span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Hanya pemilik yang bisa mengubah ini. Peranmu:{' '}
-                {ROLE_LABELS[session.value.role] ?? session.value.role}.
-              </p>
-            </div>
-          )}
-
-          <div className="flex justify-between gap-4 text-sm">
-            <span className="text-muted-foreground">Peran</span>
-            <span className="font-medium">
-              {ROLE_LABELS[session.value.role] ?? session.value.role}
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Mengundang anggota lewat email menyusul; sampai saat itu satu organisasi
-            dipakai satu akun.
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Pemakaian</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {usage.ok ? (
-            <>
-              {usageRows.map((row) => (
-                <div key={row.label} className="flex justify-between gap-4 text-sm">
-                  <span className="text-muted-foreground">{row.label}</span>
-                  <span className="font-medium">{row.value}</span>
-                </div>
-              ))}
-              <p className="text-xs text-muted-foreground">
-                Biaya dihitung dari token terpakai dengan tarif saat analisis berjalan,
-                jadi angkanya perkiraan — bukan tagihan.
-              </p>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Data pemakaian belum bisa dimuat.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      <SettingsTabs active={tab} />
+      <div
+        role="region"
+        aria-label={SETTINGS_TABS.find((entry) => entry.id === tab)?.label}
+      >
+        <Panel session={session.value} />
+      </div>
     </section>
   )
 }

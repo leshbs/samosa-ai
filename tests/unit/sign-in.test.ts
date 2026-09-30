@@ -4,12 +4,14 @@ const getUser = vi.fn()
 const exchangeCodeForSession = vi.fn()
 const verifyOtp = vi.fn()
 const provisionOrganization = vi.fn()
+const ensureProfile = vi.fn()
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({ auth: { getUser, exchangeCodeForSession, verifyOtp } }),
 }))
 
 vi.mock('@/modules/auth/services/provision', () => ({ provisionOrganization }))
+vi.mock('@/modules/auth/services/profile', () => ({ ensureProfile }))
 
 const { completeSignIn, exchangeAuthCode, organizationNameFor, verifyEmailLink } =
   await import('@/modules/auth/services/sign-in')
@@ -26,6 +28,7 @@ beforeEach(() => {
   exchangeCodeForSession.mockReset()
   verifyOtp.mockReset()
   provisionOrganization.mockReset()
+  ensureProfile.mockReset()
   provisionOrganization.mockResolvedValue({
     ok: true,
     value: { organizationId: 'org-1' },
@@ -86,6 +89,26 @@ describe('completeSignIn', () => {
       userId: 'user-1',
       organizationName: 'Organisasi ketua',
     })
+  })
+
+  it('seeds a profile from the signup metadata once provisioned', async () => {
+    signedInAs({ full_name: 'Rani Putri' })
+
+    await completeSignIn()
+
+    expect(ensureProfile).toHaveBeenCalledWith('user-1', { full_name: 'Rani Putri' })
+  })
+
+  it('leaves the profile alone when provisioning failed', async () => {
+    signedInAs({})
+    provisionOrganization.mockResolvedValue({
+      ok: false,
+      error: { code: 'INTERNAL', message: 'x' },
+    })
+
+    await completeSignIn()
+
+    expect(ensureProfile).not.toHaveBeenCalled()
   })
 
   it('refuses without a session and provisions nothing', async () => {
