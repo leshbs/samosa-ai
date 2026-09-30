@@ -39,4 +39,12 @@ export type {
 export { exportReportToCsv, exportResponsesToCsv } from './exporters/csv-exporter'
 export type { ExportableResponse } from './exporters/csv-exporter'
 export { exportReportToPdf } from './exporters/pdf-exporter'
-export type { PdfExport, ReportDocumentData } from './exporters/pdf-exporter'
+export type {
+  PdfExport,
+  ReportDocumentData,
+  ReportProvenance,
+} from './exporters/pdf-exporter'
+export { exportDatasetToCsv } from './exporters/csv-exporter'
+export type { ExportableDatasetRow } from './exporters/csv-exporter'
+export { archiveSlug, buildArchive } from './exporters/archive'
+export type { ArchiveEntry } from './exporters/archive'

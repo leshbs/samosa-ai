@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { datasetSourceSchema } from '@/types/domain'
+import {
+  datasetSourceSchema,
+  invitableRoleSchema,
+  orgTimeZoneSchema,
+} from '@/types/domain'
 import type { ErrorCode } from '@/modules/shared'
 
 export type ApiSuccess<T> = { data: T }
@@ -52,21 +56,78 @@ export const reportExportSchema = z.object({
 })
 export type ReportExportInput = z.infer<typeof reportExportSchema>
 
-export const updateProfileSchema = z.object({
-  displayName: z
-    .string()
-    .trim()
-    .min(1, 'Nama wajib diisi')
-    .max(80, 'Nama maksimal 80 karakter'),
-})
+/** At least one field, so an empty PATCH is a 400 rather than a silent no-op. */
+function someField(value: Record<string, unknown>): boolean {
+  return Object.values(value).some((field) => field !== undefined)
+}
+
+export const updateProfileSchema = z
+  .object({
+    displayName: z
+      .string()
+      .trim()
+      .min(1, 'Nama wajib diisi')
+      .max(80, 'Nama maksimal 80 karakter')
+      .optional(),
+    /** Free text: "Sekretaris OSIS 2026/2027". Blank clears it. */
+    title: z.string().trim().max(80, 'Jabatan maksimal 80 karakter').optional(),
+    notifyAnalysisFinished: z.boolean().optional(),
+  })
+  .refine(someField, 'Tidak ada yang diubah')
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>
 
-export const updateOrganizationSchema = z.object({
-  // Matches the check constraint on organizations.name.
-  name: z
+export const updateOrganizationSchema = z
+  .object({
+    // Matches the check constraint on organizations.name.
+    name: z
+      .string()
+      .trim()
+      .min(1, 'Nama organisasi wajib diisi')
+      .max(120, 'Nama organisasi maksimal 120 karakter')
+      .optional(),
+    timezone: orgTimeZoneSchema.optional(),
+    reportIncludeQuotes: z.boolean().optional(),
+    reportIncludeTopicTail: z.boolean().optional(),
+    reportIncludeProvenance: z.boolean().optional(),
+  })
+  .refine(someField, 'Tidak ada yang diubah')
+export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>
+
+/**
+ * Typed confirmation for the two actions that cannot be undone from inside the
+ * app. Checked again on the server: a disabled button is not a control.
+ */
+const confirmationSchema = z.string().trim().min(1, 'Ketik nama organisasi')
+
+export const transferOwnershipSchema = z.object({
+  newOwnerId: z.string().uuid('Anggota tidak valid'),
+  confirmation: confirmationSchema,
+})
+export type TransferOwnershipInput = z.infer<typeof transferOwnershipSchema>
+
+export const deleteOrganizationSchema = z.object({ confirmation: confirmationSchema })
+
+export const createInvitationSchema = z.object({
+  email: z
     .string()
     .trim()
-    .min(1, 'Nama organisasi wajib diisi')
-    .max(120, 'Nama organisasi maksimal 120 karakter'),
+    .toLowerCase()
+    .email('Masukkan email yang valid')
+    .max(320, 'Email terlalu panjang'),
+  role: invitableRoleSchema,
 })
-export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>
+export type CreateInvitationInput = z.infer<typeof createInvitationSchema>
+
+export const updateMemberSchema = z.object({ role: invitableRoleSchema })
+
+/** base64url of 32 random bytes is 43 characters; the bounds only reject junk. */
+export const acceptInvitationSchema = z.object({
+  token: z
+    .string()
+    .min(20)
+    .max(128)
+    .regex(/^[A-Za-z0-9_-]+$/),
+})
+
+/** 1 MB, the `branding` bucket's file_size_limit. */
+export const MAX_IMAGE_BYTES = 1024 * 1024

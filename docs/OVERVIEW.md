@@ -130,6 +130,7 @@ pnpm db:migrate:new <name>      # Create new migration
 pnpm db:migrate                 # Apply pending migrations
 pnpm db:reset                   # Reset local DB (dev only!)
 pnpm db:types                   # Regenerate TS types from schema
+pnpm db:check                   # Jalankan semua migrasi + cek policy di PGlite (tanpa DB/Docker)
 
 # ─── Build & Deploy ────────────────────────
 pnpm build                      # Production build
@@ -155,11 +156,15 @@ WORKER_SECRET=
 GOOGLE_OAUTH_CLIENT_ID=
 GOOGLE_OAUTH_CLIENT_SECRET=
 SENTRY_DSN=
+RESEND_API_KEY=                    # kosong = email aplikasi mati (undangan, notifikasi)
+EMAIL_FROM=                        # "SAMOSA <noreply@domainmu>", domain terverifikasi di Resend
 ```
 
 > **Auth butuh setelan di luar repo** — SMTP (Resend), Site URL, redirect URL, template email, dan consent screen Google. Langkahnya di **[`docs/auth-setup.md`](auth-setup.md)**; tanpa itu email verifikasi dan reset tidak sampai ke pengguna.
 
 > **`OPENAI_API_KEY` dan `OPENAI_MODEL` dirapikan saat dibaca** — spasi, baris baru, dan sepasang tanda kutip di ujung dibuang (`lib/env.ts`, `unwrapPastedValue`). Nilai yang ditempel ke dashboard Vercel sering membawa salah satunya, dan OpenAI membalasnya dengan `400 invalid model ID` yang menggagalkan semua batch. Model reasoning (gpt-5, o-series) belum didukung: mereka menolak `max_tokens` dan `temperature: 0` yang dipakai adapter.
+
+> **Email aplikasi (ADR-0011) mati sampai `RESEND_API_KEY` dan `EMAIL_FROM` diisi.** Tanpa keduanya, undangan anggota tetap jalan sebagai tautan yang dibagikan sendiri, dan tab Notifikasi mengatakan email belum aktif. Keduanya atau tidak sama sekali.
 
 > **`pnpm build` membutuhkan env vars.** `lib/env.ts` memvalidasi saat module load (sesuai Security standards: crash on startup, bukan crash on first request), jadi build tanpa env akan gagal di tahap "Collecting page data". Di CI dan Vercel, set env vars sebagai secrets sebelum build. Ini disengaja — jangan "diperbaiki" dengan membuat validasi jadi lazy.
 
@@ -209,6 +214,7 @@ samosa/
 │   │   │   └── summary.v1.ts
 │   │   ├── postprocess/
 │   │   └── index.ts
+│   ├── notifications/               # Email: transport Resend + template (ADR-0011)
 │   ├── reporting/
 │   │   ├── aggregators/
 │   │   ├── exporters/               # PDF, CSV, PPT
@@ -314,7 +320,16 @@ analysis_jobs      — job tracking (dataset_id, status, prompt_version)
 analysis_results   — per-response hasil (response_id, sentiment, topics[], keywords[])
   ↓
 reports            — aggregated view (job_id, summary, insights, exported_at)
+
+profiles                 — nama tampilan, jabatan, avatar, preferensi notifikasi (satu per user)
+organization_invitations — undangan tertunda; hanya SHA-256 token yang disimpan (ADR-0010)
 ```
+
+Satu akun hanya anggota satu organisasi (ADR-0010). Pengaturan organisasi —
+logo, zona waktu, isi default PDF — adalah kolom di `organizations`.
+Kepemilikan hanya berpindah lewat fungsi `transfer_organization_ownership`, dan
+kolom yang tidak boleh ditulis browser (`logo_path`, `avatar_path`,
+`organization_members` selain `role`) dikunci dengan column privilege.
 
 Semua tabel wajib punya **RLS policy** yang scope ke `organization_id`.
 
@@ -452,6 +467,7 @@ Audit penuh beserta buktinya ada di **[`docs/security-audit.md`](security-audit.
 - ✅ **CSRF** — pengecekan `Origin` untuk setiap metode tulis di middleware; `/api/webhooks/*` dikecualikan karena memakai shared secret.
 - ✅ **Content Security Policy** — nonce per request, `strict-dynamic`, plus header konstan di `next.config.ts`. Nol pelanggaran di enam route, diperiksa di browser sungguhan.
 - ✅ **Auth** — email wajib diverifikasi; tautan email ditebus di server lewat `token_hash` (ADR-0009); reset password mengeluarkan sesi di perangkat lain; form lupa-password tidak membocorkan email mana yang terdaftar; setiap `?next=` lewat `safeNextPath()` (menutup open redirect `//` dan `/\`). Diverifikasi end-to-end di project hosted dengan akun sekali pakai. Pengiriman email sungguhan menunggu SMTP — lihat `DEBT.md`.
+- ✅ **Keanggotaan dan kepemilikan** — admin tidak bisa menaikkan dirinya jadi pemilik, menyentuh baris pemilik, atau menambah anggota langsung; kepemilikan hanya berpindah lewat fungsi `security definer` dalam satu transaksi. Undangan menyimpan hash token, bukan tokennya. Diverifikasi dengan `pnpm db:check` (57 cek di PGlite); `scripts/check-rls.mjs` mengulang cek lintas-tenant-nya terhadap project hosted setelah migrasi diterapkan (ADR-0010).
 - ✅ **Korelasi log** — satu `requestId` dari edge sampai ke log line, dikembalikan sebagai header `x-request-id`.
 - 🟡 **Rate limiting di endpoint upload dan analysis** — kodenya ada dan gagal-terbuka dengan benar, tapi migrasinya belum diterapkan ke project hosted. Postgres, bukan Upstash: penghitung in-process tidak berguna di serverless. Lihat `DEBT.md`.
 - ⬜ **PII handling** — belum diimplementasi. Rencana: opsi anonymize (hapus nama, email) sebelum data disimpan. Saat ini `respondent_meta` disimpan apa adanya dan **tidak** ikut dikirim ke LLM.

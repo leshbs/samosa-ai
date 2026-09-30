@@ -268,6 +268,102 @@ try {
     )
   }
 
+  // ── Settings, members and profile (20260929000100) ───────────────────
+  const settingsProbe = await asA.from('profiles').select('user_id').limit(1)
+  if (settingsProbe.error?.message?.includes('Could not find the table')) {
+    skip(
+      'profiles, invitations and membership writes',
+      'tables do not exist yet — apply 20260929000100_settings_members_profile.sql',
+    )
+  } else {
+    const probeHash = `probe-${stamp}`
+    const probeLogo = `org/${b.orgId}/probe-${stamp}.png`
+    await admin.from('profiles').upsert({ user_id: b.userId, display_name: 'Rahasia B' })
+    await admin.from('organization_invitations').insert({
+      organization_id: b.orgId,
+      email: `undangan-${stamp}@samosa.test`,
+      role: 'member',
+      token_hash: probeHash,
+      invited_by: b.userId,
+    })
+    await admin.storage
+      .from('branding')
+      .upload(probeLogo, new Uint8Array([137, 80, 78, 71]), { contentType: 'image/png' })
+
+    const profileB = await asA.from('profiles').select('user_id').eq('user_id', b.userId)
+    check(
+      'user A cannot read the profile of someone in org B',
+      (profileB.data ?? []).length === 0,
+      profileB.error ? `error: ${profileB.error.message}` : 'empty',
+    )
+
+    const invitesB = await asA
+      .from('organization_invitations')
+      .select('id')
+      .eq('organization_id', b.orgId)
+    check(
+      'user A cannot read the invitations of org B',
+      (invitesB.data ?? []).length === 0,
+      invitesB.error ? `error: ${invitesB.error.message}` : 'empty',
+    )
+
+    const hashes = await asA.from('organization_invitations').select('token_hash')
+    check('invitation token hashes are not readable by anyone', Boolean(hashes.error))
+
+    const rolesB = await asA
+      .from('organization_members')
+      .update({ role: 'viewer' })
+      .eq('organization_id', b.orgId)
+      .select('user_id')
+    check(
+      'user A cannot change roles in org B',
+      (rolesB.data ?? []).length === 0,
+      rolesB.error ? `error: ${rolesB.error.message}` : 'no rows updated',
+    )
+
+    const ownerRow = await asA
+      .from('organization_members')
+      .update({ role: 'viewer' })
+      .eq('user_id', a.userId)
+      .select('user_id')
+    check(
+      'the owner row cannot be edited directly, even by the owner',
+      (ownerRow.data ?? []).length === 0,
+      ownerRow.error ? `error: ${ownerRow.error.message}` : 'no rows updated',
+    )
+
+    const join = await asA
+      .from('organization_members')
+      .insert({ user_id: a.userId, organization_id: b.orgId, role: 'member' })
+    check('nobody can insert a membership directly', Boolean(join.error))
+
+    const logo = await asA
+      .from('organizations')
+      .update({ logo_path: probeLogo })
+      .eq('id', a.orgId)
+      .select('id')
+    check('logo_path cannot be pointed at another tenant', Boolean(logo.error))
+
+    const takeover = await asA.rpc('transfer_organization_ownership', {
+      p_organization_id: b.orgId,
+      p_new_owner: a.userId,
+    })
+    check('user A cannot take org B by ownership transfer', Boolean(takeover.error))
+
+    const accepted = await asA.rpc('accept_organization_invitation', {
+      p_token_hash: probeHash,
+    })
+    check('an invitation for another address cannot be accepted', Boolean(accepted.error))
+
+    const download = await asA.storage.from('branding').download(probeLogo)
+    check(
+      'the branding bucket is not readable with the anon key',
+      Boolean(download.error),
+    )
+
+    await admin.storage.from('branding').remove([probeLogo])
+  }
+
   // ── And an anonymous caller must see nothing at all ──────────────────
   const anonymous = createClient(URL, ANON, {
     auth: { persistSession: false, autoRefreshToken: false },

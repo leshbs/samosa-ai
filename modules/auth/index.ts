@@ -2,9 +2,59 @@
 export { getAuthUser, getSessionUser, requireSessionUser } from './services/session'
 export type { AuthUser, SessionUser } from './services/session'
 export { provisionOrganization } from './services/provision'
-export { updateDisplayName } from './services/profile'
-export { renameOrganization } from './services/organization'
 export type { ProvisionInput } from './services/provision'
+export {
+  getNotificationTarget,
+  getPeople,
+  getProfileDetails,
+  updateProfile,
+} from './services/profile'
+export type {
+  NotificationTarget,
+  PersonSummary,
+  Profile,
+  ProfileDetails,
+  ProfilePatch,
+} from './services/profile'
+export {
+  confirmationMatches,
+  deleteOrganization,
+  getOrganizationSettings,
+  updateOrganization,
+} from './services/organization'
+export type { OrganizationActor, OrganizationSettings } from './services/organization'
+export {
+  changeMemberRole,
+  listMembers,
+  removeMember,
+  transferOwnership,
+} from './services/members'
+export type { MemberActor, MemberView } from './services/members'
+export {
+  INVITATION_TTL_DAYS,
+  acceptInvitation,
+  createInvitation,
+  getInvitationPreview,
+  listPendingInvitations,
+  maskEmail,
+  revokeInvitation,
+} from './services/invitations'
+export type {
+  CreatedInvitation,
+  InvitationPreview,
+  InvitationStatus,
+  InvitationView,
+} from './services/invitations'
+export {
+  clearAvatar,
+  clearOrganizationLogo,
+  detectImageFormat,
+  readOrganizationLogo,
+  setAvatar,
+  setOrganizationLogo,
+  signBrandingUrl,
+} from './services/branding'
+export type { ImageFormat, LogoImage } from './services/branding'
 export {
   EMAIL_LINK_TYPES,
   completeSignIn,

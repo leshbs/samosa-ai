@@ -2,15 +2,21 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { clientEnv } from '@/lib/env'
 import { REQUEST_ID_HEADER, readRequestId } from '@/lib/observability/request-id'
+import { safeNextPath } from '@/lib/security/safe-next-path'
 import { isSameOrigin } from '@/lib/security/same-origin'
 
-/** Everything behind the dashboard shell requires a session. */
+/**
+ * Everything behind the dashboard shell requires a session, and so does the
+ * page for an account that has lost its organization.
+ */
 const PROTECTED_PREFIXES = [
   '/dashboard',
   '/datasets',
   '/analysis',
   '/reports',
   '/settings',
+  '/profile',
+  '/no-organization',
 ]
 /** Pages for signed-out users; a signed-in visitor is sent to the dashboard. */
 const AUTH_PAGES = ['/login', '/signup', '/forgot-password', '/verify-email']
@@ -61,7 +67,9 @@ function contentSecurityPolicy(nonce: string, isSecure: boolean): string {
     // React Refresh compiles modules with eval; production never needs it.
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ''}`,
     `style-src 'self' 'unsafe-inline'`,
-    `img-src 'self' data: blob:`,
+    // Logos and avatars are private objects served by short-lived signed URLs
+    // straight from Supabase Storage.
+    `img-src 'self' data: blob: ${supabase}`,
     `font-src 'self' data:`,
     `connect-src 'self' ${supabase} ${supabaseSocket}`,
     // The report PDF is downloaded, never framed, so nothing needs to embed us.
@@ -181,7 +189,10 @@ export async function middleware(request: NextRequest) {
   // /dashboard -> /login -> /dashboard until the browser gives up.
   const hasError = request.nextUrl.searchParams.has('error')
   if (user && AUTH_PAGES.includes(pathname) && !hasError) {
-    return redirectTo(new URL('/dashboard', request.url))
+    // Honour `next`: an invitation link sends a signed-in user through
+    // /login?next=/invite/..., and dropping them on the dashboard loses it.
+    const next = safeNextPath(request.nextUrl.searchParams.get('next'))
+    return redirectTo(new URL(next, request.url))
   }
 
   return response

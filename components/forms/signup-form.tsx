@@ -33,16 +33,28 @@ const signupSchema = z.object({
     .max(72, 'Password maksimal 72 karakter'),
 })
 
-type SignupValues = z.infer<typeof signupSchema>
+/**
+ * Someone arriving from an invitation is joining an organization, not starting
+ * one, so the organization name is not asked for. Provisioning still gives the
+ * account a placeholder organization of its own — every signup path does — and
+ * accepting the invitation drops it, since it is empty.
+ */
+const joinSchema = signupSchema.extend({ organizationName: z.string().optional() })
 
-export function SignupForm() {
+type SignupValues = z.infer<typeof joinSchema>
+
+export function SignupForm({ next }: { next?: string }) {
   const router = useRouter()
+  const joining = Boolean(next?.startsWith('/invite/'))
+  const destination = next ?? '/dashboard'
   const {
     register,
     handleSubmit,
     setError,
     formState: { errors, isSubmitting },
-  } = useForm<SignupValues>({ resolver: zodResolver(signupSchema) })
+  } = useForm<SignupValues>({
+    resolver: zodResolver(joining ? joinSchema : signupSchema),
+  })
 
   async function onSubmit(values: SignupValues) {
     const supabase = createClient()
@@ -52,12 +64,14 @@ export function SignupForm() {
       options: {
         // Without this the confirmation link lands on the Site URL — the
         // landing page — where nothing redeems it.
-        emailRedirectTo: authRedirectUrl('/confirm', '/dashboard'),
+        emailRedirectTo: authRedirectUrl('/confirm', destination),
         // The organization name rides along in metadata: with confirmation on
         // there is no session yet, and /confirm creates the organization from it.
         data: {
           [FULL_NAME_METADATA_KEY]: values.fullName,
-          [ORGANIZATION_NAME_METADATA_KEY]: values.organizationName,
+          ...(values.organizationName
+            ? { [ORGANIZATION_NAME_METADATA_KEY]: values.organizationName }
+            : {}),
         },
       },
     })
@@ -92,7 +106,9 @@ export function SignupForm() {
     const provisioned = await requestJson('/api/auth/provision', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ organizationName: values.organizationName }),
+      body: JSON.stringify(
+        values.organizationName ? { organizationName: values.organizationName } : {},
+      ),
     })
 
     if (!provisioned.ok) {
@@ -104,7 +120,7 @@ export function SignupForm() {
       return
     }
 
-    router.replace('/dashboard')
+    router.replace(destination)
     router.refresh()
   }
 
@@ -123,18 +139,20 @@ export function SignupForm() {
         ) : null}
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="organizationName">Nama organisasi</Label>
-        <Input
-          id="organizationName"
-          placeholder="OSIS SMA Nusantara"
-          autoComplete="organization"
-          {...register('organizationName')}
-        />
-        {errors.organizationName ? (
-          <p className="text-sm text-destructive">{errors.organizationName.message}</p>
-        ) : null}
-      </div>
+      {joining ? null : (
+        <div className="space-y-2">
+          <Label htmlFor="organizationName">Nama organisasi</Label>
+          <Input
+            id="organizationName"
+            placeholder="OSIS SMA Nusantara"
+            autoComplete="organization"
+            {...register('organizationName')}
+          />
+          {errors.organizationName ? (
+            <p className="text-sm text-destructive">{errors.organizationName.message}</p>
+          ) : null}
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>

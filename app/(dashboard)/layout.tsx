@@ -11,12 +11,12 @@ export default async function DashboardLayout({
 }) {
   const session = await getSessionUser()
   if (!session.ok) {
-    // Two very different failures land here. Not signed in is the ordinary one.
-    // Signed in with no organization is not: it happens when OAuth provisioning
-    // failed, or a membership was revoked, and sending that user to a blank
-    // login form tells them nothing while middleware sends them straight back.
+    // Two different states land here. Not signed in is the ordinary one.
+    // Signed in with no organization is the other: the member was removed, or
+    // the organization deleted. A login form tells them nothing, so they get a
+    // page that says why and lets them start over.
     const identity = await getAuthUser()
-    redirect(identity.ok ? '/login?error=provisioning' : '/login')
+    redirect(identity.ok ? '/no-organization' : '/login')
   }
 
   // Badge counts only. A failed count hides its badge rather than showing 0,

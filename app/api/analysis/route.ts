@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
     organizationId: session.value.organizationId,
     datasetId: parsed.data.datasetId,
     promptVersion: parsed.data.promptVersion,
+    createdBy: session.value.userId,
   })
 
   if (!result.ok) {

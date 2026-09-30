@@ -16,10 +16,17 @@ export type JobStatus =
 export type DatasetSource = 'csv' | 'xlsx' | 'google_forms' | 'manual'
 export type OrgRole = 'owner' | 'admin' | 'member' | 'viewer'
 
+export type OrgTimeZone = 'Asia/Jakarta' | 'Asia/Makassar' | 'Asia/Jayapura'
+
 type OrganizationsRow = {
   id: string
   name: string
   slug: string
+  logo_path: string | null
+  timezone: OrgTimeZone
+  report_include_quotes: boolean
+  report_include_topic_tail: boolean
+  report_include_provenance: boolean
   created_at: string
 }
 
@@ -67,6 +74,7 @@ type AnalysisJobsRow = {
   error_message: string | null
   started_at: string | null
   finished_at: string | null
+  created_by: string | null
   created_at: string
 }
 
@@ -95,6 +103,29 @@ type ReportsRow = {
   created_at: string
 }
 
+type ProfilesRow = {
+  user_id: string
+  display_name: string
+  title: string
+  avatar_path: string | null
+  notify_analysis_finished: boolean
+  updated_at: string
+}
+
+type OrganizationInvitationsRow = {
+  id: string
+  organization_id: string
+  email: string
+  role: OrgRole
+  token_hash: string
+  invited_by: string | null
+  created_at: string
+  expires_at: string
+  accepted_at: string | null
+  accepted_by: string | null
+  revoked_at: string | null
+}
+
 type RateLimitsRow = {
   bucket: string
   window_start: string
@@ -112,7 +143,16 @@ type Table<Row, Generated extends keyof Row> = {
 export type Database = {
   public: {
     Tables: {
-      organizations: Table<OrganizationsRow, 'id' | 'created_at'>
+      organizations: Table<
+        OrganizationsRow,
+        | 'id'
+        | 'logo_path'
+        | 'timezone'
+        | 'report_include_quotes'
+        | 'report_include_topic_tail'
+        | 'report_include_provenance'
+        | 'created_at'
+      >
       organization_members: Table<OrganizationMembersRow, 'role' | 'created_at'>
       datasets: Table<
         DatasetsRow,
@@ -133,6 +173,7 @@ export type Database = {
         | 'error_message'
         | 'started_at'
         | 'finished_at'
+        | 'created_by'
         | 'created_at'
       >
       analysis_results: Table<
@@ -141,12 +182,45 @@ export type Database = {
       >
       reports: Table<ReportsRow, 'id' | 'summary' | 'insights' | 'exported_at' | 'created_at'>
       rate_limits: Table<RateLimitsRow, 'window_start' | 'request_count'>
+      profiles: Table<
+        ProfilesRow,
+        'display_name' | 'title' | 'avatar_path' | 'notify_analysis_finished' | 'updated_at'
+      >
+      organization_invitations: Table<
+        OrganizationInvitationsRow,
+        | 'id'
+        | 'invited_by'
+        | 'created_at'
+        | 'expires_at'
+        | 'accepted_at'
+        | 'accepted_by'
+        | 'revoked_at'
+      >
     }
     Views: Record<never, never>
     Functions: {
       consume_rate_limit: {
         Args: { p_bucket: string; p_limit: number; p_window_seconds: number }
         Returns: Array<{ allowed: boolean; remaining: number; reset_at: string }>
+      }
+      accept_organization_invitation: {
+        Args: { p_token_hash: string }
+        Returns: Array<{
+          joined_organization_id: string
+          dropped_organization_id: string | null
+        }>
+      }
+      transfer_organization_ownership: {
+        Args: { p_organization_id: string; p_new_owner: string }
+        Returns: undefined
+      }
+      current_user_has_password: {
+        Args: Record<string, never>
+        Returns: boolean
+      }
+      shares_organization_with: {
+        Args: { target: string }
+        Returns: boolean
       }
     }
     Enums: {
