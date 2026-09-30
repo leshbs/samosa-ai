@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { ORGANIZATION_NAME_METADATA_KEY } from '@/lib/supabase/user-metadata'
 import { ERROR_CODES, appError, err, logger, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
+import { ensureProfile } from './profile'
 import { provisionOrganization } from './provision'
 
 /** The link types our email templates and Supabase's own links can carry. */
@@ -58,7 +59,7 @@ export async function completeSignIn(
     return err(appError(ERROR_CODES.UNAUTHORIZED, 'Kamu belum masuk'))
   }
 
-  return provisionOrganization({
+  const provisioned = await provisionOrganization({
     userId: data.user.id,
     organizationName: organizationNameFor({
       explicit: organizationName,
@@ -66,6 +67,11 @@ export async function completeSignIn(
       email: data.user.email ?? '',
     }),
   })
+
+  // Same idempotent spot: other members need a name to show for this person
+  // even if they never open their profile.
+  if (provisioned.ok) await ensureProfile(data.user.id, data.user.user_metadata)
+  return provisioned
 }
 
 /**

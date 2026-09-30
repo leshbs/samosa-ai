@@ -66,3 +66,42 @@ export function exportResponsesToCsv(rows: readonly ExportableResponse[]): strin
 
   return UTF8_BOM + toCsv(table)
 }
+
+export type ExportableDatasetRow = {
+  id: string
+  text: string
+  respondentMeta: Record<string, string | number | boolean | null>
+}
+
+/**
+ * A dataset as it was stored: the aspiration plus whichever columns the
+ * uploader chose to keep. For the organization archive — the portable form of
+ * the data, readable without SAMOSA. Columns are the union across rows, in
+ * first-seen order, so a sheet whose later rows gained a column still lines up.
+ */
+export function exportDatasetToCsv(rows: readonly ExportableDatasetRow[]): string {
+  const metaColumns: string[] = []
+  const seen = new Set<string>()
+  for (const row of rows) {
+    for (const key of Object.keys(row.respondentMeta)) {
+      if (!seen.has(key)) {
+        seen.add(key)
+        metaColumns.push(key)
+      }
+    }
+  }
+
+  const table: Array<Array<string | number>> = [
+    ['response_id', 'response', ...metaColumns],
+    ...rows.map((row) => [
+      row.id,
+      row.text,
+      ...metaColumns.map((key) => {
+        const value = row.respondentMeta[key]
+        return value === null || value === undefined ? '' : String(value)
+      }),
+    ]),
+  ]
+
+  return UTF8_BOM + toCsv(table)
+}

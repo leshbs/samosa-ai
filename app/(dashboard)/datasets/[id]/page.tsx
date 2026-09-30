@@ -52,6 +52,7 @@ export default async function DatasetDetailPage({
   ])
 
   const canDelete = session.ok && can(session.value.role, 'dataset:delete')
+  const timezone = session.ok ? session.value.organizationTimezone : undefined
   const canAnalyze = session.ok && can(session.value.role, 'analysis:run')
 
   // Pricing tables stay on the server; the button receives a formatted string.
@@ -63,7 +64,7 @@ export default async function DatasetDetailPage({
     { label: 'Sumber', value: dataset.value.source.toUpperCase() },
     { label: 'Jumlah aspirasi', value: String(dataset.value.responseCount) },
     { label: 'Kolom teks', value: dataset.value.textColumnName ?? '—' },
-    { label: 'Diunggah', value: formatDateTime(dataset.value.createdAt) },
+    { label: 'Diunggah', value: formatDateTime(dataset.value.createdAt, timezone) },
   ]
 
   const kept = dataset.value.keptColumns
@@ -106,7 +107,7 @@ export default async function DatasetDetailPage({
         <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           Analisis terakhir:
           <StatusIndicator status={latestJob.value.status} size="sm" />
-          <span>· {formatDateTime(latestJob.value.createdAt)}</span>
+          <span>· {formatDateTime(latestJob.value.createdAt, timezone)}</span>
         </p>
       ) : null}
 

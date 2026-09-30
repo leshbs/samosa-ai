@@ -1,5 +1,6 @@
 import {
   Document,
+  Image,
   Page,
   StyleSheet,
   Text,
@@ -8,7 +9,12 @@ import {
 } from '@react-pdf/renderer'
 import { ERROR_CODES, appError, err, logger, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
-import type { ReportInsight, Sentiment } from '@/types/domain'
+import {
+  DEFAULT_REPORT_PREFERENCES,
+  type ReportInsight,
+  type ReportPreferences,
+  type Sentiment,
+} from '@/types/domain'
 import type { TopicQuotes } from '../aggregators/quotes'
 import type { SentimentDistribution } from '../aggregators/sentiment'
 import type { CountedTerm } from '../aggregators/types'
@@ -29,6 +35,30 @@ export type ReportDocumentData = {
   topics: CountedTerm[]
   keywords: CountedTerm[]
   topResponsesByTopic: TopicQuotes[]
+  /** Printed beside the organization name. PNG or JPEG: what react-pdf embeds. */
+  logo?: { data: Uint8Array; format: 'png' | 'jpg' } | null
+  /** The person exporting, with the free-text title from their profile. */
+  preparedBy?: { name: string; title: string } | null
+  /** The organization's report defaults (checklist 5.5); absent means defaults. */
+  preferences?: ReportPreferences
+  /** Topics past the top ten, printed only when the tail is switched on. */
+  topicTail?: CountedTerm[]
+  provenance?: ReportProvenance | null
+}
+
+/**
+ * The "Asal data" block. Everything is pre-formatted by the caller, which
+ * knows the organization's timezone; the document only lays it out.
+ */
+export type ReportProvenance = {
+  modelId: string
+  promptVersion: string
+  analyzedAt: string
+  analyzed: number
+  failed: number
+  /** "Rani Putri · Sekretaris OSIS 2026/2027", or null when not recorded. */
+  runBy: string | null
+  cost: string | null
 }
 
 /**
@@ -64,7 +94,14 @@ const MAX_QUOTE_TOPICS = 5
 const MAX_QUOTES_PER_TOPIC = 3
 const MAX_QUOTE_LENGTH = 260
 
+/** A letterhead logo, not a banner: wide marks are scaled down to fit. */
+const LOGO_SIZE = 40
+
 const styles = StyleSheet.create({
+  letterhead: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  logo: { width: LOGO_SIZE, height: LOGO_SIZE, objectFit: 'contain', marginRight: 12 },
+  letterheadName: { fontSize: 12, fontFamily: 'Helvetica-Bold' },
+  letterheadMeta: { fontSize: 9, color: COLORS.muted, marginTop: 2 },
   page: {
     paddingTop: 48,
     paddingBottom: 56,
@@ -265,10 +302,113 @@ function SentimentSection({ sentiment }: { sentiment: SentimentDistribution }) {
   )
 }
 
+/**
+ * Organization first, then the report: whoever picks up a printed copy should
+ * see whose it is before what it is about. The "disiapkan oleh" line is
+ * checklist 5.8 — a committee hands reports upward, and the reader asks who
+ * prepared it.
+ */
+function Letterhead({ data }: { data: ReportDocumentData }) {
+  const prepared = data.preparedBy
+  const preparedLine = prepared?.name
+    ? `Disiapkan oleh ${prepared.name}${prepared.title ? ` · ${prepared.title}` : ''}`
+    : null
+
+  return (
+    <View style={styles.letterhead}>
+      {data.logo ? (
+        // eslint-disable-next-line jsx-a11y/alt-text -- react-pdf's Image takes no alt; the name beside it is the text.
+        <Image
+          style={styles.logo}
+          src={{ data: Buffer.from(data.logo.data), format: data.logo.format }}
+        />
+      ) : null}
+      <View>
+        <Text style={styles.letterheadName}>{data.organizationName}</Text>
+        {preparedLine ? <Text style={styles.letterheadMeta}>{preparedLine}</Text> : null}
+      </View>
+    </View>
+  )
+}
+
+/** Two columns, so a long tail costs half the pages a single list would. */
+function TopicTailSection({ terms }: { terms: CountedTerm[] }) {
+  const half = Math.ceil(terms.length / 2)
+  const columns = [terms.slice(0, half), terms.slice(half)]
+
+  return (
+    <Section title={`Topik lainnya (${terms.length})`}>
+      <Text style={[styles.body, styles.muted, { marginBottom: 8 }]}>
+        Topik di luar sepuluh besar, dengan jumlah aspirasi yang menyebutnya.
+      </Text>
+      <View style={{ flexDirection: 'row' }}>
+        {columns.map((column, index) => (
+          <View key={index} style={{ flex: 1, paddingRight: index === 0 ? 16 : 0 }}>
+            {column.map((term) => (
+              <View key={term.term} style={styles.tableRow}>
+                <Text style={[styles.tableCell, { flex: 1 }]}>{term.term}</Text>
+                <Text style={[styles.tableCell, { width: 36, textAlign: 'right' }]}>
+                  {term.count}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ))}
+      </View>
+    </Section>
+  )
+}
+
+/**
+ * §6.8 of the design system, on paper: which model, which prompt version,
+ * when, by whom, over how many responses. The same facts as the strip at the
+ * foot of the web report, so the two copies of a report never disagree.
+ */
+function ProvenanceSection({
+  provenance,
+  datasetName,
+}: {
+  provenance: ReportProvenance
+  datasetName: string
+}) {
+  const facts: Array<[string, string]> = [
+    ['Dataset', datasetName],
+    ['Aspirasi dianalisis', String(provenance.analyzed)],
+  ]
+  if (provenance.failed > 0) facts.push(['Gagal dianalisis', String(provenance.failed)])
+  facts.push(
+    ['Model', provenance.modelId || 'tidak tercatat'],
+    ['Versi prompt', provenance.promptVersion],
+    ['Dianalisis', provenance.analyzedAt],
+  )
+  if (provenance.runBy) facts.push(['Dijalankan oleh', provenance.runBy])
+  if (provenance.cost) facts.push(['Perkiraan biaya', provenance.cost])
+
+  return (
+    <Section title="Asal data" wrap={false}>
+      {facts.map(([label, value]) => (
+        <View key={label} style={styles.tableRow}>
+          <Text style={[styles.tableCell, styles.muted, { width: 130 }]}>{label}</Text>
+          <Text style={[styles.tableCell, { flex: 1 }]}>{value}</Text>
+        </View>
+      ))}
+      <Text style={[styles.muted, { marginTop: 8, fontSize: 9 }]}>
+        Sentimen, topik, dan kata kunci dihasilkan model bahasa dan bisa salah. Setiap
+        angka bisa dilacak ke aspirasi aslinya di SAMOSA.
+      </Text>
+    </Section>
+  )
+}
+
 function ReportDocument({ data }: { data: ReportDocumentData }) {
+  const preferences = data.preferences ?? DEFAULT_REPORT_PREFERENCES
   const topics = data.topics.slice(0, MAX_TOPICS)
   const keywords = data.keywords.slice(0, MAX_KEYWORDS)
-  const quoted = data.topResponsesByTopic.slice(0, MAX_QUOTE_TOPICS)
+  const quoted = preferences.includeQuotes
+    ? data.topResponsesByTopic.slice(0, MAX_QUOTE_TOPICS)
+    : []
+  const tail = preferences.includeTopicTail ? (data.topicTail ?? []) : []
+  const provenance = preferences.includeProvenance ? (data.provenance ?? null) : null
 
   return (
     <Document
@@ -277,9 +417,9 @@ function ReportDocument({ data }: { data: ReportDocumentData }) {
       language="id"
     >
       <Page size="A4" style={styles.page}>
+        <Letterhead data={data} />
         <Text style={styles.coverEyebrow}>LAPORAN ASPIRASI</Text>
         <Text style={styles.coverTitle}>{data.datasetName}</Text>
-        <Text style={styles.coverMeta}>{data.organizationName}</Text>
         <Text style={styles.coverMeta}>
           {data.sentiment.total} aspirasi · {data.generatedAt} · prompt{' '}
           {data.promptVersion}
@@ -316,6 +456,8 @@ function ReportDocument({ data }: { data: ReportDocumentData }) {
           </Section>
         )}
 
+        {tail.length > 0 && <TopicTailSection terms={tail} />}
+
         {keywords.length > 0 && (
           <Section title="Kata kunci teratas">
             <BarList terms={keywords} total={data.sentiment.total} />
@@ -336,6 +478,10 @@ function ReportDocument({ data }: { data: ReportDocumentData }) {
               </View>
             ))}
           </View>
+        )}
+
+        {provenance && (
+          <ProvenanceSection provenance={provenance} datasetName={data.datasetName} />
         )}
 
         <Text style={styles.footer} fixed>

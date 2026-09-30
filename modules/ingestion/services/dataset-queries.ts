@@ -203,3 +203,46 @@ export async function deleteDataset(datasetId: string): Promise<Result<void, App
 
   return ok(undefined)
 }
+
+/** PostgREST's default ceiling on rows per response. */
+const EXPORT_PAGE_SIZE = 1000
+/** 4,000 characters × 50,000 rows is already a 200 MB archive; stop there. */
+const MAX_EXPORT_ROWS = 50_000
+
+/**
+ * Every response in a dataset, for the organization archive. Paged, because a
+ * single select stops silently at 1,000 rows and an export that quietly drops
+ * the rest is worse than no export.
+ */
+export async function listAllResponses(
+  datasetId: string,
+): Promise<Result<ResponseRecord[], AppError>> {
+  const supabase = await createClient()
+  const rows: ResponseRecord[] = []
+
+  for (let from = 0; from < MAX_EXPORT_ROWS; from += EXPORT_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('responses')
+      .select('id, dataset_id, organization_id, text, respondent_meta, created_at')
+      .eq('dataset_id', datasetId)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + EXPORT_PAGE_SIZE - 1)
+
+    if (error) return err(appError(ERROR_CODES.INTERNAL, 'Aspirasi tidak bisa dimuat'))
+
+    for (const row of data ?? []) {
+      rows.push({
+        id: String(row.id),
+        datasetId: String(row.dataset_id),
+        organizationId: String(row.organization_id),
+        text: String(row.text),
+        respondentMeta: (row.respondent_meta ?? {}) as ResponseRecord['respondentMeta'],
+        createdAt: String(row.created_at),
+      })
+    }
+    if ((data ?? []).length < EXPORT_PAGE_SIZE) break
+  }
+
+  return ok(rows)
+}
