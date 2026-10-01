@@ -325,7 +325,9 @@ profiles                 — nama tampilan, jabatan, avatar, preferensi notifika
 organization_invitations — undangan tertunda; hanya SHA-256 token yang disimpan (ADR-0010)
 ```
 
-Satu akun hanya anggota satu organisasi (ADR-0010). Pengaturan organisasi —
+Satu akun hanya anggota satu organisasi (ADR-0010) — untuk sekarang. ADR-0012
+menggantinya dengan akun → ruang kerja → anggota, dikerjakan bertahap menurut
+[`workspace-plan.md`](workspace-plan.md). Pengaturan organisasi —
 logo, zona waktu, isi default PDF — adalah kolom di `organizations`.
 Kepemilikan hanya berpindah lewat fungsi `transfer_organization_ownership`, dan
 kolom yang tidak boleh ditulis browser (`logo_path`, `avatar_path`,
