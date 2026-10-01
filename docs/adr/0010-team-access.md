@@ -1,6 +1,7 @@
 # 0010. Akses tim: undangan lewat tautan, satu organisasi per akun, keanggotaan dijaga database
 
-- **Status:** Accepted
+- **Status:** Accepted — butir 1 digantikan oleh
+  [ADR-0012](0012-accounts-and-workspaces.md) (berlaku sejak ronde 2 selesai)
 - **Date:** 2026-09-29
 
 ## Context

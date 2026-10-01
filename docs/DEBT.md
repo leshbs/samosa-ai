@@ -256,20 +256,27 @@ Sketsa kalau nanti dikerjakan:
 
 ## Ditambahkan di Fase 9
 
-### Migrasi fase 9 belum diterapkan ke project hosted
+### Migrasi fase 9 di project hosted — rate limit lunas, indeks belum terbukti
 
-`20260924000100_rate_limits.sql` dan `20260924000200_analysis_jobs_org_index.sql`
-belum jalan. CLI Supabase tidak bisa menyambung tanpa password database, dan
-password itu tidak ada di `.env.local`.
+**Diperbarui 2026-10-01.** `20260924000100_rate_limits.sql` sudah aktif:
+`scripts/check-rate-limit.mjs` lulus 10/10 terhadap project hosted, jadi rate
+limiter tidak lagi gagal terbuka.
 
-Akibatnya hari ini: rate limiter **gagal terbuka** (request tetap lewat,
-`security.rate_limit.unavailable` tercatat) dan query per-organisasi di
-`analysis_jobs` masih sequential scan. Dua-duanya degradasi yang aman, tapi
-dua-duanya berarti kontrolnya belum benar-benar aktif.
+Yang tersisa: `20260924000200_analysis_jobs_org_index.sql`. Indeks tidak
+terlihat lewat PostgREST, jadi tidak ada probe yang bisa membuktikannya dari
+sini. Kalau belum ada, akibatnya hanya kinerja — query per-organisasi di
+`analysis_jobs` masih sequential scan.
 
-**Pemicu:** sekarang. **Bayar dengan:** tempel kedua file ke SQL Editor —
-keduanya idempoten — lalu jalankan `node --env-file=.env.local
-scripts/check-rls.mjs` dan pastikan baris SKIP terakhir berubah jadi PASS.
+**Pemicu:** sebelum ronde 1 di [`workspace-plan.md`](workspace-plan.md), yang
+menambah filter organisasi ke query-query itu. **Bayar dengan:** jalankan ini di
+SQL Editor —
+
+```sql
+select indexname from pg_indexes
+where tablename = 'analysis_jobs' and indexname = 'analysis_jobs_org_created_idx';
+```
+
+— dan kalau hasilnya kosong, tempel file migrasinya (idempoten).
 
 ### Sentry belum dipasang
 
@@ -450,7 +457,11 @@ analisis" lagi.
 
 ## Ditambahkan di Fase 5 (pengaturan & profil)
 
-### Migrasi pengaturan belum diterapkan ke project hosted
+### ~~Migrasi pengaturan belum diterapkan ke project hosted~~ — lunas 2026-10-01
+
+Sudah aktif: `scripts/check-rls.mjs` lulus 25/25 terhadap project hosted, tanpa
+baris SKIP. Yang tersisa hanya membuang fallback `created_by` di `createJob`,
+yang sekarang tidak pernah terpakai. Catatan aslinya:
 
 `20260929000100_settings_members_profile.sql` menambah `profiles`,
 `organization_invitations`, kolom pengaturan di `organizations`,
@@ -474,6 +485,12 @@ Tab Pemakaian menampilkan total dan biaya per analisis, tapi belum ada kuota
 ("2 dari 3 analisis gratis bulan ini"): memblokir analisis adalah keputusan
 harga, bukan teknis, dan diputuskan ditunda selama pilot.
 
+**Diperbarui 2026-10-01:** keputusannya sudah ada (ADR-0012) dan arahnya
+berbalik — **tidak ada kuota yang terlihat pengguna.** Yang dibuat di ronde 4
+[`workspace-plan.md`](workspace-plan.md) adalah batas penyalahgunaan per akun
+yang tidak diiklankan. Sketsa di bawah masih berguna untuk cara menghitungnya,
+tapi bukan untuk tampilan "sisa kuota".
+
 Sketsa kalau nanti dikerjakan: batas dari env (`ANALYSIS_MONTHLY_QUOTA`, kosong =
 tanpa batas) atau kolom `organizations.monthly_analysis_quota` untuk pengecualian
 per sekolah; hitung `analysis_jobs` bulan berjalan (zona waktu organisasi) per
@@ -493,6 +510,12 @@ organisasi. **Bayar dengan:** "organisasi aktif" di sesi (cookie), pemilih
 organisasi di sidebar, dan `getSessionUser()` yang memilih keanggotaan itu
 alih-alih `.limit(1)`. RLS tidak perlu berubah — `current_org_ids()` sudah
 mengembalikan himpunan.
+
+**Diperbarui 2026-10-01:** dijadwalkan. ADR-0012 menggantikan keputusan ini, dan
+pembayarannya ada di ronde 1–2 [`workspace-plan.md`](workspace-plan.md). Satu hal
+yang sketsa di atas lewatkan: query yang hanya mengandalkan RLS (misalnya
+`listJobs()`) akan mencampur data dua ruang kerja, jadi semuanya harus diaudit
+sebelum akun mana pun boleh punya dua keanggotaan.
 
 ### Email aplikasi mati sampai ada domain
 

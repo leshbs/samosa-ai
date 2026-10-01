@@ -1,6 +1,7 @@
 # 0009. Tautan email lewat token hash, organisasi dibuat saat login pertama yang terverifikasi
 
-- **Status:** Accepted
+- **Status:** Accepted — butir 2 digantikan oleh
+  [ADR-0012](0012-accounts-and-workspaces.md) (berlaku sejak ronde 2 selesai)
 - **Date:** 2026-09-28
 
 ## Context
