@@ -1,11 +1,17 @@
 import { Logo } from '@/components/brand/logo'
 import { SidebarNav, type SidebarCounts } from '@/components/layout/sidebar-nav'
-import { SidebarAccountMenu } from '@/components/layout/sidebar-account-menu'
+import {
+  SidebarAccountMenu,
+  type ShellWorkspace,
+} from '@/components/layout/sidebar-account-menu'
 
 export type ShellUser = {
   email: string
   displayName: string
   organizationName: string
+  /** The active workspace, and every workspace the person can switch to. */
+  organizationId: string
+  workspaces: ShellWorkspace[]
 }
 
 /**
@@ -39,6 +45,8 @@ export function Sidebar({
           email={user.email}
           displayName={user.displayName}
           organizationName={user.organizationName}
+          organizationId={user.organizationId}
+          workspaces={user.workspaces}
         />
       </div>
     </div>

@@ -34,7 +34,7 @@ type OrganizationsRow = {
   id: string
   name: string
   slug: string
-  account_id: string | null
+  account_id: string
   logo_path: string | null
   timezone: OrgTimeZone
   report_include_quotes: boolean
@@ -163,7 +163,6 @@ export type Database = {
       organizations: Table<
         OrganizationsRow,
         | 'id'
-        | 'account_id'
         | 'logo_path'
         | 'timezone'
         | 'report_include_quotes'
@@ -222,10 +221,10 @@ export type Database = {
         Returns: Array<{ allowed: boolean; remaining: number; reset_at: string }>
       }
       accept_organization_invitation: {
-        Args: { p_token_hash: string }
+        Args: { p_token_hash: string; p_leave_organization_id?: string }
         Returns: Array<{
           joined_organization_id: string
-          dropped_organization_id: string | null
+          left_organization_id: string | null
         }>
       }
       transfer_organization_ownership: {

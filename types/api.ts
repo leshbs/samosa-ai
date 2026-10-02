@@ -127,6 +127,8 @@ export const acceptInvitationSchema = z.object({
     .min(20)
     .max(128)
     .regex(/^[A-Za-z0-9_-]+$/),
+  /** The caller confirms leaving the organization they follow now. */
+  leave: z.boolean().optional(),
 })
 
 /** 1 MB, the `branding` bucket's file_size_limit. */

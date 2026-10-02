@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { safeNextPath } from '@/lib/security/safe-next-path'
-import { completeSignIn, exchangeAuthCode } from '@/modules/auth'
+import { completeSignIn, exchangeAuthCode, isJoining } from '@/modules/auth'
 
 /**
  * OAuth landing point. Supabase redirects here with a `code` that has to be
@@ -21,8 +21,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/login?error=invalid_code', url.origin))
   }
 
-  // First OAuth sign-in has no organization yet; a repeat call is a no-op.
-  const provisioned = await completeSignIn()
+  // A first sign-in gets its workspace here, unless it is headed for an
+  // invitation; any later one is a no-op.
+  const provisioned = await completeSignIn({ joining: isJoining(next) })
   if (!provisioned.ok) {
     return NextResponse.redirect(new URL('/login?error=provisioning', url.origin))
   }

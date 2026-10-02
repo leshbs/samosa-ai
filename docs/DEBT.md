@@ -521,6 +521,68 @@ sebelum akun mana pun boleh punya dua keanggotaan.
 aktif dan setiap query memfilternya; yang tersisa di ronde 2 adalah membiarkan
 orang benar-benar punya dua keanggotaan, dan pemilihnya.
 
+**Lunas di kode 2026-10-02 (ronde 2):** menerima undangan menambah keanggotaan,
+ada pemilih ruang kerja, dan anggota bisa keluar. Batasnya sekarang "satu yang
+dimiliki plus satu yang diikuti" — lebih dari satu yang diikuti ada di ronde 5.
+Belum aktif di project hosted sampai migrasi di bawah ditempel.
+
+### Migrasi ronde 2 belum diterapkan ke project hosted
+
+Dua file, dengan urutan yang **penting**:
+
+1. `20261002000100_join_and_leave.sql` — boleh ditempel kapan saja, sebelum atau
+   sesudah deploy. Sampai ditempel: menerima undangan masih memakai fungsi lama
+   (menghapus organisasi kosong milik penerima, menolak yang berisi data dengan
+   pesan umum), konfirmasi "keluar dari X" gagal dengan pesan umum, tombol
+   "Keluar" di Profil gagal untuk peran anggota dan pembaca, dan nama orang
+   yang sudah keluar hilang dari laporan lama.
+2. `20261002000200_account_required.sql` — **hanya setelah kode ronde 1 dan 2
+   di-deploy.** Kode lama membuat organisasi tanpa akun; dengan `NOT NULL`
+   pendaftarannya gagal.
+
+**Pemicu:** begitu PR ronde 2 di-merge dan Vercel selesai deploy. **Bayar
+dengan:** tempel keduanya berurutan, lalu `node --env-file=.env.local
+scripts/check-rls.mjs` — dua baris SKIP harus berubah jadi sembilan PASS.
+
+### Undangan di halaman sambutan hanya ditampilkan, tidak bisa diterima
+
+`/welcome` menampilkan undangan yang menunggu untuk email yang sedang masuk,
+tapi bergabung tetap lewat tautan: token tidak disimpan, dan tautan itulah
+kredensialnya. Daftar itu juga hanya muncul kalau alamatnya terbukti milik orang
+itu — email link aktif, atau ada identitas Google untuk alamat yang sama. Tanpa
+verifikasi email siapa pun bisa mendaftar dengan alamat orang lain, dan daftar
+itu akan memberi tahu mereka organisasi mana yang menunggu orang tersebut.
+
+Satu celah tersisa: akun yang dibuat saat email link masih mati tetap dianggap
+terverifikasi begitu `NEXT_PUBLIC_EMAIL_LINKS_ENABLED` dinyalakan.
+
+**Pemicu:** domain email aktif (lihat "Email aplikasi mati sampai ada domain").
+**Bayar dengan:** fungsi `security definer` yang menerima undangan berdasarkan
+id untuk pemilik alamat yang terverifikasi (`auth.users.email_confirmed_at`
+tidak cukup selama autoconfirm menyala), dan tombol "Gabung" di halaman itu.
+
+### Batas ruang kerja dihitung dari keanggotaan, bukan dari akun
+
+`createWorkspace` menghitung ruang kerja yang dimiliki dari baris `owner` di
+`organization_members`. Menurut ADR-0012 batasnya per akun, tapi sampai serah
+terima ikut memindahkan akun, akun pemilik lama masih memuat ruang kerja yang
+bukan miliknya lagi dan akan menghalanginya membuat yang baru.
+
+**Pemicu:** ronde 3, saat serah terima memindahkan akun. **Bayar dengan:**
+hitung `organizations where account_id = …`.
+
+### Kedatangan pertama ditandai oleh baris `profiles`
+
+`completeSignIn()` menganggap orang "sudah pernah datang" kalau baris profilnya
+ada. Tidak ada kolom khusus, supaya tidak ada migrasi yang harus ditempel
+sebelum pendaftaran bisa jalan. Akibatnya: kalau `ensureProfile` gagal setelah
+ruang kerja dibuat, lalu orang itu kehilangan ruang kerjanya, login berikutnya
+membuatkan ruang kerja baru alih-alih menampilkan `/welcome`. Salahnya ke arah
+yang aman — tidak ada yang terhapus.
+
+**Pemicu:** laporan pertama tentang ruang kerja yang "muncul sendiri". **Bayar
+dengan:** kolom `profiles.onboarded_at`.
+
 ### Migrasi `accounts` belum diterapkan ke project hosted
 
 **Lunas 2026-10-02.** File sudah ditempel; `scripts/check-rls.mjs` 35/35 tanpa
@@ -542,6 +604,11 @@ lalu `node --env-file=.env.local scripts/check-rls.mjs` — SKIP harus jadi enam
 PASS.
 
 ### `organizations.account_id` masih boleh kosong
+
+**Diperbarui 2026-10-02 (ronde 2):** kodenya sudah dibayar — `ensureAccount`
+gagal keras, dan `20261002000200_account_required.sql` mengunci kolomnya.
+Tinggal menempel file itu setelah deploy (lihat "Migrasi ronde 2"). Catatan
+aslinya:
 
 Sengaja, supaya urutan "tempel migrasi" dan "deploy kode" tidak penting. Selama
 kolom ini nullable, `resolveLimits` harus terus memperlakukan akun yang hilang

@@ -18,6 +18,7 @@ vi.mock('@/modules/auth', () => ({
   ],
   completeSignIn,
   exchangeAuthCode,
+  isJoining: (next: string) => next.startsWith('/invite/'),
   verifyEmailLink,
 }))
 
@@ -50,8 +51,17 @@ describe('GET /confirm', () => {
     const response = await confirm(get('/confirm?token_hash=h&type=email&next=/reports'))
 
     expect(verifyEmailLink).toHaveBeenCalledWith('h', 'email')
-    expect(completeSignIn).toHaveBeenCalled()
+    expect(completeSignIn).toHaveBeenCalledWith({ joining: false })
     expect(location(response)).toBe('/reports')
+  })
+
+  it('creates nothing for a signup that is on its way to an invitation', async () => {
+    const response = await confirm(
+      get('/confirm?token_hash=h&type=email&next=/invite/abc'),
+    )
+
+    expect(completeSignIn).toHaveBeenCalledWith({ joining: true })
+    expect(location(response)).toBe('/invite/abc')
   })
 
   it('sends a recovery link to the new-password form by default', async () => {
@@ -123,8 +133,14 @@ describe('GET /callback', () => {
     const response = await callback(get('/callback?code=c&next=/datasets'))
 
     expect(exchangeAuthCode).toHaveBeenCalledWith('c')
-    expect(completeSignIn).toHaveBeenCalled()
+    expect(completeSignIn).toHaveBeenCalledWith({ joining: false })
     expect(location(response)).toBe('/datasets')
+  })
+
+  it('creates nothing for a Google signup that is on its way to an invitation', async () => {
+    await callback(get('/callback?code=c&next=/invite/abc'))
+
+    expect(completeSignIn).toHaveBeenCalledWith({ joining: true })
   })
 
   it('never follows next off-site', async () => {

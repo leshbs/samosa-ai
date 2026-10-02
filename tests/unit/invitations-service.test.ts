@@ -3,20 +3,31 @@ import { argsOf, fakeQuery, type FakeQuery } from '../stubs/fake-query'
 
 const from = vi.fn()
 const rpc = vi.fn()
+const getUser = vi.fn()
 const getUserById = vi.fn()
-const purgeOrganizationBranding = vi.fn()
+const setActiveWorkspace = vi.fn()
+const env = { NEXT_PUBLIC_EMAIL_LINKS_ENABLED: true }
 
-vi.mock('@/lib/supabase/server', () => ({ createClient: async () => ({ from, rpc }) }))
+vi.mock('@/lib/env', () => ({ clientEnv: env }))
+vi.mock('@/lib/supabase/server', () => ({
+  createClient: async () => ({ from, rpc, auth: { getUser } }),
+}))
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({ from, auth: { admin: { getUserById } } }),
 }))
 vi.mock('@/modules/auth/services/branding', () => ({
-  purgeOrganizationBranding,
   signBrandingUrls: async () => new Map(),
 }))
+vi.mock('@/modules/auth/services/active-workspace', () => ({ setActiveWorkspace }))
 
-const { acceptInvitation, createInvitation, getInvitationPreview, hashInvitationToken } =
-  await import('@/modules/auth/services/invitations')
+const {
+  acceptInvitation,
+  createInvitation,
+  findWorkspaceToLeave,
+  getInvitationPreview,
+  hashInvitationToken,
+  listIncomingInvitations,
+} = await import('@/modules/auth/services/invitations')
 
 const ADMIN = {
   userId: 'u-admin',
@@ -26,11 +37,27 @@ const ADMIN = {
 }
 const TOKEN = 'a'.repeat(43)
 
+/** What each table answers; a table left out answers with nothing. */
+function tables(answers: Record<string, unknown>) {
+  from.mockImplementation((table: string) =>
+    fakeQuery({ data: answers[table] ?? null, error: null }),
+  )
+}
+
+function signedInAs(user: Record<string, unknown> | null) {
+  getUser.mockResolvedValue({ data: { user }, error: null })
+}
+
+const BUDI = { id: 'u-budi', email: 'budi@osis.test' }
+
 beforeEach(() => {
   from.mockReset()
   rpc.mockReset()
+  getUser.mockReset()
   getUserById.mockReset()
-  purgeOrganizationBranding.mockReset()
+  setActiveWorkspace.mockReset()
+  env.NEXT_PUBLIC_EMAIL_LINKS_ENABLED = true
+  signedInAs(BUDI)
 })
 
 describe('createInvitation', () => {
@@ -96,39 +123,131 @@ describe('createInvitation', () => {
   })
 })
 
+describe('findWorkspaceToLeave', () => {
+  it('is null for someone who follows no organization yet', async () => {
+    tables({
+      organization_members: [],
+      organization_invitations: { organization_id: 'org-new' },
+    })
+
+    expect(await findWorkspaceToLeave(TOKEN)).toBeNull()
+  })
+
+  it('names the organization already followed', async () => {
+    tables({
+      organization_members: [{ organization_id: 'org-old', role: 'member' }],
+      organization_invitations: { organization_id: 'org-new' },
+      organizations: { name: 'MPK Nusantara' },
+    })
+
+    expect(await findWorkspaceToLeave(TOKEN)).toEqual({
+      organizationId: 'org-old',
+      organizationName: 'MPK Nusantara',
+    })
+  })
+
+  it('never counts a workspace the person owns', async () => {
+    const memberships = fakeQuery({ data: [], error: null })
+    from.mockImplementation((table: string) =>
+      table === 'organization_members'
+        ? memberships
+        : fakeQuery({ data: { organization_id: 'org-new' }, error: null }),
+    )
+
+    await findWorkspaceToLeave(TOKEN)
+
+    // Owned workspaces are filtered out by the query, not after it.
+    expect(memberships.calls).toContainEqual({ method: 'neq', args: ['role', 'owner'] })
+    expect(memberships.calls).toContainEqual({
+      method: 'eq',
+      args: ['user_id', 'u-budi'],
+    })
+  })
+
+  it('does not ask anyone to leave the organization that is inviting them', async () => {
+    tables({
+      organization_members: [{ organization_id: 'org-new', role: 'viewer' }],
+      organization_invitations: { organization_id: 'org-new' },
+    })
+
+    expect(await findWorkspaceToLeave(TOKEN)).toBeNull()
+  })
+})
+
 describe('acceptInvitation', () => {
-  it('sends the hash, never the token, to the database function', async () => {
-    rpc.mockResolvedValue({
-      data: [{ joined_organization_id: 'org-1', dropped_organization_id: null }],
-      error: null,
+  const JOINED = {
+    data: [{ joined_organization_id: 'org-new', left_organization_id: null }],
+    error: null,
+  }
+
+  it('sends the hash, never the token, and opens the joined workspace', async () => {
+    tables({ organization_members: [] })
+    rpc.mockResolvedValue(JOINED)
+
+    const result = await acceptInvitation(TOKEN)
+
+    expect(result).toEqual({ ok: true, value: { organizationId: 'org-new' } })
+    expect(rpc).toHaveBeenCalledWith('accept_organization_invitation', {
+      p_token_hash: hashInvitationToken(TOKEN),
+    })
+    expect(setActiveWorkspace).toHaveBeenCalledWith('org-new')
+  })
+
+  it('refuses to cost someone an organization they have not agreed to leave', async () => {
+    tables({
+      organization_members: [{ organization_id: 'org-old', role: 'member' }],
+      organization_invitations: { organization_id: 'org-new' },
+      organizations: { name: 'MPK Nusantara' },
     })
 
     const result = await acceptInvitation(TOKEN)
 
-    expect(result).toEqual({ ok: true, value: { organizationId: 'org-1' } })
-    expect(rpc).toHaveBeenCalledWith('accept_organization_invitation', {
-      p_token_hash: hashInvitationToken(TOKEN),
-    })
-    expect(purgeOrganizationBranding).not.toHaveBeenCalled()
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.code).toBe('CONFLICT')
+      expect(result.error.message).toContain('MPK Nusantara')
+    }
+    expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('cleans up the empty organization the invitee left behind', async () => {
+  it('leaves the organization the server found, once confirmed', async () => {
+    tables({
+      organization_members: [{ organization_id: 'org-old', role: 'member' }],
+      organization_invitations: { organization_id: 'org-new' },
+      organizations: { name: 'MPK Nusantara' },
+    })
     rpc.mockResolvedValue({
-      data: [{ joined_organization_id: 'org-1', dropped_organization_id: 'org-own' }],
+      data: [{ joined_organization_id: 'org-new', left_organization_id: 'org-old' }],
       error: null,
     })
 
-    await acceptInvitation(TOKEN)
+    const result = await acceptInvitation(TOKEN, { leave: true })
 
-    expect(purgeOrganizationBranding).toHaveBeenCalledWith('org-own')
+    expect(result.ok).toBe(true)
+    expect(rpc).toHaveBeenCalledWith('accept_organization_invitation', {
+      p_token_hash: hashInvitationToken(TOKEN),
+      p_leave_organization_id: 'org-old',
+    })
+  })
+
+  it('leaves nothing when there was nothing to leave, whatever the browser said', async () => {
+    tables({ organization_members: [] })
+    rpc.mockResolvedValue(JOINED)
+
+    await acceptInvitation(TOKEN, { leave: true })
+
+    expect(rpc).toHaveBeenCalledWith('accept_organization_invitation', {
+      p_token_hash: hashInvitationToken(TOKEN),
+    })
   })
 
   it.each([
     ['invitation_expired', 'CONFLICT', 'kedaluwarsa'],
     ['invitation_email_mismatch', 'FORBIDDEN', 'email lain'],
-    ['membership_conflict', 'CONFLICT', 'organisasi lain'],
+    ['owner_cannot_leave', 'CONFLICT', 'pemilik'],
     ['invitation_not_found', 'NOT_FOUND', 'tidak ditemukan'],
   ])('explains %s', async (code, errorCode, phrase) => {
+    tables({ organization_members: [] })
     rpc.mockResolvedValue({ data: null, error: { code: 'P0001', message: code } })
 
     const result = await acceptInvitation(TOKEN)
@@ -138,6 +257,91 @@ describe('acceptInvitation', () => {
       expect(result.error.code).toBe(errorCode)
       expect(result.error.message).toContain(phrase)
     }
+    expect(setActiveWorkspace).not.toHaveBeenCalled()
+  })
+})
+
+describe('listIncomingInvitations', () => {
+  const WAITING = {
+    organization_invitations: [
+      {
+        organization_id: 'org-1',
+        role: 'member',
+        invited_by: 'u-admin',
+        expires_at: '2099-01-01T00:00:00Z',
+      },
+    ],
+    organizations: [{ id: 'org-1', name: 'OSIS Nusantara' }],
+    profiles: [{ user_id: 'u-admin', display_name: ' Rani ' }],
+  }
+
+  it('names who is waiting for a verified address', async () => {
+    tables(WAITING)
+
+    expect(await listIncomingInvitations()).toEqual([
+      {
+        organizationName: 'OSIS Nusantara',
+        role: 'member',
+        inviterName: 'Rani',
+        expiresAt: '2099-01-01T00:00:00Z',
+      },
+    ])
+  })
+
+  it('looks the address up in lower case and skips dead invitations', async () => {
+    signedInAs({ id: 'u-budi', email: 'Budi@OSIS.test' })
+    const invitations = fakeQuery({ data: [], error: null })
+    from.mockReturnValue(invitations)
+
+    await listIncomingInvitations()
+
+    expect(invitations.calls).toContainEqual({
+      method: 'eq',
+      args: ['email', 'budi@osis.test'],
+    })
+    expect(invitations.calls).toContainEqual({
+      method: 'is',
+      args: ['accepted_at', null],
+    })
+    expect(invitations.calls).toContainEqual({ method: 'is', args: ['revoked_at', null] })
+    expect(argsOf(invitations, 'gt')?.[0]).toBe('expires_at')
+  })
+
+  it('tells nothing to an address nobody has proven they own', async () => {
+    env.NEXT_PUBLIC_EMAIL_LINKS_ENABLED = false
+    tables(WAITING)
+
+    expect(await listIncomingInvitations()).toEqual([])
+    expect(from).not.toHaveBeenCalled()
+  })
+
+  it('accepts a Google identity for the same address as proof', async () => {
+    env.NEXT_PUBLIC_EMAIL_LINKS_ENABLED = false
+    signedInAs({
+      ...BUDI,
+      identities: [{ provider: 'google', identity_data: { email: 'Budi@osis.test' } }],
+    })
+    tables(WAITING)
+
+    expect(await listIncomingInvitations()).toHaveLength(1)
+  })
+
+  it('does not accept a Google identity for a different address', async () => {
+    env.NEXT_PUBLIC_EMAIL_LINKS_ENABLED = false
+    signedInAs({
+      ...BUDI,
+      identities: [{ provider: 'google', identity_data: { email: 'lain@gmail.com' } }],
+    })
+    tables(WAITING)
+
+    expect(await listIncomingInvitations()).toEqual([])
+  })
+
+  it('is empty for a signed-out caller', async () => {
+    signedInAs(null)
+
+    expect(await listIncomingInvitations()).toEqual([])
+    expect(from).not.toHaveBeenCalled()
   })
 })
 

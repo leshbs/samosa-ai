@@ -1,13 +1,14 @@
 import 'server-only'
 
 import { createHash, randomBytes } from 'node:crypto'
+import { clientEnv } from '@/lib/env'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { ERROR_CODES, appError, err, logger, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
 import type { InvitableRole } from '@/types/domain'
 import { can } from '../policies/org-policy'
-import { purgeOrganizationBranding } from './branding'
+import { setActiveWorkspace } from './active-workspace'
 import { emailsFor, type MemberActor } from './members'
 
 /**
@@ -15,10 +16,17 @@ import { emailsFor, type MemberActor } from './members'
  * database keeps only its SHA-256, so the table leaking is not the links
  * leaking. The token is shown once, to the person who created it.
  *
- * Acceptance is a database function, not code here, because it may have to
- * drop the invitee's own empty organization in the same transaction — see
- * accept_organization_invitation in the migration.
+ * Acceptance is a database function, not code here: checking the token,
+ * joining, and leaving another workspace in exchange have to be one
+ * transaction — see accept_organization_invitation in the migration. It never
+ * deletes an organization or its data (ADR-0012).
  */
+
+/**
+ * For now a person follows one organization besides the workspace they own.
+ * A product rule, enforced here; the schema allows any number.
+ */
+const MAX_JOINED_WORKSPACES = 1
 
 /** Matches the column default; the email and the UI both quote it. */
 export const INVITATION_TTL_DAYS = 7
@@ -276,9 +284,9 @@ const ACCEPT_ERRORS: Record<string, AppError> = {
     ERROR_CODES.FORBIDDEN,
     'Undangan ini untuk email lain. Keluar, lalu masuk dengan email yang diundang.',
   ),
-  membership_conflict: appError(
+  owner_cannot_leave: appError(
     ERROR_CODES.CONFLICT,
-    'Akunmu sudah tergabung di organisasi lain yang berisi data. Serahkan atau hapus organisasi itu dulu, atau minta pengurusnya mengeluarkanmu.',
+    'Kamu pemilik ruang kerja itu. Serahkan kepemilikannya atau hapus dulu sebelum keluar.',
   ),
   not_authenticated: appError(
     ERROR_CODES.UNAUTHORIZED,
@@ -293,13 +301,76 @@ function acceptError(message: string): AppError {
     : appError(ERROR_CODES.INTERNAL, 'Undangan tidak bisa diterima. Coba lagi.')
 }
 
-/** Joins the signed-in caller to the organization the token names. */
+export type WorkspaceToLeave = { organizationId: string; organizationName: string }
+
+/**
+ * The workspace the caller would have to leave to accept this invitation, or
+ * null when there is room. Workspaces they own never count, and neither does
+ * the inviting organization itself.
+ *
+ * The invite page asks this to word its confirmation; acceptInvitation asks it
+ * again, so the answer the browser saw is never the one that is acted on.
+ */
+export async function findWorkspaceToLeave(
+  token: string,
+): Promise<WorkspaceToLeave | null> {
+  const supabase = await createClient()
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth.user) return null
+
+  const [{ data: memberships }, { data: invite }] = await Promise.all([
+    supabase
+      .from('organization_members')
+      .select('organization_id, role, created_at')
+      .eq('user_id', auth.user.id)
+      .neq('role', 'owner')
+      .order('created_at', { ascending: true }),
+    createAdminClient()
+      .from('organization_invitations')
+      .select('organization_id')
+      .eq('token_hash', hashInvitationToken(token))
+      .maybeSingle(),
+  ])
+
+  const joined = (memberships ?? [])
+    .map((row) => String(row.organization_id))
+    .filter((id) => id !== invite?.organization_id)
+  const leaving = joined[0]
+  if (joined.length < MAX_JOINED_WORKSPACES || !leaving) return null
+
+  const { data: organization } = await supabase
+    .from('organizations')
+    .select('name')
+    .eq('id', leaving)
+    .maybeSingle()
+
+  return { organizationId: leaving, organizationName: organization?.name ?? 'Organisasi' }
+}
+
+/**
+ * Joins the signed-in caller to the organization the token names, and makes it
+ * their active workspace. `leave` is the caller confirming that they give up
+ * the organization they follow now; without it, an invitation that needs that
+ * is refused with a sentence naming the organization.
+ */
 export async function acceptInvitation(
   token: string,
+  options: { leave?: boolean } = {},
 ): Promise<Result<{ organizationId: string }, AppError>> {
+  const leaving = await findWorkspaceToLeave(token)
+  if (leaving && !options.leave) {
+    return err(
+      appError(
+        ERROR_CODES.CONFLICT,
+        `Kamu sudah mengikuti ${leaving.organizationName}. Untuk bergabung ke sini, konfirmasi dulu bahwa kamu keluar dari sana.`,
+      ),
+    )
+  }
+
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('accept_organization_invitation', {
     p_token_hash: hashInvitationToken(token),
+    ...(leaving ? { p_leave_organization_id: leaving.organizationId } : {}),
   })
 
   const joined = data?.[0]
@@ -308,14 +379,99 @@ export async function acceptInvitation(
     return err(acceptError(error?.message ?? ''))
   }
 
-  // The function dropped the invitee's own empty organization; its row is gone,
-  // so the only thing left of it is a logo someone may have uploaded.
-  if (joined.dropped_organization_id) {
-    await purgeOrganizationBranding(joined.dropped_organization_id)
-  }
+  // They came to work in this one; without this a person who also owns a
+  // workspace would land back in their own.
+  await setActiveWorkspace(joined.joined_organization_id)
 
   logger.info('auth.invitation.accepted', {
     organizationId: joined.joined_organization_id,
+    left: Boolean(joined.left_organization_id),
   })
   return ok({ organizationId: joined.joined_organization_id })
+}
+
+export type IncomingInvitation = {
+  organizationName: string
+  role: InvitableRole
+  inviterName: string
+  expiresAt: string
+}
+
+type Identity = { provider?: string; identity_data?: Record<string, unknown> }
+
+/**
+ * Whether the signed-in person has shown they own their address. With email
+ * links off, a password signup is never asked to; the only proof left is a
+ * Google identity for that same address.
+ */
+function ownsEmail(email: string, identities: unknown): boolean {
+  if (clientEnv.NEXT_PUBLIC_EMAIL_LINKS_ENABLED) return true
+  if (!Array.isArray(identities)) return false
+  return (identities as Identity[]).some(
+    (identity) =>
+      identity.provider === 'google' &&
+      typeof identity.identity_data?.email === 'string' &&
+      identity.identity_data.email.toLowerCase() === email,
+  )
+}
+
+/**
+ * Live invitations addressed to the signed-in person, for the welcome page.
+ *
+ * Shown, not accepted: the tokens are not stored, and the link is the
+ * credential. Service role, because an invitee is not a member and RLS shows
+ * invitations only to the admins who sent them — which is why this returns
+ * nothing to someone who has not proven the address is theirs. Anyone can sign
+ * up as anyone while verification is off, and the list would tell them which
+ * organization is expecting that person.
+ */
+export async function listIncomingInvitations(): Promise<IncomingInvitation[]> {
+  const session = await createClient()
+  const { data: auth } = await session.auth.getUser()
+  const address = auth.user?.email?.trim().toLowerCase()
+  if (!auth.user || !address || !ownsEmail(address, auth.user.identities)) return []
+
+  const supabase = createAdminClient()
+  const { data: invites, error } = await supabase
+    .from('organization_invitations')
+    .select('organization_id, role, invited_by, expires_at')
+    .eq('email', address)
+    .is('accepted_at', null)
+    .is('revoked_at', null)
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false })
+    .limit(10)
+
+  if (error || !invites || invites.length === 0) return []
+
+  const inviterIds = invites
+    .map((invite) => invite.invited_by)
+    .filter((id): id is string => Boolean(id))
+  const [{ data: organizations }, { data: inviters }] = await Promise.all([
+    supabase
+      .from('organizations')
+      .select('id, name')
+      .in(
+        'id',
+        invites.map((invite) => invite.organization_id),
+      ),
+    inviterIds.length > 0
+      ? supabase
+          .from('profiles')
+          .select('user_id, display_name')
+          .in('user_id', inviterIds)
+      : Promise.resolve({ data: [] }),
+  ])
+
+  const nameOf = new Map((organizations ?? []).map((row) => [row.id, row.name]))
+  const inviterOf = new Map(
+    (inviters ?? []).map((row) => [row.user_id, row.display_name.trim()]),
+  )
+
+  return invites.map((invite) => ({
+    organizationName: nameOf.get(invite.organization_id) ?? 'Organisasi',
+    role: invite.role as InvitableRole,
+    inviterName: (invite.invited_by && inviterOf.get(invite.invited_by)) || '',
+    expiresAt: invite.expires_at,
+  }))
 }

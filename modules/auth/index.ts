@@ -1,8 +1,8 @@
 /** Public API of the auth module. */
 export { getAuthUser, getSessionUser, requireSessionUser } from './services/session'
-export type { AuthUser, SessionUser } from './services/session'
+export type { AuthUser, SessionUser, WorkspaceSummary } from './services/session'
 export { ACTIVE_WORKSPACE_COOKIE, setActiveWorkspace } from './services/active-workspace'
-export { provisionOrganization } from './services/provision'
+export { createWorkspace, provisionOrganization } from './services/provision'
 export type { ProvisionInput } from './services/provision'
 export {
   getNotificationTarget,
@@ -26,6 +26,7 @@ export {
 export type { OrganizationActor, OrganizationSettings } from './services/organization'
 export {
   changeMemberRole,
+  leaveWorkspace,
   listMembers,
   removeMember,
   transferOwnership,
@@ -35,16 +36,20 @@ export {
   INVITATION_TTL_DAYS,
   acceptInvitation,
   createInvitation,
+  findWorkspaceToLeave,
   getInvitationPreview,
+  listIncomingInvitations,
   listPendingInvitations,
   maskEmail,
   revokeInvitation,
 } from './services/invitations'
 export type {
   CreatedInvitation,
+  IncomingInvitation,
   InvitationPreview,
   InvitationStatus,
   InvitationView,
+  WorkspaceToLeave,
 } from './services/invitations'
 export {
   clearAvatar,
@@ -60,9 +65,10 @@ export {
   EMAIL_LINK_TYPES,
   completeSignIn,
   exchangeAuthCode,
+  isJoining,
   verifyEmailLink,
 } from './services/sign-in'
-export type { EmailLinkType } from './services/sign-in'
+export type { EmailLinkType, SignInOptions } from './services/sign-in'
 export { slugify } from './services/slug'
 export { can, belongsToOrganization, PERMISSIONS } from './policies/org-policy'
 export type { Permission } from './policies/org-policy'

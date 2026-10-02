@@ -158,9 +158,8 @@ export async function changeMemberRole(
 }
 
 /**
- * Removes a member. Their account survives: signing in again gives them a
- * fresh organization of their own, the same repair path as any account whose
- * membership is gone.
+ * Removes a member. Their account survives, and so does any workspace of
+ * their own; with none left they see the welcome page on their next visit.
  */
 export async function removeMember(
   actor: MemberActor,
@@ -193,6 +192,60 @@ export async function removeMember(
       ),
     )
   }
+  return ok(undefined)
+}
+
+/**
+ * The caller walks out of a workspace they do not own. Nothing they made there
+ * goes with them: datasets and analyses belong to the workspace, and their
+ * name stays on the analyses they ran.
+ *
+ * An owner cannot leave — the workspace would have nobody in charge. They hand
+ * it over or delete it first. RLS says the same (`members_leave`); the lookup
+ * here exists to say *why* in a sentence instead of "no rows".
+ */
+export async function leaveWorkspace(
+  organizationId: string,
+): Promise<Result<void, AppError>> {
+  const supabase = await createClient()
+
+  const { data: auth, error: authError } = await supabase.auth.getUser()
+  if (authError || !auth.user) {
+    return err(appError(ERROR_CODES.UNAUTHORIZED, 'Kamu belum masuk'))
+  }
+
+  const { data: membership } = await supabase
+    .from('organization_members')
+    .select('role')
+    .eq('user_id', auth.user.id)
+    .eq('organization_id', organizationId)
+    .maybeSingle()
+
+  if (!membership) {
+    return err(appError(ERROR_CODES.NOT_FOUND, 'Ruang kerja tidak ditemukan'))
+  }
+  if (membership.role === 'owner') {
+    return err(
+      appError(
+        ERROR_CODES.CONFLICT,
+        'Kamu pemiliknya. Serahkan kepemilikan ke anggota lain atau hapus ruang kerja ini dulu.',
+      ),
+    )
+  }
+
+  const { data, error } = await supabase
+    .from('organization_members')
+    .delete()
+    .eq('user_id', auth.user.id)
+    .eq('organization_id', organizationId)
+    .select('user_id')
+
+  if (error || !data || data.length === 0) {
+    logger.warn('auth.member.leave_failed', { code: error?.code })
+    return err(appError(ERROR_CODES.INTERNAL, 'Kamu belum bisa keluar. Coba lagi.'))
+  }
+
+  logger.info('auth.member.left', { organizationId })
   return ok(undefined)
 }
 

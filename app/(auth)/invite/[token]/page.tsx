@@ -3,7 +3,12 @@ import Link from 'next/link'
 import { AcceptInvitationButton } from '@/components/forms/accept-invitation-button'
 import { SignOutButton } from '@/components/forms/sign-out-button'
 import { Button } from '@/components/ui/button'
-import { getAuthUser, getInvitationPreview, type InvitationStatus } from '@/modules/auth'
+import {
+  findWorkspaceToLeave,
+  getAuthUser,
+  getInvitationPreview,
+  type InvitationStatus,
+} from '@/modules/auth'
 import { acceptInvitationSchema } from '@/types/api'
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from '@/types/domain'
 
@@ -27,7 +32,7 @@ const DEAD_ENDS: Record<
   },
   accepted: {
     title: 'Undangan sudah dipakai',
-    body: 'Kalau itu kamu, masuk saja — organisasinya sudah ada di akunmu.',
+    body: 'Kalau itu kamu, masuk saja — kamu sudah menjadi anggotanya.',
   },
 }
 
@@ -70,6 +75,7 @@ export default async function InvitePage({
   }
 
   const inviter = preview.inviterName || 'Pengurus'
+  const leaving = user.ok ? await findWorkspaceToLeave(token) : null
   const roleLabel = ROLE_LABELS[preview.role]
 
   return (
@@ -94,6 +100,7 @@ export default async function InvitePage({
           <AcceptInvitationButton
             token={token}
             organizationName={preview.organizationName}
+            leaving={leaving?.organizationName}
           />
           <SignOutButton
             label="Pakai akun lain"

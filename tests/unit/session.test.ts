@@ -31,11 +31,18 @@ function membershipQuery(result: { data: unknown; error: unknown }) {
   }
 }
 
-/** Serves both the organization (`single`) and the profile (`maybeSingle`). */
+/**
+ * Serves both the profile (`.eq().maybeSingle()`) and the organizations
+ * (`.in('id', ids)`), where the one row answers for the first id asked about.
+ */
 function organizationQuery(result: { data: unknown; error: unknown }) {
   return {
     select: () => ({
-      eq: () => ({ single: async () => result, maybeSingle: async () => result }),
+      eq: () => ({ maybeSingle: async () => result }),
+      in: async (_column: string, ids: string[]) => ({
+        data: result.data ? [{ id: ids[0], ...(result.data as object) }] : null,
+        error: result.error,
+      }),
     }),
   }
 }
@@ -99,6 +106,7 @@ describe('getSessionUser', () => {
         organizationName: 'OSIS Nusantara',
         organizationTimezone: 'Asia/Jakarta',
         role: 'admin',
+        workspaces: [{ organizationId: 'org-1', name: 'OSIS Nusantara', role: 'admin' }],
         hasPassword: false,
       },
     })
@@ -266,9 +274,8 @@ describe('getSessionUser', () => {
       { organization_id: 'org-owned', role: 'owner', created_at: '2026-06-01' },
     ]
 
-    /** Records which organization the session went on to read. */
+    /** Each organization is named after its id, so a test can tell them apart. */
     function twoWorkspaces() {
-      const read: string[] = []
       from.mockImplementation((table: string) => {
         if (table === 'organization_members') {
           return membershipQuery({ data: TWO, error: null })
@@ -276,30 +283,41 @@ describe('getSessionUser', () => {
         if (table === 'profiles') return organizationQuery({ data: null, error: null })
         return {
           select: () => ({
-            eq: (_column: string, id: string) => {
-              read.push(id)
-              return { single: async () => ({ data: { name: id }, error: null }) }
-            },
+            in: async (_column: string, ids: string[]) => ({
+              data: ids.map((id) => ({ id, name: id })),
+              error: null,
+            }),
           }),
         }
       })
-      return read
     }
 
     it('opens the owned workspace when the browser has not chosen', async () => {
       getUser.mockResolvedValue(SIGNED_IN)
-      const read = twoWorkspaces()
+      twoWorkspaces()
 
       const result = await getSessionUser()
 
       expect(result.ok && result.value.organizationId).toBe('org-owned')
       expect(result.ok && result.value.role).toBe('owner')
-      expect(read).toEqual(['org-owned'])
+      expect(result.ok && result.value.organizationName).toBe('org-owned')
+    })
+
+    it('lists both for the switcher, the owned one first', async () => {
+      getUser.mockResolvedValue(SIGNED_IN)
+      twoWorkspaces()
+
+      const result = await getSessionUser()
+
+      expect(result.ok && result.value.workspaces).toEqual([
+        { organizationId: 'org-owned', name: 'org-owned', role: 'owner' },
+        { organizationId: 'org-joined', name: 'org-joined', role: 'viewer' },
+      ])
     })
 
     it('opens the chosen workspace, with the role held there', async () => {
       getUser.mockResolvedValue(SIGNED_IN)
-      const read = twoWorkspaces()
+      twoWorkspaces()
       activeWorkspace = 'org-joined'
 
       const result = await getSessionUser()
@@ -307,7 +325,7 @@ describe('getSessionUser', () => {
       expect(result.ok && result.value.organizationId).toBe('org-joined')
       // The role must follow the workspace: owner of one is not owner of both.
       expect(result.ok && result.value.role).toBe('viewer')
-      expect(read).toEqual(['org-joined'])
+      expect(result.ok && result.value.organizationName).toBe('org-joined')
     })
 
     it('ignores a cookie naming a workspace the user is not in', async () => {
