@@ -96,6 +96,7 @@ const U = {
   busy: '00000000-0000-0000-0000-000000000005',
   stranger: '00000000-0000-0000-0000-000000000006',
   wrongEmail: '00000000-0000-0000-0000-000000000007',
+  dual: '00000000-0000-0000-0000-000000000008',
 }
 const ORG = {
   main: '10000000-0000-0000-0000-000000000001',
@@ -103,6 +104,9 @@ const ORG = {
   busyOwn: '10000000-0000-0000-0000-000000000003',
   other: '10000000-0000-0000-0000-000000000004',
   wrongOwn: '10000000-0000-0000-0000-000000000005',
+  dualFirst: '10000000-0000-0000-0000-000000000006',
+  dualSecond: '10000000-0000-0000-0000-000000000007',
+  orphan: '10000000-0000-0000-0000-000000000008',
 }
 
 await db.exec(`
@@ -113,13 +117,17 @@ await db.exec(`
     ('${U.invitee}', 'invitee@osis.test', 'hash', '{}'),
     ('${U.busy}', 'busy@osis.test', 'hash', '{}'),
     ('${U.stranger}', 'stranger@other.test', 'hash', '{}'),
-    ('${U.wrongEmail}', 'someone-else@osis.test', 'hash', '{}');
+    ('${U.wrongEmail}', 'someone-else@osis.test', 'hash', '{}'),
+    ('${U.dual}', 'dual@osis.test', 'hash', '{}');
   insert into public.organizations (id, name, slug) values
     ('${ORG.main}', 'OSIS Nusantara', 'osis-nusantara'),
     ('${ORG.inviteeOwn}', 'Organisasi invitee', 'org-invitee'),
     ('${ORG.busyOwn}', 'Organisasi busy', 'org-busy'),
     ('${ORG.other}', 'Sekolah Lain', 'sekolah-lain'),
-    ('${ORG.wrongOwn}', 'Organisasi wrong', 'org-wrong');
+    ('${ORG.wrongOwn}', 'Organisasi wrong', 'org-wrong'),
+    ('${ORG.dualFirst}', 'OSIS dual', 'osis-dual'),
+    ('${ORG.dualSecond}', 'MPK dual', 'mpk-dual'),
+    ('${ORG.orphan}', 'Tanpa pemilik', 'tanpa-pemilik');
   insert into public.organization_members (user_id, organization_id, role) values
     ('${U.owner}', '${ORG.main}', 'owner'),
     ('${U.admin}', '${ORG.main}', 'admin'),
@@ -127,9 +135,13 @@ await db.exec(`
     ('${U.invitee}', '${ORG.inviteeOwn}', 'owner'),
     ('${U.busy}', '${ORG.busyOwn}', 'owner'),
     ('${U.stranger}', '${ORG.other}', 'owner'),
-    ('${U.wrongEmail}', '${ORG.wrongOwn}', 'owner');
+    ('${U.wrongEmail}', '${ORG.wrongOwn}', 'owner'),
+    ('${U.dual}', '${ORG.dualFirst}', 'owner'),
+    ('${U.dual}', '${ORG.dualSecond}', 'owner');
   insert into public.datasets (organization_id, uploader_id, name, source) values
-    ('${ORG.busyOwn}', '${U.busy}', 'Survei', 'csv');
+    ('${ORG.busyOwn}', '${U.busy}', 'Survei', 'csv'),
+    ('${ORG.dualFirst}', '${U.dual}', 'Survei OSIS', 'csv'),
+    ('${ORG.dualSecond}', '${U.dual}', 'Survei MPK', 'csv');
   insert into public.profiles (user_id, display_name, title) values
     ('${U.stranger}', 'Orang Lain', 'Ketua');
 `)
@@ -161,8 +173,161 @@ async function sql(text) {
   return (await db.query(text)).rows
 }
 
+// ── accounts (20261001000100) ──
+// The organizations above were seeded after the migrations ran, which is the
+// hosted project's situation exactly: rows that predate the accounts table.
+// Pasting the file again is the backfill.
+const ACCOUNTS = readFileSync(join(MIGRATIONS, '20261001000100_accounts.sql'), 'utf8')
+await db.exec(ACCOUNTS)
+
+let rows = await sql(
+  `select count(*)::int as n from public.organizations where account_id is null`,
+)
+check(
+  'backfill: every organization has an account',
+  rows[0].n === 0,
+  JSON.stringify(rows),
+)
+rows = await sql(
+  `select count(*)::int as accounts, count(distinct owner_id)::int as owners from public.accounts where owner_id is not null`,
+)
+check(
+  'backfill: one account per owner',
+  rows[0].accounts === rows[0].owners && rows[0].owners === 6,
+  JSON.stringify(rows),
+)
+rows = await sql(
+  `select count(distinct o.account_id)::int as n, bool_and(a.owner_id = '${U.dual}') as owned from public.organizations o join public.accounts a on a.id = o.account_id where o.id in ('${ORG.dualFirst}', '${ORG.dualSecond}')`,
+)
+check(
+  'backfill: two workspaces of one owner share an account',
+  rows[0].n === 1 && rows[0].owned === true,
+  JSON.stringify(rows),
+)
+rows = await sql(
+  `select a.owner_id, a.plan from public.organizations o join public.accounts a on a.id = o.account_id where o.id = '${ORG.orphan}'`,
+)
+check(
+  'backfill: an ownerless organization gets an ownerless free account',
+  rows.length === 1 && rows[0].owner_id === null && rows[0].plan === 'free',
+  JSON.stringify(rows),
+)
+const [{ n: accountsBefore }] = await sql(
+  `select count(*)::int as n from public.accounts`,
+)
+await db.exec(ACCOUNTS)
+rows = await sql(`select count(*)::int as n from public.accounts`)
+check(
+  'backfill: a second paste adds nothing',
+  rows[0].n === accountsBefore,
+  `${accountsBefore} → ${rows[0].n}`,
+)
+const [mainAccount] = await sql(
+  `select account_id from public.organizations where id = '${ORG.main}'`,
+)
+const [otherAccount] = await sql(
+  `select account_id from public.organizations where id = '${ORG.other}'`,
+)
+
+let r = await as(U.member, `select id, plan from public.accounts`)
+check(
+  'a member reads the account of their workspace, and only that',
+  r.rows.length === 1 && r.rows[0].id === mainAccount.account_id,
+  r.error ?? JSON.stringify(r.rows),
+)
+r = await as(
+  U.stranger,
+  `select id from public.accounts where id = '${mainAccount.account_id}'`,
+)
+check('another tenant cannot read the account', r.rows.length === 0, r.error ?? '')
+r = await as(
+  U.owner,
+  `update public.accounts set plan = 'enterprise' where id = '${mainAccount.account_id}'`,
+)
+check(
+  'an owner cannot change their own plan',
+  r.error !== null && /permission denied/.test(r.error),
+  r.error ?? 'allowed',
+)
+r = await as(
+  U.owner,
+  `update public.accounts set limits = '{"maxWorkspaces":99}' where id = '${mainAccount.account_id}'`,
+)
+check(
+  'an owner cannot lift their own limits',
+  r.error !== null && /permission denied/.test(r.error),
+  r.error ?? 'allowed',
+)
+r = await as(
+  U.member,
+  `insert into public.accounts (owner_id, plan) values ('${U.member}', 'org')`,
+)
+check(
+  'nobody creates an account from the browser',
+  r.error !== null && /permission denied/.test(r.error),
+  r.error ?? 'allowed',
+)
+r = await as(
+  U.owner,
+  `delete from public.accounts where id = '${mainAccount.account_id}'`,
+)
+check(
+  'nobody deletes an account from the browser',
+  r.error !== null && /permission denied/.test(r.error),
+  r.error ?? 'allowed',
+)
+r = await as(
+  U.owner,
+  `update public.organizations set account_id = '${otherAccount.account_id}' where id = '${ORG.main}'`,
+)
+check(
+  'a workspace cannot be moved onto another account',
+  r.error !== null && /permission denied/.test(r.error),
+  r.error ?? 'allowed',
+)
+try {
+  await db.exec(`insert into public.accounts (owner_id) values ('${U.owner}')`)
+  check('one account per person, even for the service role', false, 'second row accepted')
+} catch (error) {
+  check(
+    'one account per person, even for the service role',
+    /accounts_owner_key/.test(error.message),
+    error.message,
+  )
+}
+try {
+  await db.exec(`delete from public.accounts where id = '${mainAccount.account_id}'`)
+  check('an account with workspaces cannot be deleted', false, 'deleted')
+} catch (error) {
+  check('an account with workspaces cannot be deleted', true, error.message)
+}
+
+// ── two workspaces, one person (ADR-0012) ──
+// Not a control but the reason for one: RLS admits both workspaces, so the
+// filter on the active workspace is what keeps a page to one of them.
+r = await as(U.dual, `select organization_id from public.datasets`)
+check(
+  'RLS alone shows a person both of their workspaces',
+  new Set(r.rows.map((row) => row.organization_id)).size === 2,
+  r.error ?? JSON.stringify(r.rows),
+)
+check(
+  'two workspaces do not widen access to a third',
+  r.rows.every((row) => [ORG.dualFirst, ORG.dualSecond].includes(row.organization_id)),
+  JSON.stringify(r.rows),
+)
+r = await as(
+  U.dual,
+  `select organization_id from public.datasets where organization_id = '${ORG.dualFirst}'`,
+)
+check(
+  'the workspace filter narrows it to one',
+  r.rows.length === 1 && r.rows[0].organization_id === ORG.dualFirst,
+  r.error ?? JSON.stringify(r.rows),
+)
+
 // ── organizations ──
-let r = await as(
+r = await as(
   U.owner,
   `update public.organizations set name = 'OSIS Nusantara 2027', timezone = 'Asia/Makassar' where id = '${ORG.main}'`,
 )
@@ -429,7 +594,7 @@ check(
   r.rows[0]?.dropped_organization_id === ORG.inviteeOwn,
   JSON.stringify(r.rows),
 )
-let rows = await sql(
+rows = await sql(
   `select organization_id, role from public.organization_members where user_id = '${U.invitee}'`,
 )
 check(

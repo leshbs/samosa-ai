@@ -93,15 +93,30 @@ bukan sejak datanya diunggah. Halaman privasi diubah **sebelum** jamnya jalan.
 
 ### Ronde 1 — Fondasi (tidak terlihat pengguna)
 
-- `accounts` dengan pemilik; backfill satu akun per organisasi yang sudah ada;
-  `organizations.account_id` wajib diisi setelah backfill.
-- `lib/plans.ts`: default tiap paket, digabung dengan `accounts.limits`.
-- "Ruang kerja aktif" di sesi; `getSessionUser()` memilih keanggotaan itu, bukan
-  `.limit(1)`.
-- **Audit setiap query**: yang hari ini hanya mengandalkan RLS (contoh:
-  `listJobs()` di tab Pemakaian) harus memfilter ruang kerja aktif.
-- `scripts/check-rls.mjs` dan `pnpm db:check` mendapat pengguna dengan dua ruang
-  kerja.
+- [x] `accounts` dengan pemilik (`20261001000100_accounts.sql`); backfill satu
+      akun per **pemilik** — bukan per organisasi, supaya dua ruang kerja milik
+      satu orang berbagi paket — dan akun tanpa pemilik untuk organisasi yang
+      tidak punya baris pemilik.
+- [x] `lib/plans.ts`: default tiap paket, digabung dengan `accounts.limits`.
+      Nilai yang salah ketik diabaikan, tidak dianggap "tanpa batas".
+- [x] "Ruang kerja aktif" di sesi (cookie `samosa_workspace`, hanya preferensi —
+      divalidasi terhadap keanggotaan di setiap request); `getSessionUser()`
+      memilih keanggotaan itu, bukan `.limit(1)`. `POST /api/workspace/active`
+      menggantinya; belum ada UI yang memanggilnya (ronde 2).
+- [x] **Audit setiap query**: semua fungsi di `job-queries.ts` dan
+      `dataset-queries.ts` sekarang menerima `organizationId` dan memfilternya,
+      termasuk pencarian per-id. `tests/unit/workspace-scoping.test.ts` gagal
+      kalau ada fungsi baru yang tidak.
+- [x] `scripts/check-rls.mjs` dan `pnpm db:check` mendapat pengguna dengan dua
+      ruang kerja.
+- [x] `20261001000100_accounts.sql` aktif di project hosted —
+      `scripts/check-rls.mjs` 35/35 pada 2026-10-02; 6 organisasi, semuanya
+      punya akun.
+
+**Menyimpang dari rencana awal:** `organizations.account_id` **belum** wajib
+diisi. Migrasi ditempel dengan tangan, sebelum atau sesudah kode di-deploy;
+`NOT NULL` akan mematahkan pendaftaran di sela-selanya. Kode memperlakukan
+organisasi tanpa akun sebagai paket gratis. Kolomnya dikunci di ronde 2.
 
 **Selesai kalau:** pengguna uji dengan dua ruang kerja tidak pernah melihat data
 tercampur di halaman mana pun, dan tidak ada yang berubah bagi pengguna dengan
@@ -118,6 +133,8 @@ satu ruang kerja.
 - Pemilih ruang kerja — hanya untuk orang yang punya dua.
 - "Keluar dari organisasi". Pemilik harus menyerahkan atau menghapus dulu.
 - Nama anggota yang sudah keluar tetap tertulis di analisis lama.
+- `organizations.account_id` jadi `NOT NULL` (ditunda dari ronde 1), setelah
+  dipastikan tidak ada baris kosong di project hosted.
 
 **Selesai kalau:** orang yang sudah punya ruang kerja berisi data bisa menerima
 undangan tanpa kehilangan apa pun, lalu keluar lagi dan tetap punya datanya.

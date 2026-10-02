@@ -7,8 +7,10 @@ import type { AppError } from '@/modules/shared'
 import type { Dataset, DatasetSource, ResponseRecord } from '@/types/domain'
 
 /**
- * Reads go through the request-scoped client, so RLS filters by organization
- * and these functions never have to be trusted with a tenant id.
+ * Reads go through the request-scoped client, so RLS keeps other tenants out
+ * whatever id is passed. The explicit `organizationId` does a different job:
+ * RLS admits every workspace the caller belongs to, and a person can be in two
+ * (ADR-0012), so each query also names the active one.
  */
 
 export const RESPONSES_PAGE_SIZE = 50
@@ -68,12 +70,15 @@ function toDataset(row: DatasetRow): Dataset {
 const DATASET_COLUMNS =
   'id, organization_id, uploader_id, name, source, storage_path, response_count, metadata, created_at'
 
-export async function listDatasets(): Promise<Result<Dataset[], AppError>> {
+export async function listDatasets(
+  organizationId: string,
+): Promise<Result<Dataset[], AppError>> {
   const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('datasets')
     .select(DATASET_COLUMNS)
+    .eq('organization_id', organizationId)
     .order('created_at', { ascending: false })
 
   if (error) {
@@ -88,12 +93,15 @@ export async function listDatasets(): Promise<Result<Dataset[], AppError>> {
  * so this is a HEAD count rather than `listDatasets().length`: no rows cross
  * the wire just to be counted.
  */
-export async function countDatasets(): Promise<Result<number, AppError>> {
+export async function countDatasets(
+  organizationId: string,
+): Promise<Result<number, AppError>> {
   const supabase = await createClient()
 
   const { count, error } = await supabase
     .from('datasets')
     .select('id', { count: 'exact', head: true })
+    .eq('organization_id', organizationId)
 
   if (error || count === null) {
     return err(appError(ERROR_CODES.INTERNAL, 'Jumlah dataset tidak bisa dimuat'))
@@ -102,16 +110,21 @@ export async function countDatasets(): Promise<Result<number, AppError>> {
   return ok(count)
 }
 
-export async function getDataset(datasetId: string): Promise<Result<Dataset, AppError>> {
+export async function getDataset(
+  organizationId: string,
+  datasetId: string,
+): Promise<Result<Dataset, AppError>> {
   const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('datasets')
     .select(DATASET_COLUMNS)
     .eq('id', datasetId)
+    .eq('organization_id', organizationId)
     .maybeSingle()
 
-  // RLS turns "another tenant's dataset" into "no rows", which is what we want.
+  // Another tenant's dataset (RLS) and one in the caller's other workspace
+  // (the filter) both come back as "no rows", which is what we want.
   if (error || !data) {
     return err(appError(ERROR_CODES.NOT_FOUND, 'Dataset tidak ditemukan'))
   }
@@ -127,6 +140,7 @@ export type ResponsePage = {
 }
 
 export async function listResponses(
+  organizationId: string,
   datasetId: string,
   page = 1,
 ): Promise<Result<ResponsePage, AppError>> {
@@ -141,6 +155,7 @@ export async function listResponses(
       count: 'exact',
     })
     .eq('dataset_id', datasetId)
+    .eq('organization_id', organizationId)
     .order('created_at', { ascending: true })
     .range(from, from + RESPONSES_PAGE_SIZE - 1)
 
@@ -179,14 +194,23 @@ export async function listResponses(
  * The delete returns the path instead of a count: a row the database refused
  * to delete hands back nothing, so there is no way to remove a file whose
  * dataset the caller was not allowed to touch.
+ *
+ * The organization filter matters most here. The route checks the caller's
+ * role in the active workspace; without the filter, an owner of one workspace
+ * could delete by id in another where RLS also lets them — as an admin, say —
+ * on the strength of a role check made for the wrong place.
  */
-export async function deleteDataset(datasetId: string): Promise<Result<void, AppError>> {
+export async function deleteDataset(
+  organizationId: string,
+  datasetId: string,
+): Promise<Result<void, AppError>> {
   const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('datasets')
     .delete()
     .eq('id', datasetId)
+    .eq('organization_id', organizationId)
     .select('storage_path')
 
   if (error) {
@@ -215,6 +239,7 @@ const MAX_EXPORT_ROWS = 50_000
  * the rest is worse than no export.
  */
 export async function listAllResponses(
+  organizationId: string,
   datasetId: string,
 ): Promise<Result<ResponseRecord[], AppError>> {
   const supabase = await createClient()
@@ -225,6 +250,7 @@ export async function listAllResponses(
       .from('responses')
       .select('id, dataset_id, organization_id, text, respondent_meta, created_at')
       .eq('dataset_id', datasetId)
+      .eq('organization_id', organizationId)
       .order('created_at', { ascending: true })
       .order('id', { ascending: true })
       .range(from, from + EXPORT_PAGE_SIZE - 1)

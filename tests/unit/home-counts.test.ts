@@ -57,7 +57,7 @@ describe('countResultsBySentiment', () => {
       return builder
     })
 
-    const result = await countResultsBySentiment(['a', 'b'], 'positive')
+    const result = await countResultsBySentiment('org-1', ['a', 'b'], 'positive')
 
     expect(result).toEqual({ ok: true, value: { a: 12, b: 30 } })
     expect(from).toHaveBeenCalledWith('analysis_results')
@@ -75,7 +75,7 @@ describe('countResultsBySentiment', () => {
       ),
     )
 
-    const result = await countResultsBySentiment(['a', 'b'], 'negative')
+    const result = await countResultsBySentiment('org-1', ['a', 'b'], 'negative')
 
     expect(result.ok).toBe(false)
   })
@@ -83,11 +83,14 @@ describe('countResultsBySentiment', () => {
   it('makes no request for no jobs, and caps a long list', async () => {
     from.mockImplementation(() => countBuilder(() => ({ count: 1, error: null })))
 
-    expect(await countResultsBySentiment([], 'positive')).toEqual({ ok: true, value: {} })
+    expect(await countResultsBySentiment('org-1', [], 'positive')).toEqual({
+      ok: true,
+      value: {},
+    })
     expect(from).not.toHaveBeenCalled()
 
     const ids = Array.from({ length: MAX_COUNTED_JOBS + 3 }, (_, index) => `j${index}`)
-    await countResultsBySentiment([...ids, 'j0'], 'positive')
+    await countResultsBySentiment('org-1', [...ids, 'j0'], 'positive')
     expect(from).toHaveBeenCalledTimes(MAX_COUNTED_JOBS)
   })
 })
@@ -102,7 +105,7 @@ describe('shell counts', () => {
       }),
     )
 
-    const result = await countReports()
+    const result = await countReports('org-1')
 
     expect(result).toEqual({ ok: true, value: 4 })
     expect(from).toHaveBeenCalledWith('analysis_jobs')
@@ -114,7 +117,7 @@ describe('shell counts', () => {
       countBuilder(() => ({ count: null, error: { message: 'down' } })),
     )
 
-    const result = await countDatasets()
+    const result = await countDatasets('org-1')
 
     expect(result.ok).toBe(false)
   })

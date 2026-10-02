@@ -34,7 +34,7 @@ const JOBS_SHOWN = 50
 export async function UsageTab({ session }: { session: SessionUser }) {
   const [usage, jobs] = await Promise.all([
     getUsageSummary(session.organizationId),
-    listJobs({ limit: JOBS_SHOWN }),
+    listJobs(session.organizationId, { limit: JOBS_SHOWN }),
   ])
 
   const summary = usage.ok

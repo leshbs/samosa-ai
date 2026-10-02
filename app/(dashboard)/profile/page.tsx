@@ -43,7 +43,10 @@ export default async function ProfilePage() {
 
   const [profile, activity] = await Promise.all([
     getProfileDetails(),
-    listJobs({ createdBy: session.value.userId, limit: RECENT_ACTIVITY }),
+    listJobs(session.value.organizationId, {
+      createdBy: session.value.userId,
+      limit: RECENT_ACTIVITY,
+    }),
   ])
   if (!profile.ok) redirect('/login')
 

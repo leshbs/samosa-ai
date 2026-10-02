@@ -1,7 +1,8 @@
 import { ArrowRight } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
+import { getSessionUser } from '@/modules/auth'
 import { JobProgress } from '@/components/analysis/job-progress'
 import { SentimentBadge } from '@/components/analysis/sentiment-badge'
 import { PageHeader } from '@/components/layout/page-header'
@@ -37,12 +38,16 @@ export default async function AnalysisDetailPage({
 }) {
   const { id } = await params
 
-  const job = await getJob(id)
+  const session = await getSessionUser()
+  if (!session.ok) redirect('/login')
+  const { organizationId } = session.value
+
+  const job = await getJob(organizationId, id)
   if (!job.ok) notFound()
 
   const [results, dataset] = await Promise.all([
-    listJobResults(id),
-    getDataset(job.value.datasetId),
+    listJobResults(organizationId, id),
+    getDataset(organizationId, job.value.datasetId),
   ])
 
   const rows = results.ok ? results.value : []

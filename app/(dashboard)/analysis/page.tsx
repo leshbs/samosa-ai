@@ -1,4 +1,6 @@
 import { Sparkles } from 'lucide-react'
+import { redirect } from 'next/navigation'
+import { getSessionUser } from '@/modules/auth'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { EmptyState } from '@/components/layout/empty-state'
@@ -15,14 +17,15 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { formatDateTime } from '@/lib/utils'
-import { organizationTimezone } from '../_lib/timezone'
 import { formatIdr, listJobs } from '@/modules/analysis'
 
 export const metadata: Metadata = { title: 'Analisis' }
 
 export default async function AnalysisListPage() {
-  const timezone = await organizationTimezone()
-  const jobs = await listJobs()
+  const session = await getSessionUser()
+  if (!session.ok) redirect('/login')
+  const timezone = session.value.organizationTimezone
+  const jobs = await listJobs(session.value.organizationId)
 
   if (!jobs.ok) {
     return (

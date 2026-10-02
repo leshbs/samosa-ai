@@ -33,7 +33,9 @@ function shortId(id: string): string {
  * Checklist 5.7: the portability promise in docs/OVERVIEW.md ("semua data user
  * harus bisa di-export"), made executable. Everything is read under RLS as the
  * requesting user, through the same functions the pages use, so the archive
- * cannot hold anything its requester could not already open.
+ * cannot hold anything its requester could not already open — and everything
+ * is filtered to the active workspace, so it holds one organization's data
+ * even when its requester belongs to two.
  *
  * Reports are rendered one after another rather than all at once: a PDF holds
  * its whole document in memory while it renders, and twenty in parallel is how
@@ -43,8 +45,8 @@ export async function buildOrganizationArchive(
   session: SessionUser,
 ): Promise<Result<OrganizationArchive, AppError>> {
   const [datasets, jobs, members, context] = await Promise.all([
-    listDatasets(),
-    listJobs({ limit: ALL_JOBS }),
+    listDatasets(session.organizationId),
+    listJobs(session.organizationId, { limit: ALL_JOBS }),
     listMembers(session.organizationId),
     loadExportContext(session),
   ])
@@ -56,7 +58,7 @@ export async function buildOrganizationArchive(
   const datasetFiles = new Map<string, string>()
 
   for (const dataset of datasets.value) {
-    const responses = await listAllResponses(dataset.id)
+    const responses = await listAllResponses(session.organizationId, dataset.id)
     if (!responses.ok) {
       return err(
         appError(ERROR_CODES.INTERNAL, `Dataset "${dataset.name}" tidak bisa dibaca`),
