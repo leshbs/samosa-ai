@@ -19,6 +19,13 @@ vi.mock('next/headers', () => ({
 const { getAuthUser, getSessionUser, requireSessionUser } =
   await import('@/modules/auth/services/session')
 
+/** Every test routes tables through this, so invitations are always answered. */
+function route(handler: (table: string) => unknown) {
+  from.mockImplementation((table: string) =>
+    table === 'organization_invitations' ? invitationsQuery() : handler(table),
+  )
+}
+
 /**
  * Stands in for `.select().eq()`, which resolves to every membership the user
  * has. One row may be passed bare; null is a query that returned nothing.
@@ -27,7 +34,23 @@ function membershipQuery(result: { data: unknown; error: unknown }) {
   const rows =
     result.data === null || Array.isArray(result.data) ? result.data : [result.data]
   return {
-    select: () => ({ eq: async () => ({ data: rows, error: result.error }) }),
+    // The same table is asked twice: for the user's memberships, and for a
+    // head count of the active workspace. One stub answers both.
+    select: () => ({
+      eq: async () => ({ data: rows, count: rows?.length ?? null, error: result.error }),
+    }),
+  }
+}
+
+/** Live invitations of the active workspace, as a head count. */
+let pendingInvitations: number | null = 0
+function invitationsQuery() {
+  return {
+    select: () => ({
+      eq: () => ({
+        is: () => ({ is: async () => ({ count: pendingInvitations, error: null }) }),
+      }),
+    }),
   }
 }
 
@@ -56,6 +79,7 @@ beforeEach(() => {
   getUser.mockReset()
   from.mockReset()
   activeWorkspace = null
+  pendingInvitations = 0
 })
 
 describe('getAuthUser', () => {
@@ -83,7 +107,7 @@ describe('getAuthUser', () => {
 describe('getSessionUser', () => {
   it('resolves the user together with their organization', async () => {
     getUser.mockResolvedValue(SIGNED_IN)
-    from.mockImplementation((table: string) =>
+    route((table: string) =>
       table === 'organization_members'
         ? membershipQuery({
             data: { organization_id: 'org-1', role: 'admin' },
@@ -107,6 +131,7 @@ describe('getSessionUser', () => {
         organizationTimezone: 'Asia/Jakarta',
         role: 'admin',
         workspaces: [{ organizationId: 'org-1', name: 'OSIS Nusantara', role: 'admin' }],
+        solo: true,
         hasPassword: false,
       },
     })
@@ -123,7 +148,7 @@ describe('getSessionUser', () => {
       },
       error: null,
     })
-    from.mockImplementation((table: string) =>
+    route((table: string) =>
       table === 'organization_members'
         ? membershipQuery({
             data: { organization_id: 'org-1', role: 'admin' },
@@ -149,7 +174,7 @@ describe('getSessionUser', () => {
       },
       error: null,
     })
-    from.mockImplementation((table: string) => {
+    route((table: string) => {
       if (table === 'organization_members') {
         return membershipQuery({
           data: { organization_id: 'org-1', role: 'owner' },
@@ -184,7 +209,7 @@ describe('getSessionUser', () => {
 
   it('survives a database that has not had the settings migration yet', async () => {
     getUser.mockResolvedValue(SIGNED_IN)
-    from.mockImplementation((table: string) => {
+    route((table: string) => {
       if (table === 'organization_members') {
         return membershipQuery({
           data: { organization_id: 'org-1', role: 'owner' },
@@ -217,7 +242,7 @@ describe('getSessionUser', () => {
             error: null,
           })
         : organizationQuery({ data: { name: 'OSIS Nusantara' }, error: null })
-    from.mockImplementation(membership)
+    route(membership)
 
     const withProviders = (providers: unknown) => ({
       data: {
@@ -236,6 +261,63 @@ describe('getSessionUser', () => {
     expect(googleOnly.ok && googleOnly.value.hasPassword).toBe(false)
     expect(linked.ok && linked.value.hasPassword).toBe(true)
     expect(unknown.ok && unknown.value.hasPassword).toBe(false)
+  })
+
+  describe('solo', () => {
+    function workspaceOf(members: number) {
+      const rows = Array.from({ length: members }, (_, index) => ({
+        organization_id: 'org-1',
+        role: index === 0 ? 'owner' : 'member',
+      }))
+      getUser.mockResolvedValue(SIGNED_IN)
+      route((table: string) =>
+        table === 'organization_members'
+          ? {
+              select: (_columns: string, options?: { head?: boolean }) => ({
+                eq: async () =>
+                  options?.head
+                    ? { data: null, count: members, error: null }
+                    : { data: [rows[0]], error: null },
+              }),
+            }
+          : organizationQuery({ data: { name: 'Ruang kerja rani' }, error: null }),
+      )
+    }
+
+    it('is true for one person with nobody invited', async () => {
+      workspaceOf(1)
+
+      const result = await getSessionUser()
+
+      expect(result.ok && result.value.solo).toBe(true)
+    })
+
+    it('ends with the first invitation, before anyone has joined', async () => {
+      workspaceOf(1)
+      pendingInvitations = 1
+
+      const result = await getSessionUser()
+
+      expect(result.ok && result.value.solo).toBe(false)
+    })
+
+    it('is false with a second member', async () => {
+      workspaceOf(2)
+
+      const result = await getSessionUser()
+
+      expect(result.ok && result.value.solo).toBe(false)
+    })
+
+    it('is false when the count could not be read', async () => {
+      workspaceOf(1)
+      pendingInvitations = null
+
+      const result = await getSessionUser()
+
+      // Showing "Anggota" to someone alone is harmless; hiding it from a team is not.
+      expect(result.ok && result.value.solo).toBe(false)
+    })
   })
 
   it('fails as UNAUTHORIZED when the session is missing', async () => {
@@ -276,7 +358,7 @@ describe('getSessionUser', () => {
 
     /** Each organization is named after its id, so a test can tell them apart. */
     function twoWorkspaces() {
-      from.mockImplementation((table: string) => {
+      route((table: string) => {
         if (table === 'organization_members') {
           return membershipQuery({ data: TWO, error: null })
         }
@@ -341,7 +423,7 @@ describe('getSessionUser', () => {
 
   it('falls back to a placeholder when the organization name cannot be read', async () => {
     getUser.mockResolvedValue(SIGNED_IN)
-    from.mockImplementation((table: string) =>
+    route((table: string) =>
       table === 'organization_members'
         ? membershipQuery({
             data: { organization_id: 'org-1', role: 'member' },
@@ -360,7 +442,7 @@ describe('getSessionUser', () => {
 describe('requireSessionUser', () => {
   it('returns the session when one exists', async () => {
     getUser.mockResolvedValue(SIGNED_IN)
-    from.mockImplementation((table: string) =>
+    route((table: string) =>
       table === 'organization_members'
         ? membershipQuery({
             data: { organization_id: 'org-1', role: 'owner' },

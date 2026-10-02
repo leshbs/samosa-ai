@@ -35,7 +35,8 @@ export async function DataTab({ session }: { session: SessionUser }) {
           <CardTitle className="text-base">Unduh semua data</CardTitle>
           <CardDescription>
             Satu file .zip: setiap dataset sebagai CSV, setiap laporan sebagai PDF dan
-            CSV, plus metadata — organisasi, anggota, dan versi prompt setiap analisis.
+            CSV, plus metadata{session.solo ? '' : ' — organisasi, anggota,'} dan versi
+            prompt setiap analisis.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -43,8 +44,8 @@ export async function DataTab({ session }: { session: SessionUser }) {
             <>
               <ExportArchiveButton />
               <p className="text-xs text-muted-foreground">
-                Organisasi dengan banyak laporan butuh sekitar satu menit. Bisa dibuka
-                tanpa SAMOSA — CSV-nya langsung terbaca di Excel.
+                Kalau laporannya banyak, butuh sekitar satu menit. Bisa dibuka tanpa
+                SAMOSA — CSV-nya langsung terbaca di Excel.
               </p>
             </>
           ) : (
@@ -80,15 +81,19 @@ export async function DataTab({ session }: { session: SessionUser }) {
       {canDelete ? (
         <Card className="border-destructive/40">
           <CardHeader>
-            <CardTitle className="text-base text-destructive">Hapus organisasi</CardTitle>
+            <CardTitle className="text-base text-destructive">
+              {session.solo ? 'Hapus semua data' : 'Hapus organisasi'}
+            </CardTitle>
             <CardDescription>
-              Menghapus organisasi beserta semua dataset, laporan, dan akses anggotanya.
-              Akun setiap anggota tetap ada. Tidak bisa dibatalkan.
+              {session.solo
+                ? 'Menghapus ruang kerja ini beserta semua dataset dan laporannya. Akunmu tetap ada. Tidak bisa dibatalkan.'
+                : 'Menghapus organisasi beserta semua dataset, laporan, dan akses anggotanya. Akun setiap anggota tetap ada. Tidak bisa dibatalkan.'}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <DeleteOrganizationDialog
               organizationName={session.organizationName}
+              solo={session.solo}
               datasets={datasets?.ok ? datasets.value : null}
               reports={reports?.ok ? reports.value : null}
               members={members?.ok ? members.value.length : null}

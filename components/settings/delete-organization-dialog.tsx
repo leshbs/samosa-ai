@@ -33,11 +33,14 @@ function normalize(value: string): string {
  */
 export function DeleteOrganizationDialog({
   organizationName,
+  solo = false,
   datasets,
   reports,
   members,
 }: {
   organizationName: string
+  /** One person, nobody invited: the wording drops "organisasi". */
+  solo?: boolean
   datasets: number | null
   reports: number | null
   members: number | null
@@ -82,7 +85,7 @@ export function DeleteOrganizationDialog({
     <AlertDialog onOpenChange={(open) => !open && setTyped('')}>
       <AlertDialogTrigger asChild>
         <Button type="button" variant="destructive">
-          Hapus organisasi
+          {solo ? 'Hapus semua data' : 'Hapus organisasi'}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
@@ -114,7 +117,7 @@ export function DeleteOrganizationDialog({
             disabled={!confirmed || pending}
             onClick={remove}
           >
-            {pending ? 'Menghapus…' : 'Hapus organisasi'}
+            {pending ? 'Menghapus…' : solo ? 'Hapus semua data' : 'Hapus organisasi'}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -57,20 +57,18 @@ describe('organizationNameFor', () => {
 
   it('does not trust metadata that is not a sensible name', () => {
     expect(organizationNameFor({ metadata: 42, email: 'ketua@osis.test' })).toBe(
-      'Organisasi ketua',
+      'Ruang kerja ketua',
     )
     expect(
       organizationNameFor({ metadata: 'x'.repeat(121), email: 'ketua@osis.test' }),
-    ).toBe('Organisasi ketua')
+    ).toBe('Ruang kerja ketua')
     expect(organizationNameFor({ metadata: ' ', email: 'ketua@osis.test' })).toBe(
-      'Organisasi ketua',
+      'Ruang kerja ketua',
     )
   })
 
   it('still produces a name without an email', () => {
-    expect(organizationNameFor({ metadata: undefined, email: '' })).toBe(
-      'Organisasi Organisasi',
-    )
+    expect(organizationNameFor({ metadata: undefined, email: '' })).toBe('Ruang kerja')
   })
 })
 
@@ -94,7 +92,7 @@ describe('completeSignIn', () => {
 
     expect(provisionOrganization).toHaveBeenCalledWith({
       userId: 'user-1',
-      organizationName: 'Organisasi ketua',
+      organizationName: 'Ruang kerja ketua',
     })
   })
 

@@ -3,9 +3,9 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { PageHeader } from '@/components/layout/page-header'
 import {
-  SETTINGS_TABS,
   SettingsTabs,
   parseSettingsTab,
+  settingsTabLabel,
 } from '@/components/settings/settings-tabs'
 import { Button } from '@/components/ui/button'
 import { getSessionUser } from '@/modules/auth'
@@ -47,7 +47,11 @@ export default async function SettingsPage({
     <section className="mx-auto max-w-narrative space-y-6">
       <PageHeader
         title="Pengaturan"
-        description="Organisasi, anggota, pemakaian, dan laporan. Nama dan foto profilmu ada di halaman Profil."
+        description={
+          session.value.solo
+            ? 'Pemakaian, laporan, dan datamu. Nama dan foto profilmu ada di halaman Profil.'
+            : 'Organisasi, anggota, pemakaian, dan laporan. Nama dan foto profilmu ada di halaman Profil.'
+        }
         crumbs={[{ label: 'Pengaturan' }]}
         actions={
           <Button asChild variant="outline" size="sm">
@@ -55,11 +59,8 @@ export default async function SettingsPage({
           </Button>
         }
       />
-      <SettingsTabs active={tab} />
-      <div
-        role="region"
-        aria-label={SETTINGS_TABS.find((entry) => entry.id === tab)?.label}
-      >
+      <SettingsTabs active={tab} solo={session.value.solo} />
+      <div role="region" aria-label={settingsTabLabel(tab, session.value.solo)}>
         <Panel session={session.value} />
       </div>
     </section>
