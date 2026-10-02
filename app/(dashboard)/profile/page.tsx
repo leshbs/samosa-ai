@@ -62,7 +62,11 @@ export default async function ProfilePage() {
     <section className="mx-auto max-w-narrative space-y-6">
       <PageHeader
         title="Profil"
-        description={`${ROLE_LABELS[session.value.role]} di ${session.value.organizationName}.`}
+        description={
+          session.value.solo
+            ? 'Nama, cara masuk, dan aktivitasmu.'
+            : `${ROLE_LABELS[session.value.role]} di ${session.value.organizationName}.`
+        }
         crumbs={[{ label: 'Profil' }]}
       />
 
@@ -70,8 +74,9 @@ export default async function ProfilePage() {
         <CardHeader>
           <CardTitle className="text-base">Tentang kamu</CardTitle>
           <CardDescription>
-            Terlihat oleh anggota {session.value.organizationName}, dan tercetak di
-            laporan yang kamu siapkan.
+            {session.value.solo
+              ? 'Tercetak di laporan yang kamu siapkan.'
+              : `Terlihat oleh anggota ${session.value.organizationName}, dan tercetak di laporan yang kamu siapkan.`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

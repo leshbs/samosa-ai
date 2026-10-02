@@ -24,9 +24,10 @@ const MIN_NAME = 2
 const MAX_NAME = 120
 
 /**
- * Picks the organization name for a first sign-in. What the user typed wins;
- * an OAuth signup never saw our form, so it gets a name built from the email.
- * Metadata is user-writable, so it is re-validated here rather than trusted.
+ * Picks the workspace name for a first sign-in. Signup no longer asks for
+ * one, so nearly everyone gets a name built from the email; an explicit or
+ * stored name still wins, for sign-ups started before that changed. Metadata
+ * is user-writable, so it is re-validated here rather than trusted.
  */
 export function organizationNameFor(input: {
   explicit?: string
@@ -39,8 +40,10 @@ export function organizationNameFor(input: {
     if (name.length >= MIN_NAME && name.length <= MAX_NAME) return name
   }
 
-  const handle = input.email.split('@')[0] || 'Organisasi'
-  return `Organisasi ${handle}`
+  // Nobody chose this name and, while the workspace is solo, nobody is shown
+  // it as an organization; the first invitation asks for a real one.
+  const handle = input.email.split('@')[0]
+  return handle ? `Ruang kerja ${handle}` : 'Ruang kerja'
 }
 
 export type SignInOptions = {

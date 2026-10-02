@@ -46,6 +46,13 @@ export type SessionUser = {
   /** Every workspace this person is in, the active one included; owned first. */
   workspaces: WorkspaceSummary[]
   /**
+   * `true` while the active workspace is one person with nobody invited. The
+   * UI then says nothing of organizations, members or roles (ADR-0012): to
+   * that person this is simply their own space. Anything that could not be
+   * counted reads as "not solo", which only shows more than was needed.
+   */
+  solo: boolean
+  /**
    * `true` when the account can sign in with a password. A Google-only account
    * has no password to change, and its email is owned by Google.
    */
@@ -113,27 +120,40 @@ async function loadSessionUser(): Promise<Result<SessionUser, AppError>> {
   const membership = pickMembership(memberships, preferredId)
 
   if (membershipError || !membership) {
-    return err(appError(ERROR_CODES.FORBIDDEN, 'Akunmu belum punya organisasi'))
+    return err(appError(ERROR_CODES.FORBIDDEN, 'Akunmu belum punya ruang kerja'))
   }
 
   const { organizationId } = membership
 
   // Separate round-trips rather than a nested select: types/database.ts is
   // hand-written and declares no relationships for the client to infer.
-  const [{ data: organizations }, { data: profile }] = await Promise.all([
-    supabase
-      .from('organizations')
-      .select('*')
-      .in(
-        'id',
-        memberships.map((entry) => entry.organizationId),
-      ),
-    supabase
-      .from('profiles')
-      .select('display_name, title, avatar_path')
-      .eq('user_id', auth.user.id)
-      .maybeSingle(),
-  ])
+  const [{ data: organizations }, { data: profile }, members, invitations] =
+    await Promise.all([
+      supabase
+        .from('organizations')
+        .select('*')
+        .in(
+          'id',
+          memberships.map((entry) => entry.organizationId),
+        ),
+      supabase
+        .from('profiles')
+        .select('display_name, title, avatar_path')
+        .eq('user_id', auth.user.id)
+        .maybeSingle(),
+      supabase
+        .from('organization_members')
+        .select('user_id', { count: 'exact', head: true })
+        .eq('organization_id', organizationId),
+      // Only owners and admins see invitations, and a person alone in a
+      // workspace is its owner, so for them this count is the true one.
+      supabase
+        .from('organization_invitations')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', organizationId)
+        .is('accepted_at', null)
+        .is('revoked_at', null),
+    ])
 
   const organizationById = new Map((organizations ?? []).map((row) => [row.id, row]))
   const organization = organizationById.get(organizationId)
@@ -162,13 +182,14 @@ async function loadSessionUser(): Promise<Result<SessionUser, AppError>> {
     organizationTimezone: isOrgTimeZone(timezone) ? timezone : DEFAULT_TIME_ZONE,
     role: membership.role,
     workspaces,
+    solo: members.count === 1 && invitations.count === 0,
     hasPassword: hasEmailIdentity(auth.user.app_metadata?.providers),
   })
 }
 
 /**
  * Memoized per server render: the layout and the page both ask, and each ask
- * is four round trips. Outside a render (route handlers, tests) `cache` passes
+ * is six round trips. Outside a render (route handlers, tests) `cache` passes
  * straight through.
  */
 export const getSessionUser = cache(loadSessionUser)

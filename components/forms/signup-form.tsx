@@ -11,20 +11,12 @@ import { clientEnv } from '@/lib/env'
 import { describeAuthError } from '@/lib/supabase/auth-error'
 import { authRedirectUrl } from '@/lib/supabase/auth-links'
 import { createClient } from '@/lib/supabase/client'
-import {
-  FULL_NAME_METADATA_KEY,
-  ORGANIZATION_NAME_METADATA_KEY,
-} from '@/lib/supabase/user-metadata'
+import { FULL_NAME_METADATA_KEY } from '@/lib/supabase/user-metadata'
 import { requestJson } from '@/modules/shared'
 import { rememberPendingEmail } from './pending-email'
 
 const signupSchema = z.object({
   fullName: z.string().trim().min(2, 'Nama minimal 2 karakter').max(120),
-  organizationName: z
-    .string()
-    .trim()
-    .min(2, 'Nama organisasi minimal 2 karakter')
-    .max(120),
   email: z.string().email('Masukkan email yang valid'),
   // 72 is bcrypt's input limit; GoTrue rejects anything longer.
   password: z
@@ -33,15 +25,14 @@ const signupSchema = z.object({
     .max(72, 'Password maksimal 72 karakter'),
 })
 
+type SignupValues = z.infer<typeof signupSchema>
+
 /**
- * Someone arriving from an invitation is joining an organization, not starting
- * one, so the organization name is not asked for and no workspace is created
- * for them (ADR-0012). They can start their own later.
+ * Asks for a person, not an organization (ADR-0012). Whoever signs up gets a
+ * workspace of their own without being asked to name it; the name is asked
+ * for the day they invite someone. Someone arriving from an invitation gets
+ * no workspace at all — they are joining one.
  */
-const joinSchema = signupSchema.extend({ organizationName: z.string().optional() })
-
-type SignupValues = z.infer<typeof joinSchema>
-
 export function SignupForm({ next }: { next?: string }) {
   const router = useRouter()
   const joining = Boolean(next?.startsWith('/invite/'))
@@ -52,7 +43,7 @@ export function SignupForm({ next }: { next?: string }) {
     setError,
     formState: { errors, isSubmitting },
   } = useForm<SignupValues>({
-    resolver: zodResolver(joining ? joinSchema : signupSchema),
+    resolver: zodResolver(signupSchema),
   })
 
   async function onSubmit(values: SignupValues) {
@@ -64,14 +55,7 @@ export function SignupForm({ next }: { next?: string }) {
         // Without this the confirmation link lands on the Site URL — the
         // landing page — where nothing redeems it.
         emailRedirectTo: authRedirectUrl('/confirm', destination),
-        // The organization name rides along in metadata: with confirmation on
-        // there is no session yet, and /confirm creates the organization from it.
-        data: {
-          [FULL_NAME_METADATA_KEY]: values.fullName,
-          ...(values.organizationName
-            ? { [ORGANIZATION_NAME_METADATA_KEY]: values.organizationName }
-            : {}),
-        },
+        data: { [FULL_NAME_METADATA_KEY]: values.fullName },
       },
     })
 
@@ -105,11 +89,7 @@ export function SignupForm({ next }: { next?: string }) {
     const provisioned = await requestJson('/api/auth/provision', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(
-        values.organizationName
-          ? { organizationName: values.organizationName, joining }
-          : { joining },
-      ),
+      body: JSON.stringify({ joining }),
     })
 
     if (!provisioned.ok) {
@@ -139,21 +119,6 @@ export function SignupForm({ next }: { next?: string }) {
           <p className="text-sm text-destructive">{errors.fullName.message}</p>
         ) : null}
       </div>
-
-      {joining ? null : (
-        <div className="space-y-2">
-          <Label htmlFor="organizationName">Nama organisasi</Label>
-          <Input
-            id="organizationName"
-            placeholder="OSIS SMA Nusantara"
-            autoComplete="organization"
-            {...register('organizationName')}
-          />
-          {errors.organizationName ? (
-            <p className="text-sm text-destructive">{errors.organizationName.message}</p>
-          ) : null}
-        </div>
-      )}
 
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>

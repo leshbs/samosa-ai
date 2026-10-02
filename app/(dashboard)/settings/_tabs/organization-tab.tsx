@@ -48,9 +48,13 @@ export async function OrganizationTab({ session }: { session: SessionUser }) {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Profil organisasi</CardTitle>
+          <CardTitle className="text-base">
+            {session.solo ? 'Nama dan logo' : 'Profil organisasi'}
+          </CardTitle>
           <CardDescription>
-            Nama dan logo muncul di header aplikasi dan di setiap laporan PDF.
+            {session.solo
+              ? 'Keduanya tercetak di setiap laporan PDF yang kamu unduh.'
+              : 'Nama dan logo muncul di header aplikasi dan di setiap laporan PDF.'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -63,11 +67,13 @@ export async function OrganizationTab({ session }: { session: SessionUser }) {
             <>
               <EditableNameForm
                 id="organization-name"
-                label="Nama organisasi"
+                label={session.solo ? 'Nama di laporan' : 'Nama organisasi'}
                 endpoint="/api/settings/organization"
                 field="name"
                 initialValue={session.organizationName}
-                successMessage="Nama organisasi tersimpan."
+                successMessage={
+                  session.solo ? 'Nama tersimpan.' : 'Nama organisasi tersimpan.'
+                }
               />
               <div className="space-y-2">
                 <p className="text-sm font-medium">Logo</p>
@@ -106,55 +112,58 @@ export async function OrganizationTab({ session }: { session: SessionUser }) {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Kepemilikan</CardTitle>
-          <CardDescription>
-            {ownerName ? (
+      {/* Alone, there is nobody to hand it to and nothing to explain. */}
+      {session.solo ? null : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Kepemilikan</CardTitle>
+            <CardDescription>
+              {ownerName ? (
+                <>
+                  Pemilik saat ini:{' '}
+                  <span className="font-medium text-foreground">{ownerName}</span>
+                  {owner?.userId === session.userId ? ' (kamu)' : ''}.
+                </>
+              ) : (
+                'Pemilik organisasi ini tidak bisa dimuat.'
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {canManage ? (
               <>
-                Pemilik saat ini:{' '}
-                <span className="font-medium text-foreground">{ownerName}</span>
-                {owner?.userId === session.userId ? ' (kamu)' : ''}.
+                <p className="text-muted-foreground">
+                  Pengurus berganti setiap tahun ajaran. Sebelum lulus, serahkan
+                  kepemilikan ke pengurus berikutnya supaya arsip laporan tetap bisa
+                  dikelola tanpa akunmu.
+                </p>
+                {candidates.length > 0 ? (
+                  <TransferOwnershipDialog
+                    organizationName={session.organizationName}
+                    candidates={candidates}
+                  />
+                ) : (
+                  <p>
+                    Belum ada anggota lain.{' '}
+                    <Link
+                      href="/settings?tab=anggota"
+                      className="font-medium underline underline-offset-4"
+                    >
+                      Undang calon pemilik baru
+                    </Link>{' '}
+                    dulu — kepemilikan hanya bisa diserahkan ke anggota organisasi ini.
+                  </p>
+                )}
               </>
             ) : (
-              'Pemilik organisasi ini tidak bisa dimuat.'
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          {canManage ? (
-            <>
               <p className="text-muted-foreground">
-                Pengurus berganti setiap tahun ajaran. Sebelum lulus, serahkan kepemilikan
-                ke pengurus berikutnya supaya arsip laporan tetap bisa dikelola tanpa
-                akunmu.
+                Hanya pemilik yang bisa menyerahkan kepemilikan. Kalau pemiliknya sudah
+                lulus, minta ia menyerahkannya dari halaman ini.
               </p>
-              {candidates.length > 0 ? (
-                <TransferOwnershipDialog
-                  organizationName={session.organizationName}
-                  candidates={candidates}
-                />
-              ) : (
-                <p>
-                  Belum ada anggota lain.{' '}
-                  <Link
-                    href="/settings?tab=anggota"
-                    className="font-medium underline underline-offset-4"
-                  >
-                    Undang calon pemilik baru
-                  </Link>{' '}
-                  dulu — kepemilikan hanya bisa diserahkan ke anggota organisasi ini.
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="text-muted-foreground">
-              Hanya pemilik yang bisa menyerahkan kepemilikan. Kalau pemiliknya sudah
-              lulus, minta ia menyerahkannya dari halaman ini.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

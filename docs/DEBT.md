@@ -528,6 +528,9 @@ Belum aktif di project hosted sampai migrasi di bawah ditempel.
 
 ### Migrasi ronde 2 belum diterapkan ke project hosted
 
+**Lunas 2026-10-02.** Kedua file ditempel setelah PR ronde 2 di-deploy;
+`scripts/check-rls.mjs` 44/44 tanpa baris SKIP. Catatan aslinya:
+
 Dua file, dengan urutan yang **penting**:
 
 1. `20261002000100_join_and_leave.sql` — boleh ditempel kapan saja, sebelum atau
@@ -563,6 +566,11 @@ tidak cukup selama autoconfirm menyala), dan tombol "Gabung" di halaman itu.
 
 ### Batas ruang kerja dihitung dari keanggotaan, bukan dari akun
 
+**Lunas 2026-10-02 (ronde 3):** `createWorkspace` menghitung `organizations`
+per akun, dan serah terima melepas ruang kerja dari akun pemilik lama. Sampai
+`20261002000300_transfer_moves_account.sql` ditempel, pemilik lama yang sudah
+menyerahkan ruang kerjanya belum bisa membuat yang baru. Catatan aslinya:
+
 `createWorkspace` menghitung ruang kerja yang dimiliki dari baris `owner` di
 `organization_members`. Menurut ADR-0012 batasnya per akun, tapi sampai serah
 terima ikut memindahkan akun, akun pemilik lama masih memuat ruang kerja yang
@@ -570,6 +578,41 @@ bukan miliknya lagi dan akan menghalanginya membuat yang baru.
 
 **Pemicu:** ronde 3, saat serah terima memindahkan akun. **Bayar dengan:**
 hitung `organizations where account_id = …`.
+
+### Migrasi ronde 3 belum diterapkan ke project hosted
+
+`20261002000300_transfer_moves_account.sql` mengganti
+`transfer_organization_ownership` supaya akun ikut pindah. Boleh ditempel kapan
+saja, sebelum atau sesudah deploy. Sampai ditempel: serah terima tetap jalan
+tapi ruang kerjanya tertinggal di akun pemilik lama.
+
+**Pemicu:** begitu PR ronde 3 di-merge. **Bayar dengan:** tempel file itu, lalu
+`node --env-file=.env.local scripts/check-rls.mjs` — satu SKIP jadi dua PASS.
+
+### Serah terima ke orang yang sudah punya akun mengganti paketnya
+
+Satu orang hanya punya satu akun. Kalau penerima serah terima sudah punya akun,
+ruang kerjanya pindah ke akun itu dan mengikuti paketnya — ruang kerja dari
+akun berbayar yang diserahkan ke pemilik akun Free menjadi Free, dan akun Free
+penerima bisa memuat dua ruang kerja (batasnya hanya diperiksa saat membuat).
+Tidak ada yang terhapus atau terkunci hari ini karena belum ada fitur yang
+dibatasi paket selain jumlah anggota dan ruang kerja.
+
+**Pemicu:** pelanggan berbayar pertama, atau ronde 4 (retensi mengikuti paket —
+saat itu turun paket berarti data mulai punya tenggat). **Bayar dengan:**
+peringatan di dialog serah terima yang menyebut paket kedua pihak, dan
+keputusan produk: paket mana yang menang.
+
+### "Solo" diturunkan dari dua hitungan di setiap request
+
+`session.solo` = satu anggota dan nol undangan yang belum dipakai atau
+dibatalkan. Tidak ada kolom, jadi tidak ada migrasi, tapi sesi sekarang enam
+round-trip, dan undangan yang kedaluwarsa tanpa dibatalkan membuat ruang kerja
+tetap tampil sebagai organisasi.
+
+**Pemicu:** latency halaman terasa, atau keluhan "kenapa masih ada tab
+Anggota". **Bayar dengan:** kolom `organizations.shared_at`, diisi undangan
+pertama.
 
 ### Kedatangan pertama ditandai oleh baris `profiles`
 
@@ -605,10 +648,9 @@ PASS.
 
 ### `organizations.account_id` masih boleh kosong
 
-**Diperbarui 2026-10-02 (ronde 2):** kodenya sudah dibayar — `ensureAccount`
-gagal keras, dan `20261002000200_account_required.sql` mengunci kolomnya.
-Tinggal menempel file itu setelah deploy (lihat "Migrasi ronde 2"). Catatan
-aslinya:
+**Lunas 2026-10-02 (ronde 2):** `ensureAccount` gagal keras, dan
+`20261002000200_account_required.sql` mengunci kolomnya di project hosted.
+Catatan aslinya:
 
 Sengaja, supaya urutan "tempel migrasi" dan "deploy kode" tidak penting. Selama
 kolom ini nullable, `resolveLimits` harus terus memperlakukan akun yang hilang
