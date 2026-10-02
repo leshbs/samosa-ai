@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { ORGANIZATION_NAME_METADATA_KEY } from '@/lib/supabase/user-metadata'
 import { ERROR_CODES, appError, err, logger, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
-import { ensureProfile } from './profile'
+import { ensureProfile, hasProfile } from './profile'
 import { provisionOrganization } from './provision'
 
 /** The link types our email templates and Supabase's own links can carry. */
@@ -43,35 +43,64 @@ export function organizationNameFor(input: {
   return `Organisasi ${handle}`
 }
 
+export type SignInOptions = {
+  organizationName?: string
+  /**
+   * The person is on their way to an invitation. They join that organization
+   * and nothing is created for them.
+   */
+  joining?: boolean
+}
+
 /**
- * Makes sure the signed-in user has an organization, creating it on the first
- * call. Idempotent, so every entry point — OAuth callback, email link, password
- * sign-in — can call it and a user left without one by an earlier failure is
- * repaired on their next sign-in instead of stranded.
+ * Called by every entry point — OAuth callback, email link, password sign-in —
+ * and decides whether this is a first arrival (ADR-0012):
+ *
+ *   - first arrival, no invitation: one workspace is created, without asking;
+ *   - first arrival through an invitation: nothing is created;
+ *   - every later sign-in: nothing is created. Someone whose workspace is gone
+ *     — removed, left, deleted — gets the welcome page, not a new one.
+ *
+ * The profile row is what marks "has arrived", and it is written last, so a
+ * first arrival that failed half-way is simply a first arrival again next time.
+ * `organizationId` is null whenever nothing was created.
  */
 export async function completeSignIn(
-  organizationName?: string,
-): Promise<Result<{ organizationId: string }, AppError>> {
+  options: SignInOptions = {},
+): Promise<Result<{ organizationId: string | null }, AppError>> {
   const supabase = await createClient()
 
   const { data, error } = await supabase.auth.getUser()
   if (error || !data.user) {
     return err(appError(ERROR_CODES.UNAUTHORIZED, 'Kamu belum masuk'))
   }
+  const user = data.user
+
+  if (await hasProfile(user.id)) return ok({ organizationId: null })
+
+  if (options.joining) {
+    await ensureProfile(user.id, user.user_metadata)
+    return ok({ organizationId: null })
+  }
 
   const provisioned = await provisionOrganization({
-    userId: data.user.id,
+    userId: user.id,
     organizationName: organizationNameFor({
-      explicit: organizationName,
-      metadata: data.user.user_metadata?.[ORGANIZATION_NAME_METADATA_KEY],
-      email: data.user.email ?? '',
+      explicit: options.organizationName,
+      metadata: user.user_metadata?.[ORGANIZATION_NAME_METADATA_KEY],
+      email: user.email ?? '',
     }),
   })
 
-  // Same idempotent spot: other members need a name to show for this person
-  // even if they never open their profile.
-  if (provisioned.ok) await ensureProfile(data.user.id, data.user.user_metadata)
+  // Other members need a name to show for this person even if they never open
+  // their profile.
+  if (provisioned.ok) await ensureProfile(user.id, user.user_metadata)
   return provisioned
+}
+
+/** An invitation link is the only `next` that means "joining, not starting". */
+export function isJoining(next: string | null | undefined): boolean {
+  return Boolean(next?.startsWith('/invite/'))
 }
 
 /**

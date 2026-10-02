@@ -1,11 +1,12 @@
 'use client'
 
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
-import { ChevronsUpDown, LogOut, Moon, Sun, User } from 'lucide-react'
+import { Check, ChevronsUpDown, LogOut, Moon, Sun, User } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { useRef } from 'react'
+import { toast } from 'sonner'
 import { switchThemeWithTransition } from '@/components/layout/theme-transition'
 import {
   DropdownMenu,
@@ -17,6 +18,9 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { requestJson } from '@/modules/shared'
+
+export type ShellWorkspace = { organizationId: string; name: string }
 
 const ITEM =
   'h-9 cursor-pointer gap-2.5 rounded-lg px-3 text-[13px] font-medium focus:bg-secondary focus:text-foreground'
@@ -29,21 +33,46 @@ const ITEM =
  *
  * Radix DropdownMenu gives the menu roles, arrow-key movement, Escape, and
  * focus returning to the row, none of which a hand-rolled popover would.
+ *
+ * The workspace switcher lives here too, and only exists for someone who is in
+ * more than one (ADR-0012): with a single workspace there is nothing to choose
+ * and the menu looks exactly as it always did.
  */
 export function SidebarAccountMenu({
   email,
   displayName,
   organizationName,
+  organizationId,
+  workspaces,
 }: {
   email: string
   displayName: string
   organizationName: string
+  organizationId: string
+  workspaces: ShellWorkspace[]
 }) {
   const router = useRouter()
   // The name is what the user chose to be called; the email is the fallback
   // and stays visible either way, so nobody loses track of which account
   // they are in.
   const name = displayName.trim() || email
+
+  async function switchTo(workspace: ShellWorkspace) {
+    if (workspace.organizationId === organizationId) return
+    const result = await requestJson('/api/workspace/active', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ organizationId: workspace.organizationId }),
+    })
+    if (!result.ok) {
+      toast.error(result.error.message)
+      return
+    }
+    // To the dashboard, not a refresh in place: the page that is open may be a
+    // dataset or report that does not exist in the other workspace.
+    router.replace('/dashboard')
+    router.refresh()
+  }
 
   async function signOut() {
     const supabase = createClient()
@@ -87,6 +116,29 @@ export function SidebarAccountMenu({
           ) : null}
         </DropdownMenuLabel>
         <DropdownMenuSeparator className="mx-1.5 my-0 bg-border" />
+        {workspaces.length > 1 ? (
+          <>
+            <DropdownMenuPrimitive.Group aria-label="Ruang kerja" className="py-1">
+              {workspaces.map((workspace) => {
+                const active = workspace.organizationId === organizationId
+                return (
+                  <DropdownMenuItem
+                    key={workspace.organizationId}
+                    onSelect={() => switchTo(workspace)}
+                    aria-current={active ? 'true' : undefined}
+                    className={ITEM}
+                  >
+                    <span className="min-w-0 flex-1 truncate">{workspace.name}</span>
+                    {active ? (
+                      <Check aria-hidden className="size-4 text-muted-foreground" />
+                    ) : null}
+                  </DropdownMenuItem>
+                )
+              })}
+            </DropdownMenuPrimitive.Group>
+            <DropdownMenuSeparator className="mx-1.5 my-0 bg-border" />
+          </>
+        ) : null}
         <div className="pt-1">
           <DropdownMenuItem asChild className={ITEM}>
             <Link href="/profile">

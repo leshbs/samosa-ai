@@ -5,6 +5,7 @@ import {
   EMAIL_LINK_TYPES,
   completeSignIn,
   exchangeAuthCode,
+  isJoining,
   verifyEmailLink,
 } from '@/modules/auth'
 
@@ -53,9 +54,10 @@ export async function GET(request: NextRequest) {
     return fail('/login?error=missing_code')
   }
 
-  // A confirmed signup gets its organization here, under the name typed on the
-  // form. For every other link type the user already has one and this is a no-op.
-  const provisioned = await completeSignIn()
+  // A confirmed signup gets its workspace here, under the name typed on the
+  // form — unless it came from an invitation, which it joins instead. For every
+  // other link type this is a no-op.
+  const provisioned = await completeSignIn({ joining: isJoining(next) })
   if (!provisioned.ok) return fail('/login?error=provisioning')
 
   return NextResponse.redirect(new URL(next, url.origin))

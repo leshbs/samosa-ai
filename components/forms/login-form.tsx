@@ -57,13 +57,13 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
       return
     }
 
-    // A no-op for almost everyone. It creates the organization for an account
-    // whose confirmation link never did — opened in another browser, or sent
-    // before /confirm existed — instead of stranding it outside the dashboard.
+    // A no-op for almost everyone. It finishes a first arrival whose
+    // confirmation link never did — opened in another browser, or sent before
+    // /confirm existed — instead of stranding it outside the dashboard.
     const provisioned = await requestJson('/api/auth/provision', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: '{}',
+      body: JSON.stringify({ joining: redirectTo.startsWith('/invite/') }),
     })
     if (!provisioned.ok) {
       router.replace('/login?error=provisioning')
