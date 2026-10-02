@@ -348,6 +348,15 @@ Modelnya akun → ruang kerja → anggota (ADR-0012), dikerjakan bertahap menuru
   (`POST /api/workspace/leave`, policy `members_leave`). Pemilik harus
   menyerahkan atau menghapus dulu. Namanya tetap terbaca di analisis yang ia
   jalankan (`profiles_select`).
+- **Solo sampai mengundang.** Selama ruang kerja berisi satu orang tanpa
+  undangan (`session.solo`), UI tidak menyebut organisasi, anggota, atau peran.
+  Undangan pertama meminta nama organisasi dan memberi tahu apa yang akan
+  terlihat anggota.
+- **Batas anggota** (`getWorkspaceCapacity`) diperiksa saat mengundang;
+  undangan yang menunggu ikut dihitung. Free: tiga orang per ruang kerja.
+- **Serah terima memindahkan tagihan.** Satu-satunya ruang kerja milik sebuah
+  akun membawa akunnya ke pemilik baru; kalau pemilik baru sudah punya akun,
+  ruang kerjanya pindah ke akun itu.
 - **Ruang kerja aktif.** `getSessionUser()` membaca semua keanggotaan dan
   memilih satu: cookie `samosa_workspace` kalau orangnya masih anggota di sana,
   kalau tidak yang ia miliki, lalu yang paling lama diikuti. Cookie itu hanya
@@ -501,7 +510,7 @@ Audit penuh beserta buktinya ada di **[`docs/security-audit.md`](security-audit.
 - ✅ **CSRF** — pengecekan `Origin` untuk setiap metode tulis di middleware; `/api/webhooks/*` dikecualikan karena memakai shared secret.
 - ✅ **Content Security Policy** — nonce per request, `strict-dynamic`, plus header konstan di `next.config.ts`. Nol pelanggaran di enam route, diperiksa di browser sungguhan.
 - ✅ **Auth** — email wajib diverifikasi; tautan email ditebus di server lewat `token_hash` (ADR-0009); reset password mengeluarkan sesi di perangkat lain; form lupa-password tidak membocorkan email mana yang terdaftar; setiap `?next=` lewat `safeNextPath()` (menutup open redirect `//` dan `/\`). Diverifikasi end-to-end di project hosted dengan akun sekali pakai. Pengiriman email sungguhan menunggu SMTP — lihat `DEBT.md`.
-- ✅ **Keanggotaan dan kepemilikan** — admin tidak bisa menaikkan dirinya jadi pemilik, menyentuh baris pemilik, atau menambah anggota langsung; kepemilikan hanya berpindah lewat fungsi `security definer` dalam satu transaksi. Undangan menyimpan hash token, bukan tokennya. Diverifikasi dengan `pnpm db:check` (94 cek di PGlite, termasuk `accounts` yang tidak bisa ditulis dari browser); `scripts/check-rls.mjs` mengulang cek lintas-tenant-nya terhadap project hosted setelah migrasi diterapkan (ADR-0010).
+- ✅ **Keanggotaan dan kepemilikan** — admin tidak bisa menaikkan dirinya jadi pemilik, menyentuh baris pemilik, atau menambah anggota langsung; kepemilikan hanya berpindah lewat fungsi `security definer` dalam satu transaksi. Undangan menyimpan hash token, bukan tokennya. Diverifikasi dengan `pnpm db:check` (100 cek di PGlite, termasuk `accounts` yang tidak bisa ditulis dari browser); `scripts/check-rls.mjs` mengulang cek lintas-tenant-nya terhadap project hosted setelah migrasi diterapkan (ADR-0010).
 - ✅ **Korelasi log** — satu `requestId` dari edge sampai ke log line, dikembalikan sebagai header `x-request-id`.
 - 🟡 **Rate limiting di endpoint upload dan analysis** — kodenya ada dan gagal-terbuka dengan benar, tapi migrasinya belum diterapkan ke project hosted. Postgres, bukan Upstash: penghitung in-process tidak berguna di serverless. Lihat `DEBT.md`.
 - ⬜ **PII handling** — belum diimplementasi. Rencana: opsi anonymize (hapus nama, email) sebelum data disimpan. Saat ini `respondent_meta` disimpan apa adanya dan **tidak** ikut dikirim ke LLM.

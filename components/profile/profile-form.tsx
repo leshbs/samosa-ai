@@ -65,7 +65,7 @@ export function ProfileForm({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="title">Jabatan di organisasi</Label>
+        <Label htmlFor="title">Jabatan</Label>
         <Input
           id="title"
           value={title}

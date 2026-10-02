@@ -1,9 +1,15 @@
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
+/**
+ * `soloLabel` is what a tab is called while the workspace is one person with
+ * nobody invited (ADR-0012): the same panels, without the vocabulary of an
+ * organization. The ids stay, so links and bookmarks survive the day someone
+ * is invited.
+ */
 export const SETTINGS_TABS = [
-  { id: 'organisasi', label: 'Organisasi' },
-  { id: 'anggota', label: 'Anggota' },
+  { id: 'organisasi', label: 'Organisasi', soloLabel: 'Umum' },
+  { id: 'anggota', label: 'Anggota', soloLabel: 'Undang' },
   { id: 'pemakaian', label: 'Pemakaian' },
   { id: 'laporan', label: 'Laporan' },
   { id: 'notifikasi', label: 'Notifikasi' },
@@ -13,6 +19,12 @@ export const SETTINGS_TABS = [
 export type SettingsTab = (typeof SETTINGS_TABS)[number]['id']
 
 /** Anything that is not a known tab — a typo, an old link — opens the first. */
+export function settingsTabLabel(id: SettingsTab, solo: boolean): string {
+  const tab = SETTINGS_TABS.find((entry) => entry.id === id)
+  if (!tab) return ''
+  return solo && 'soloLabel' in tab ? tab.soloLabel : tab.label
+}
+
 export function parseSettingsTab(value: unknown): SettingsTab {
   return SETTINGS_TABS.find((tab) => tab.id === value)?.id ?? 'organisasi'
 }
@@ -26,7 +38,13 @@ export function parseSettingsTab(value: unknown): SettingsTab {
  * Every role sees all six. What differs inside is which actions exist (§5:
  * hide what you cannot do), not which parts of the settings you may read.
  */
-export function SettingsTabs({ active }: { active: SettingsTab }) {
+export function SettingsTabs({
+  active,
+  solo = false,
+}: {
+  active: SettingsTab
+  solo?: boolean
+}) {
   return (
     <nav aria-label="Bagian pengaturan" className="-mx-1 overflow-x-auto">
       <ul className="flex min-w-max gap-1 border-b px-1">
@@ -46,7 +64,7 @@ export function SettingsTabs({ active }: { active: SettingsTab }) {
                     : 'border-transparent text-muted-foreground hover:text-foreground',
                 )}
               >
-                {tab.label}
+                {settingsTabLabel(tab.id, solo)}
               </Link>
             </li>
           )

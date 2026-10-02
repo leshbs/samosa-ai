@@ -25,7 +25,6 @@ function fillSignup() {
   const type = (id: string, value: string) =>
     fireEvent.change(document.getElementById(id)!, { target: { value } })
   type('fullName', 'Rani Putri')
-  type('organizationName', 'OSIS Nusantara')
   type('email', 'rani@osis.test')
   type('password', 'Password-Contoh-1')
   fireEvent.click(screen.getByRole('button', { name: 'Buat akun' }))

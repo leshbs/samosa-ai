@@ -3,6 +3,8 @@ export { getAuthUser, getSessionUser, requireSessionUser } from './services/sess
 export type { AuthUser, SessionUser, WorkspaceSummary } from './services/session'
 export { ACTIVE_WORKSPACE_COOKIE, setActiveWorkspace } from './services/active-workspace'
 export { createWorkspace, provisionOrganization } from './services/provision'
+export { describeFullWorkspace, getWorkspaceCapacity } from './services/capacity'
+export type { WorkspaceCapacity } from './services/capacity'
 export type { ProvisionInput } from './services/provision'
 export {
   getNotificationTarget,

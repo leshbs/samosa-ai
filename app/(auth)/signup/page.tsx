@@ -23,7 +23,7 @@ export default async function SignupPage({
         <p className="text-sm text-muted-foreground">
           {joining
             ? 'Pakai email yang diundang. Setelah akunmu jadi, kamu kembali ke undangan untuk bergabung.'
-            : 'Organisasi baru dibuat otomatis, dan kamu jadi pemiliknya.'}
+            : 'Ruang kerjamu langsung siap begitu akun jadi. Rekan bisa diundang kapan saja.'}
         </p>
       </div>
 

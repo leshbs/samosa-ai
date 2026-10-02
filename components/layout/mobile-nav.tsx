@@ -43,7 +43,7 @@ export function MobileNav({ children }: { children: React.ReactNode }) {
           >
             <Dialog.Title className="sr-only">Navigasi</Dialog.Title>
             <Dialog.Description className="sr-only">
-              Menu utama, akun, dan organisasi.
+              Menu utama dan akun.
             </Dialog.Description>
             {children}
             <Dialog.Close asChild>
