@@ -328,18 +328,32 @@ profiles                 — nama tampilan, jabatan, avatar, preferensi notifika
 organization_invitations — undangan tertunda; hanya SHA-256 token yang disimpan (ADR-0010)
 ```
 
-Satu akun hanya anggota satu organisasi (ADR-0010) — untuk sekarang. ADR-0012
-menggantinya dengan akun → ruang kerja → anggota, dikerjakan bertahap menurut
-[`workspace-plan.md`](workspace-plan.md). Fondasinya (ronde 1) sudah ada:
+Modelnya akun → ruang kerja → anggota (ADR-0012), dikerjakan bertahap menurut
+[`workspace-plan.md`](workspace-plan.md). Ronde 1–2 sudah ada:
 
 - **`accounts`** memegang paket. Hanya service role yang menulisnya; batas tiap
   paket ada di `lib/plans.ts` (`resolveLimits(plan, accounts.limits)`), dan
-  dipaksakan di service, tidak di RLS. Organisasi tanpa akun = paket gratis.
+  dipaksakan di service, tidak di RLS. Setiap organisasi punya akun.
+- **Ruang kerja dibuat sekali per orang.** `completeSignIn()` dipanggil di setiap
+  pintu masuk dan hanya membuat ruang kerja pada kedatangan pertama tanpa
+  undangan. Penandanya baris `profiles`: sudah ada berarti sudah pernah datang.
+  Orang tanpa ruang kerja melihat `/welcome`, dan membuatnya sendiri lewat
+  `POST /api/workspace` (dibatasi `maxWorkspaces` paketnya).
+- **Bergabung menambah, tidak memindahkan.** `accept_organization_invitation`
+  hanya menyisipkan keanggotaan; tidak ada jalur yang menghapus organisasi atau
+  data. Aturan "satu yang dimiliki plus satu yang diikuti" ada di
+  `modules/auth` (`findWorkspaceToLeave`), bukan di schema: undangan kedua
+  meminta konfirmasi keluar dari yang pertama, dalam satu transaksi.
+- **Keluar.** Anggota bisa keluar dari ruang kerja yang bukan miliknya
+  (`POST /api/workspace/leave`, policy `members_leave`). Pemilik harus
+  menyerahkan atau menghapus dulu. Namanya tetap terbaca di analisis yang ia
+  jalankan (`profiles_select`).
 - **Ruang kerja aktif.** `getSessionUser()` membaca semua keanggotaan dan
   memilih satu: cookie `samosa_workspace` kalau orangnya masih anggota di sana,
   kalau tidak yang ia miliki, lalu yang paling lama diikuti. Cookie itu hanya
   preferensi — `POST /api/workspace/active` menolak ruang kerja yang bukan
-  miliknya.
+  miliknya. Pemilihnya ada di menu akun di kaki sidebar, dan hanya muncul untuk
+  orang yang punya lebih dari satu ruang kerja.
 - **Setiap query memfilter `organization_id` ruang kerja aktif**, termasuk
   pencarian per-id. RLS mengizinkan _semua_ ruang kerja seseorang, jadi RLS saja
   akan mencampur dua ruang kerja di satu halaman.
@@ -487,7 +501,7 @@ Audit penuh beserta buktinya ada di **[`docs/security-audit.md`](security-audit.
 - ✅ **CSRF** — pengecekan `Origin` untuk setiap metode tulis di middleware; `/api/webhooks/*` dikecualikan karena memakai shared secret.
 - ✅ **Content Security Policy** — nonce per request, `strict-dynamic`, plus header konstan di `next.config.ts`. Nol pelanggaran di enam route, diperiksa di browser sungguhan.
 - ✅ **Auth** — email wajib diverifikasi; tautan email ditebus di server lewat `token_hash` (ADR-0009); reset password mengeluarkan sesi di perangkat lain; form lupa-password tidak membocorkan email mana yang terdaftar; setiap `?next=` lewat `safeNextPath()` (menutup open redirect `//` dan `/\`). Diverifikasi end-to-end di project hosted dengan akun sekali pakai. Pengiriman email sungguhan menunggu SMTP — lihat `DEBT.md`.
-- ✅ **Keanggotaan dan kepemilikan** — admin tidak bisa menaikkan dirinya jadi pemilik, menyentuh baris pemilik, atau menambah anggota langsung; kepemilikan hanya berpindah lewat fungsi `security definer` dalam satu transaksi. Undangan menyimpan hash token, bukan tokennya. Diverifikasi dengan `pnpm db:check` (74 cek di PGlite, termasuk `accounts` yang tidak bisa ditulis dari browser); `scripts/check-rls.mjs` mengulang cek lintas-tenant-nya terhadap project hosted setelah migrasi diterapkan (ADR-0010).
+- ✅ **Keanggotaan dan kepemilikan** — admin tidak bisa menaikkan dirinya jadi pemilik, menyentuh baris pemilik, atau menambah anggota langsung; kepemilikan hanya berpindah lewat fungsi `security definer` dalam satu transaksi. Undangan menyimpan hash token, bukan tokennya. Diverifikasi dengan `pnpm db:check` (94 cek di PGlite, termasuk `accounts` yang tidak bisa ditulis dari browser); `scripts/check-rls.mjs` mengulang cek lintas-tenant-nya terhadap project hosted setelah migrasi diterapkan (ADR-0010).
 - ✅ **Korelasi log** — satu `requestId` dari edge sampai ke log line, dikembalikan sebagai header `x-request-id`.
 - 🟡 **Rate limiting di endpoint upload dan analysis** — kodenya ada dan gagal-terbuka dengan benar, tapi migrasinya belum diterapkan ke project hosted. Postgres, bukan Upstash: penghitung in-process tidak berguna di serverless. Lihat `DEBT.md`.
 - ⬜ **PII handling** — belum diimplementasi. Rencana: opsi anonymize (hapus nama, email) sebelum data disimpan. Saat ini `respondent_meta` disimpan apa adanya dan **tidak** ikut dikirim ke LLM.

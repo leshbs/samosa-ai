@@ -67,9 +67,22 @@ async function seedTenant(label) {
   if (userError) throw new Error(`createUser(${label}): ${userError.message}`)
   const userId = created.user.id
 
+  // Every organization hangs off an account (ADR-0012), so that comes first.
+  const { data: account, error: accountError } = await admin
+    .from('accounts')
+    .insert({ owner_id: userId })
+    .select('id')
+    .single()
+  if (accountError) throw new Error(`accounts(${label}): ${accountError.message}`)
+  accountIds.push(account.id)
+
   const { data: org, error: orgError } = await admin
     .from('organizations')
-    .insert({ name: `RLS Probe ${label} ${stamp}`, slug: `rls-probe-${label}-${stamp}` })
+    .insert({
+      name: `RLS Probe ${label} ${stamp}`,
+      slug: `rls-probe-${label}-${stamp}`,
+      account_id: account.id,
+    })
     .select('id')
     .single()
   if (orgError) throw new Error(`organizations(${label}): ${orgError.message}`)
@@ -148,6 +161,7 @@ async function seedTenant(label) {
     email,
     password,
     userId,
+    accountId: account.id,
     orgId: org.id,
     datasetId: dataset.id,
     responseId: response.id,
@@ -376,71 +390,64 @@ try {
   }
 
   // ── Accounts (20261001000100) ────────────────────────────────────────
-  const accountsProbe = await asA.from('accounts').select('id').limit(1)
-  if (accountsProbe.error?.message?.includes('Could not find the table')) {
-    skip(
-      'accounts are private to their workspace and read-only',
-      'table does not exist yet — apply 20261001000100_accounts.sql',
-    )
+  const ownAccount = await asA.from('accounts').select('id, plan')
+  check(
+    'user A reads their own account, and only that',
+    ownAccount.data?.length === 1 && ownAccount.data[0].id === a.accountId,
+    ownAccount.error
+      ? `error: ${ownAccount.error.message}`
+      : `${(ownAccount.data ?? []).length} row(s) visible`,
+  )
+
+  const upgrade = await asA
+    .from('accounts')
+    .update({ plan: 'enterprise' })
+    .eq('id', a.accountId)
+    .select('id')
+  check('user A cannot change their own plan', Boolean(upgrade.error))
+
+  const lifted = await asA
+    .from('accounts')
+    .update({ limits: { maxWorkspaces: 99 } })
+    .eq('id', a.accountId)
+    .select('id')
+  check('user A cannot lift their own limits', Boolean(lifted.error))
+
+  const minted = await asA.from('accounts').insert({ plan: 'org' }).select('id')
+  check('nobody creates an account from the browser', Boolean(minted.error))
+
+  const moved = await asA
+    .from('organizations')
+    .update({ account_id: b.accountId })
+    .eq('id', a.orgId)
+    .select('id')
+  check('a workspace cannot be moved onto another account', Boolean(moved.error))
+
+  const { data: after } = await admin
+    .from('accounts')
+    .select('plan, limits')
+    .eq('id', a.accountId)
+    .single()
+  check(
+    'the account is unchanged after all of that',
+    after?.plan === 'free' && Object.keys(after?.limits ?? {}).length === 0,
+    JSON.stringify(after),
+  )
+
+  // 20261002000200: pasted only after the code is deployed, so its absence is
+  // a step still to do rather than a failure.
+  const orphan = await admin
+    .from('organizations')
+    .insert({ name: `RLS Probe orphan ${stamp}`, slug: `rls-probe-orphan-${stamp}` })
+    .select('id')
+    .single()
+  if (orphan.error) {
+    check('an organization cannot exist without an account', true, orphan.error.code)
   } else {
-    const accountOf = {}
-    for (const tenant of [a, b]) {
-      const { data: account, error } = await admin
-        .from('accounts')
-        .insert({ owner_id: tenant.userId })
-        .select('id')
-        .single()
-      if (error) throw new Error(`accounts(${tenant.label}): ${error.message}`)
-      accountIds.push(account.id)
-      accountOf[tenant.label] = account.id
-      await admin
-        .from('organizations')
-        .update({ account_id: account.id })
-        .eq('id', tenant.orgId)
-    }
-
-    const ownAccount = await asA.from('accounts').select('id, plan')
-    check(
-      'user A reads their own account, and only that',
-      ownAccount.data?.length === 1 && ownAccount.data[0].id === accountOf.a,
-      ownAccount.error
-        ? `error: ${ownAccount.error.message}`
-        : `${(ownAccount.data ?? []).length} row(s) visible`,
-    )
-
-    const upgrade = await asA
-      .from('accounts')
-      .update({ plan: 'enterprise' })
-      .eq('id', accountOf.a)
-      .select('id')
-    check('user A cannot change their own plan', Boolean(upgrade.error))
-
-    const lifted = await asA
-      .from('accounts')
-      .update({ limits: { maxWorkspaces: 99 } })
-      .eq('id', accountOf.a)
-      .select('id')
-    check('user A cannot lift their own limits', Boolean(lifted.error))
-
-    const minted = await asA.from('accounts').insert({ plan: 'org' }).select('id')
-    check('nobody creates an account from the browser', Boolean(minted.error))
-
-    const moved = await asA
-      .from('organizations')
-      .update({ account_id: accountOf.b })
-      .eq('id', a.orgId)
-      .select('id')
-    check('a workspace cannot be moved onto another account', Boolean(moved.error))
-
-    const { data: after } = await admin
-      .from('accounts')
-      .select('plan, limits')
-      .eq('id', accountOf.a)
-      .single()
-    check(
-      'the account is unchanged after all of that',
-      after?.plan === 'free' && Object.keys(after?.limits ?? {}).length === 0,
-      JSON.stringify(after),
+    extraOrgIds.push(orphan.data.id)
+    skip(
+      'an organization cannot exist without an account',
+      'account_id is still nullable — apply 20261002000200_account_required.sql once the code is deployed',
     )
   }
 
@@ -450,7 +457,11 @@ try {
   // check documents that, the rest prove the filter is enough.
   const { data: second, error: secondError } = await admin
     .from('organizations')
-    .insert({ name: `RLS Probe a2 ${stamp}`, slug: `rls-probe-a2-${stamp}` })
+    .insert({
+      name: `RLS Probe a2 ${stamp}`,
+      slug: `rls-probe-a2-${stamp}`,
+      account_id: b.accountId,
+    })
     .select('id')
     .single()
   if (secondError) throw new Error(`organizations(a2): ${secondError.message}`)
@@ -505,6 +516,116 @@ try {
     (stillClosed.data ?? []).length === 0,
     `${(stillClosed.data ?? []).length} row(s) returned`,
   )
+
+  // ── Joining adds, leaving is allowed (20261002000100) ────────────────
+  const signature = await asA.rpc('accept_organization_invitation', {
+    p_token_hash: `probe-missing-${stamp}`,
+    p_leave_organization_id: second.id,
+  })
+  if (!/invitation_not_found/.test(signature.error?.message ?? '')) {
+    skip(
+      'joining adds and never deletes; a member can leave',
+      'accept_organization_invitation has no p_leave_organization_id — apply 20261002000100_join_and_leave.sql',
+    )
+  } else {
+    const joinHash = `probe-join-${stamp}`
+    const { error: inviteError } = await admin.from('organization_invitations').insert({
+      organization_id: b.orgId,
+      email: a.email,
+      role: 'viewer',
+      token_hash: joinHash,
+      invited_by: b.userId,
+    })
+    if (inviteError) throw new Error(`invitation(join): ${inviteError.message}`)
+
+    const ownerSwap = await asA.rpc('accept_organization_invitation', {
+      p_token_hash: joinHash,
+      p_leave_organization_id: a.orgId,
+    })
+    check(
+      'an owner cannot give up their own workspace to join another',
+      /owner_cannot_leave/.test(ownerSwap.error?.message ?? ''),
+      ownerSwap.error?.message ?? 'accepted',
+    )
+
+    const swapped = await asA.rpc('accept_organization_invitation', {
+      p_token_hash: joinHash,
+      p_leave_organization_id: second.id,
+    })
+    const swap = swapped.data?.[0]
+    check(
+      'accepting joins org B and leaves the workspace named',
+      swap?.joined_organization_id === b.orgId &&
+        swap?.left_organization_id === second.id,
+      swapped.error?.message ?? JSON.stringify(swapped.data),
+    )
+
+    const { data: memberships } = await admin
+      .from('organization_members')
+      .select('organization_id, role')
+      .eq('user_id', a.userId)
+    const roleIn = Object.fromEntries(
+      (memberships ?? []).map((row) => [row.organization_id, row.role]),
+    )
+    check(
+      'user A still owns their own workspace, and joined as invited',
+      roleIn[a.orgId] === 'owner' && roleIn[b.orgId] === 'viewer' && !roleIn[second.id],
+      JSON.stringify(roleIn),
+    )
+
+    const kept = await admin
+      .from('datasets')
+      .select('id', { count: 'exact', head: true })
+      .in('organization_id', [a.orgId, second.id])
+    check(
+      'joining deleted nothing: both workspaces keep their datasets',
+      kept.count === 2,
+      `${kept.count} dataset(s)`,
+    )
+
+    const ownerLeaves = await asA
+      .from('organization_members')
+      .delete()
+      .eq('user_id', a.userId)
+      .eq('organization_id', a.orgId)
+      .select('user_id')
+    check(
+      'an owner cannot leave their own workspace',
+      (ownerLeaves.data ?? []).length === 0,
+      ownerLeaves.error ? ownerLeaves.error.message : 'no rows deleted',
+    )
+
+    const evict = await asA
+      .from('organization_members')
+      .delete()
+      .eq('user_id', b.userId)
+      .eq('organization_id', b.orgId)
+      .select('user_id')
+    check(
+      'a viewer cannot remove someone else',
+      (evict.data ?? []).length === 0,
+      evict.error ? evict.error.message : 'no rows deleted',
+    )
+
+    const left = await asA
+      .from('organization_members')
+      .delete()
+      .eq('user_id', a.userId)
+      .eq('organization_id', b.orgId)
+      .select('user_id')
+    check(
+      'a member can leave a workspace they do not own',
+      (left.data ?? []).length === 1,
+      left.error ? left.error.message : `${(left.data ?? []).length} row(s) deleted`,
+    )
+
+    const closedAgain = await asA.from('datasets').select('id').eq('id', b.datasetId)
+    check(
+      'after leaving, org B is closed again',
+      (closedAgain.data ?? []).length === 0,
+      `${(closedAgain.data ?? []).length} row(s) returned`,
+    )
+  }
 
   // ── And an anonymous caller must see nothing at all ──────────────────
   const anonymous = createClient(URL, ANON, {

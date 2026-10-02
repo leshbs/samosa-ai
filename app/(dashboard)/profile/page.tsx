@@ -1,11 +1,14 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { CreateWorkspaceForm } from '@/components/forms/create-workspace-form'
 import { PageHeader } from '@/components/layout/page-header'
+import { LeaveWorkspaceButton } from '@/components/profile/leave-workspace-button'
 import { ProfileForm } from '@/components/profile/profile-form'
 import { SignInMethods } from '@/components/profile/sign-in-methods'
 import { SignOutEverywhere } from '@/components/profile/sign-out-everywhere'
 import { ImageUploadField } from '@/components/settings/image-upload-field'
+import { Badge } from '@/components/ui/badge'
 import {
   Card,
   CardContent,
@@ -52,6 +55,8 @@ export default async function ProfilePage() {
 
   const me = profile.value
   const timezone = session.value.organizationTimezone
+  const { workspaces } = session.value
+  const ownsOne = workspaces.some((workspace) => workspace.role === 'owner')
 
   return (
     <section className="mx-auto max-w-narrative space-y-6">
@@ -86,6 +91,55 @@ export default async function ProfilePage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Nothing to choose or leave for someone alone in the one workspace
+          they own, which is nearly everyone — so they never see this. */}
+      {workspaces.length > 1 || !ownsOne ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Ruang kerja</CardTitle>
+            <CardDescription>
+              Tempat kamu bekerja. Pindah lewat menu di kaki sidebar.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <ul className="divide-y">
+              {workspaces.map((workspace) => (
+                <li
+                  key={workspace.organizationId}
+                  className="flex flex-wrap items-center gap-3 py-3 first:pt-0"
+                >
+                  <p className="min-w-0 flex-1 truncate text-sm font-medium">
+                    {workspace.name}
+                    {workspace.organizationId === session.value.organizationId ? (
+                      <span className="font-normal text-muted-foreground">
+                        {' '}
+                        (sedang dibuka)
+                      </span>
+                    ) : null}
+                  </p>
+                  <Badge variant="outline">{ROLE_LABELS[workspace.role]}</Badge>
+                  {workspace.role === 'owner' ? null : (
+                    <LeaveWorkspaceButton
+                      organizationId={workspace.organizationId}
+                      name={workspace.name}
+                    />
+                  )}
+                </li>
+              ))}
+            </ul>
+            {ownsOne ? null : (
+              <div className="space-y-2 border-t pt-4">
+                <p className="text-sm text-muted-foreground">
+                  Mau menganalisis data sendiri, terpisah dari organisasi ini? Mulai ruang
+                  kerja milikmu.
+                </p>
+                <CreateWorkspaceForm />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
