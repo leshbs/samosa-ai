@@ -98,6 +98,23 @@ export async function ensureProfile(userId: string, metadata: unknown): Promise<
   if (error) logger.warn('auth.profile.ensure_failed', { code: error.code })
 }
 
+/**
+ * Whether this person has been here before. ensureProfile runs at the end of
+ * every first arrival, so the row doubles as the record of it — which is what
+ * lets a later sign-in tell "new" from "has no workspace any more" (ADR-0012).
+ * A failed lookup counts as "has": the cost of being wrong that way is a
+ * welcome page, the other way is a workspace nobody asked for.
+ */
+export async function hasProfile(userId: string): Promise<boolean> {
+  const { data, error } = await createAdminClient()
+    .from('profiles')
+    .select('user_id')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error) logger.warn('auth.profile.lookup_failed', { code: error.code })
+  return Boolean(data) || Boolean(error)
+}
+
 export type ProfileDetails = Profile & {
   email: string
   avatarPath: string | null
@@ -164,9 +181,10 @@ export async function getProfileDetails(): Promise<Result<ProfileDetails, AppErr
 export type PersonSummary = { displayName: string; title: string }
 
 /**
- * Names and titles for people in the caller's organization, read under RLS —
- * someone outside it simply does not come back. For provenance lines like
- * "dijalankan oleh".
+ * Names and titles for provenance lines like "dijalankan oleh", read under
+ * RLS: the caller's fellow members, and people who ran an analysis in one of
+ * the caller's workspaces and have since left it. Anyone else simply does not
+ * come back.
  */
 export async function getPeople(
   userIds: ReadonlyArray<string | null | undefined>,

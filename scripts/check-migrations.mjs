@@ -24,7 +24,16 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '../supabase/migrations')
-const NEWEST = readdirSync(MIGRATIONS).sort().at(-1)
+/**
+ * Files that must not run before the data they constrain exists. On the hosted
+ * project they are pasted after the code is deployed; here they run after the
+ * seed and the backfill, which is the same order.
+ */
+const DEFERRED = ['20261002000200_account_required.sql']
+const FILES = readdirSync(MIGRATIONS)
+  .sort()
+  .filter((file) => !DEFERRED.includes(file))
+const NEWEST = FILES.at(-1)
 
 const db = new PGlite({ extensions: { pgcrypto } })
 
@@ -62,7 +71,7 @@ await db.exec(`
   $$;
 `)
 
-for (const file of readdirSync(MIGRATIONS).sort()) {
+for (const file of FILES) {
   const sql = readFileSync(join(MIGRATIONS, file), 'utf8')
   try {
     await db.exec(sql)
@@ -300,6 +309,40 @@ try {
   check('an account with workspaces cannot be deleted', false, 'deleted')
 } catch (error) {
   check('an account with workspaces cannot be deleted', true, error.message)
+}
+
+// ── account required (20261002000200) ──
+await db.exec(
+  `update public.organizations set account_id = null where id = '${ORG.orphan}'`,
+)
+const REQUIRED = readFileSync(join(MIGRATIONS, DEFERRED[0]), 'utf8')
+try {
+  await db.exec(REQUIRED)
+  await db.exec(REQUIRED)
+  console.log(`migrated  ${DEFERRED[0]} (twice, after the backfill)`)
+} catch (error) {
+  console.log(`FAILED    ${DEFERRED[0]}: ${error.message}`)
+  process.exit(1)
+}
+rows = await sql(
+  `select count(*)::int as n from public.organizations where account_id is null`,
+)
+check(
+  'account required: a straggler is backfilled before the constraint',
+  rows[0].n === 0,
+  JSON.stringify(rows),
+)
+try {
+  await db.exec(
+    `insert into public.organizations (name, slug) values ('Tanpa akun', 'tanpa-akun')`,
+  )
+  check('an organization cannot exist without an account', false, 'inserted')
+} catch (error) {
+  check(
+    'an organization cannot exist without an account',
+    /not-null|null value/.test(error.message),
+    error.message,
+  )
 }
 
 // ── two workspaces, one person (ADR-0012) ──
@@ -562,9 +605,21 @@ check(
   r.error ?? 'allowed',
 )
 
-async function accept(user, hash) {
-  return as(user, `select * from public.accept_organization_invitation($1)`, [hash])
+async function accept(user, hash, leave = null) {
+  return leave
+    ? as(user, `select * from public.accept_organization_invitation($1, $2)`, [
+        hash,
+        leave,
+      ])
+    : as(user, `select * from public.accept_organization_invitation($1)`, [hash])
 }
+async function membershipsOf(user) {
+  const found = await sql(
+    `select organization_id, role from public.organization_members where user_id = '${user}'`,
+  )
+  return Object.fromEntries(found.map((row) => [row.organization_id, row.role]))
+}
+
 r = await accept(U.wrongEmail, 'hash-wrong')
 check(
   'accept: email mismatch refused',
@@ -577,12 +632,26 @@ check(
   /invitation_not_found/.test(r.error ?? ''),
   r.error ?? 'accepted',
 )
+
+// Joining adds (ADR-0012). The owner of a workspace with data used to be
+// refused; the owner of an empty one used to lose it.
 r = await accept(U.busy, 'hash-busy')
 check(
-  'accept: owner of a non-empty org refused',
-  /membership_conflict/.test(r.error ?? ''),
-  r.error ?? 'accepted',
+  'accept: the owner of a workspace with data can join',
+  r.error === null && r.rows[0]?.joined_organization_id === ORG.main,
+  r.error ?? JSON.stringify(r.rows),
 )
+let held = await membershipsOf(U.busy)
+check(
+  'accept: they keep their own workspace, and join with the invited role',
+  held[ORG.busyOwn] === 'owner' && held[ORG.main] === 'viewer',
+  JSON.stringify(held),
+)
+rows = await sql(
+  `select count(*)::int as n from public.datasets where organization_id = '${ORG.busyOwn}'`,
+)
+check('accept: their data is untouched', rows[0].n === 1, JSON.stringify(rows))
+
 r = await accept(U.invitee, 'hash-ok')
 check(
   'accept: invitee joins',
@@ -590,20 +659,18 @@ check(
   r.error ?? JSON.stringify(r.rows),
 )
 check(
-  'accept: empty own org reported dropped',
-  r.rows[0]?.dropped_organization_id === ORG.inviteeOwn,
+  'accept: nothing is reported left when nothing was named',
+  r.rows[0]?.left_organization_id === null,
   JSON.stringify(r.rows),
 )
-rows = await sql(
-  `select organization_id, role from public.organization_members where user_id = '${U.invitee}'`,
-)
+held = await membershipsOf(U.invitee)
 check(
-  'accept: exactly one membership, with the invited role',
-  rows.length === 1 && rows[0].organization_id === ORG.main && rows[0].role === 'member',
-  JSON.stringify(rows),
+  'accept: an empty own workspace is kept too',
+  held[ORG.inviteeOwn] === 'owner' && held[ORG.main] === 'member',
+  JSON.stringify(held),
 )
 rows = await sql(`select id from public.organizations where id = '${ORG.inviteeOwn}'`)
-check('accept: the empty org is gone', rows.length === 0)
+check('accept: no organization is deleted', rows.length === 1)
 r = await accept(U.invitee, 'hash-ok')
 check(
   'accept: reopening the link is idempotent',
@@ -615,6 +682,131 @@ check(
   'accept: used link refused for someone else',
   /invitation_used/.test(r.error ?? ''),
   r.error ?? 'accepted',
+)
+
+// Leaving one organization in exchange for another, in one transaction.
+await as(
+  U.stranger,
+  `insert into public.organization_invitations (organization_id, email, role, token_hash, invited_by) values ('${ORG.other}', 'member@osis.test', 'member', 'hash-swap', '${U.stranger}')`,
+)
+r = await accept(U.member, 'hash-swap', ORG.main)
+check(
+  'accept: joins one and leaves the one named',
+  r.error === null &&
+    r.rows[0]?.joined_organization_id === ORG.other &&
+    r.rows[0]?.left_organization_id === ORG.main,
+  r.error ?? JSON.stringify(r.rows),
+)
+held = await membershipsOf(U.member)
+check(
+  'accept: exactly the swap happened',
+  held[ORG.other] === 'member' && Object.keys(held).length === 1,
+  JSON.stringify(held),
+)
+await invite(U.owner, 'dual@osis.test', 'member', 'hash-dual')
+r = await accept(U.dual, 'hash-dual', ORG.dualFirst)
+check(
+  'accept: an owned workspace cannot be the one given up',
+  /owner_cannot_leave/.test(r.error ?? ''),
+  r.error ?? 'accepted',
+)
+held = await membershipsOf(U.dual)
+check(
+  'accept: a refused swap changes nothing',
+  held[ORG.dualFirst] === 'owner' && held[ORG.main] === undefined,
+  JSON.stringify(held),
+)
+rows = await sql(
+  `select accepted_at from public.organization_invitations where token_hash = 'hash-dual'`,
+)
+check('accept: and leaves the invitation usable', rows[0]?.accepted_at === null)
+r = await as(U.dual, `select * from public.accept_organization_invitation($1, $2)`, [
+  'hash-dual',
+  ORG.other,
+])
+held = await membershipsOf(U.dual)
+check(
+  'accept: naming a workspace you are not in leaves nobody else',
+  r.error === null &&
+    r.rows[0]?.left_organization_id === null &&
+    held[ORG.main] === 'member',
+  r.error ?? JSON.stringify(r.rows),
+)
+rows = await sql(
+  `select count(*)::int as n from public.organization_members where organization_id = '${ORG.other}'`,
+)
+check('accept: org B kept all of its members', rows[0].n === 2, JSON.stringify(rows))
+
+// ── leaving ──
+// The viewer runs an analysis first, so there is a name to keep afterwards.
+await db.exec(`
+  insert into public.datasets (id, organization_id, uploader_id, name, source) values
+    ('20000000-0000-0000-0000-000000000001', '${ORG.main}', '${U.owner}', 'Survei utama', 'csv');
+  insert into public.analysis_jobs (organization_id, dataset_id, prompt_version, created_by) values
+    ('${ORG.main}', '20000000-0000-0000-0000-000000000001', 'analysis.v1', '${U.busy}');
+`)
+r = await as(
+  U.owner,
+  `delete from public.organization_members where user_id = '${U.owner}' and organization_id = '${ORG.main}'`,
+)
+check(
+  'leave: an owner cannot leave their own workspace',
+  r.affected === 0,
+  r.error ?? `${r.affected} rows`,
+)
+r = await as(
+  U.busy,
+  `delete from public.organization_members where user_id = '${U.invitee}' and organization_id = '${ORG.main}'`,
+)
+check(
+  'leave: a viewer cannot remove someone else',
+  r.affected === 0,
+  r.error ?? `${r.affected} rows`,
+)
+r = await as(
+  U.busy,
+  `delete from public.organization_members where user_id = '${U.busy}' and organization_id = '${ORG.main}'`,
+)
+check(
+  'leave: a viewer leaves a workspace they do not own',
+  r.error === null && r.affected === 1,
+  r.error ?? `${r.affected} rows`,
+)
+held = await membershipsOf(U.busy)
+check(
+  'leave: their own workspace is still theirs',
+  held[ORG.busyOwn] === 'owner' && Object.keys(held).length === 1,
+  JSON.stringify(held),
+)
+r = await as(
+  U.busy,
+  `select id from public.datasets where organization_id = '${ORG.main}'`,
+)
+check('leave: the workspace is closed to them again', r.rows.length === 0, r.error ?? '')
+rows = await sql(
+  `select count(*)::int as n from public.analysis_jobs where created_by = '${U.busy}' and organization_id = '${ORG.main}'`,
+)
+check('leave: the analysis they ran stays behind', rows[0].n === 1, JSON.stringify(rows))
+r = await as(U.owner, `select user_id from public.profiles where user_id = '${U.busy}'`)
+check(
+  'leave: their name is still readable where they ran an analysis',
+  r.rows.length === 1,
+  r.error ?? `${r.rows.length} rows`,
+)
+r = await as(
+  U.stranger,
+  `select user_id from public.profiles where user_id = '${U.busy}'`,
+)
+check(
+  'leave: but not to another tenant',
+  r.rows.length === 0,
+  r.error ?? `${r.rows.length} rows`,
+)
+r = await as(U.owner, `select user_id from public.profiles where user_id = '${U.member}'`)
+check(
+  'leave: someone who left without running anything is no longer readable',
+  r.rows.length === 0,
+  r.error ?? `${r.rows.length} rows`,
 )
 
 await db.exec(

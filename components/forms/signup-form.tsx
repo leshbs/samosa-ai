@@ -35,9 +35,8 @@ const signupSchema = z.object({
 
 /**
  * Someone arriving from an invitation is joining an organization, not starting
- * one, so the organization name is not asked for. Provisioning still gives the
- * account a placeholder organization of its own — every signup path does — and
- * accepting the invitation drops it, since it is empty.
+ * one, so the organization name is not asked for and no workspace is created
+ * for them (ADR-0012). They can start their own later.
  */
 const joinSchema = signupSchema.extend({ organizationName: z.string().optional() })
 
@@ -107,7 +106,9 @@ export function SignupForm({ next }: { next?: string }) {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(
-        values.organizationName ? { organizationName: values.organizationName } : {},
+        values.organizationName
+          ? { organizationName: values.organizationName, joining }
+          : { joining },
       ),
     })
 
@@ -115,7 +116,7 @@ export function SignupForm({ next }: { next?: string }) {
       // The account exists either way, so point the user at signing in rather
       // than at filling this form in a second time.
       setError('root', {
-        message: `Akun dibuat, tapi organisasi gagal disiapkan. ${provisioned.error.message}`,
+        message: `Akun dibuat, tapi belum selesai disiapkan. ${provisioned.error.message}`,
       })
       return
     }

@@ -17,6 +17,13 @@ export type AuthUser = {
   email: string
 }
 
+/** One of the signed-in person's workspaces, for the switcher and the profile. */
+export type WorkspaceSummary = {
+  organizationId: string
+  name: string
+  role: OrgRole
+}
+
 export type SessionUser = {
   userId: string
   email: string
@@ -36,6 +43,8 @@ export type SessionUser = {
   /** Every date the app prints for this organization is in this zone. */
   organizationTimezone: OrgTimeZone
   role: OrgRole
+  /** Every workspace this person is in, the active one included; owned first. */
+  workspaces: WorkspaceSummary[]
   /**
    * `true` when the account can sign in with a password. A Google-only account
    * has no password to change, and its email is owned by Google.
@@ -96,14 +105,12 @@ async function loadSessionUser(): Promise<Result<SessionUser, AppError>> {
     readActiveWorkspaceId(),
   ])
 
-  const membership = pickMembership(
-    (rows ?? []).map((row) => ({
-      organizationId: String(row.organization_id),
-      role: row.role as OrgRole,
-      joinedAt: String(row.created_at),
-    })),
-    preferredId,
-  )
+  const memberships = (rows ?? []).map((row) => ({
+    organizationId: String(row.organization_id),
+    role: row.role as OrgRole,
+    joinedAt: String(row.created_at),
+  }))
+  const membership = pickMembership(memberships, preferredId)
 
   if (membershipError || !membership) {
     return err(appError(ERROR_CODES.FORBIDDEN, 'Akunmu belum punya organisasi'))
@@ -113,8 +120,14 @@ async function loadSessionUser(): Promise<Result<SessionUser, AppError>> {
 
   // Separate round-trips rather than a nested select: types/database.ts is
   // hand-written and declares no relationships for the client to infer.
-  const [{ data: organization }, { data: profile }] = await Promise.all([
-    supabase.from('organizations').select('*').eq('id', organizationId).single(),
+  const [{ data: organizations }, { data: profile }] = await Promise.all([
+    supabase
+      .from('organizations')
+      .select('*')
+      .in(
+        'id',
+        memberships.map((entry) => entry.organizationId),
+      ),
     supabase
       .from('profiles')
       .select('display_name, title, avatar_path')
@@ -122,7 +135,20 @@ async function loadSessionUser(): Promise<Result<SessionUser, AppError>> {
       .maybeSingle(),
   ])
 
+  const organizationById = new Map((organizations ?? []).map((row) => [row.id, row]))
+  const organization = organizationById.get(organizationId)
   const timezone: unknown = organization?.timezone
+  const workspaces = memberships
+    .map((entry) => ({
+      organizationId: entry.organizationId,
+      name: organizationById.get(entry.organizationId)?.name ?? 'Organisasi',
+      role: entry.role,
+    }))
+    .sort(
+      (a, b) =>
+        Number(b.role === 'owner') - Number(a.role === 'owner') ||
+        a.name.localeCompare(b.name, 'id'),
+    )
 
   return ok({
     userId: auth.user.id,
@@ -135,6 +161,7 @@ async function loadSessionUser(): Promise<Result<SessionUser, AppError>> {
     organizationName: organization?.name ?? 'Organisasi',
     organizationTimezone: isOrgTimeZone(timezone) ? timezone : DEFAULT_TIME_ZONE,
     role: membership.role,
+    workspaces,
     hasPassword: hasEmailIdentity(auth.user.app_metadata?.providers),
   })
 }

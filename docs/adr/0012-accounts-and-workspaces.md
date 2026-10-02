@@ -1,7 +1,7 @@
 # 0012. Akun, ruang kerja, dan keanggotaan yang menambah — bukan memindahkan
 
-- **Status:** Accepted — belum diimplementasikan; dikerjakan bertahap menurut
-  [`docs/workspace-plan.md`](../workspace-plan.md)
+- **Status:** Accepted — ronde 1–2 diimplementasikan (butir 1–6); sisanya
+  dikerjakan bertahap menurut [`docs/workspace-plan.md`](../workspace-plan.md)
 - **Date:** 2026-10-01
 - **Menggantikan sebagian:** ADR-0009 butir 2 (organisasi dibuat di setiap pintu
   masuk) dan ADR-0010 butir 1 (satu akun, satu organisasi)
@@ -107,6 +107,23 @@ Isi paket, urutan pengerjaan, dan risikonya ada di
   `docs/pilot-data-posture.md`. Keduanya harus diubah sebelum jamnya berjalan.
 - ADR-0009 butir 2 dan ADR-0010 butir 1 tetap menggambarkan kode yang berjalan
   sampai ronde 2 selesai.
+
+## Catatan implementasi (ronde 2, 2026-10-02)
+
+- **"Kedatangan pertama" ditandai oleh baris `profiles`**, yang ditulis paling
+  akhir. Tanpa kolom baru, jadi tidak ada migrasi yang harus mendahului deploy;
+  kedatangan pertama yang gagal di tengah jalan diulang pada login berikutnya.
+- **"Lewat undangan" dibaca dari `next`** (`/invite/…`) di `/callback`,
+  `/confirm`, dan formulir masuk/daftar. Petunjuk dari browser itu aman
+  dipercaya: yang bisa dilakukannya hanya _menahan_ pembuatan ruang kerja, yang
+  ditawarkan lagi di `/welcome`.
+- **Keluar-lalu-bergabung satu transaksi.** Ruang kerja yang ditinggalkan
+  ditentukan server (`findWorkspaceToLeave`), bukan dikirim browser; fungsi
+  database menolak kalau itu ruang kerja milik pemanggil.
+- **Keluar lewat policy RLS** (`members_leave`: baris sendiri, bukan pemilik),
+  bukan fungsi baru.
+- **Nama yang sudah keluar** tetap terbaca lewat `profiles_select`: profil
+  terbaca oleh anggota ruang kerja tempat orang itu pernah menjalankan analisis.
 
 ## Alternatives considered
 
