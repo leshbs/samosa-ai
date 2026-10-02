@@ -1,6 +1,6 @@
 # 0012. Akun, ruang kerja, dan keanggotaan yang menambah — bukan memindahkan
 
-- **Status:** Accepted — ronde 1–3 diimplementasikan (butir 1–7); sisanya
+- **Status:** Accepted — ronde 1–4 diimplementasikan (butir 1–9); sisanya
   dikerjakan bertahap menurut [`docs/workspace-plan.md`](../workspace-plan.md)
 - **Date:** 2026-10-01
 - **Menggantikan sebagian:** ADR-0009 butir 2 (organisasi dibuat di setiap pintu
@@ -138,6 +138,21 @@ Isi paket, urutan pengerjaan, dan risikonya ada di
   akunnya yang berpindah tangan.
 - **Logo di PDF tetap gratis** (butir 8 bertambah satu). Fiturnya sudah dipakai
   sebelum paket ada; menguncinya berarti mengambilnya dari pengguna.
+
+## Catatan implementasi (ronde 4, 2026-10-03)
+
+- **Yang disimpan hanya yang tidak bisa dihitung ulang:** kapan jam sebuah
+  dataset mulai, kapan ia diarsipkan, dan sejauh mana pemiliknya sudah
+  dikabari. Tenggatnya sendiri selalu dihitung dari paket saat itu, jadi
+  mengganti paket langsung mengubah tenggat tanpa migrasi data.
+- **Pemberitahuan adalah syarat, bukan efek samping.** Sweep hanya memajukan
+  sebuah dataset setelah email untuk langkah itu terkirim, dan tanpa email
+  terkonfigurasi ia tidak mengarsipkan atau menghapus apa pun.
+- **Paket yang tidak terbaca berarti "jangan sentuh"** di sweep, kebalikan dari
+  halaman (yang jatuh ke paket Gratis): di sweep kesalahan yang harus dihindari
+  adalah mengarsipkan karena tebakan.
+- **Serah terima ke orang yang sudah punya akun mengikuti paket penerima** —
+  diputuskan tetap begitu, dengan akibat masa simpannya dicatat di `DEBT.md`.
 
 ## Alternatives considered
 

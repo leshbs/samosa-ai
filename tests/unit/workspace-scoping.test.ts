@@ -25,7 +25,7 @@ function recorder(table: string) {
 
   const result = { data: [], error: null, count: 0 }
   const builder: Record<string, unknown> = {}
-  for (const method of ['select', 'order', 'limit', 'range', 'delete']) {
+  for (const method of ['select', 'order', 'limit', 'range', 'delete', 'is', 'not']) {
     builder[method] = () => builder
   }
   for (const method of ['eq', 'in']) {

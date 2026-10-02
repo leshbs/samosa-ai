@@ -130,6 +130,10 @@ export type Dataset = {
    * dataset holds, and "none" is the answer that most needs stating.
    */
   keptColumns: string[]
+  /** When this dataset's retention period began (see lib/retention.ts). */
+  retentionClockAt: string
+  /** Set once the retention sweep has hidden it; null for a live dataset. */
+  archivedAt: string | null
   createdAt: string
 }
 
@@ -161,6 +165,8 @@ export type AnalysisJob = {
   finishedAt: string | null
   /** Who pressed "Mulai analisis"; null for jobs from before it was recorded. */
   createdBy: string | null
+  /** Set when the job's dataset was archived by retention; null otherwise. */
+  archivedAt: string | null
   createdAt: string
 }
 

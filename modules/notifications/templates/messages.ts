@@ -1,7 +1,7 @@
 import { renderEmail, type RenderedEmail } from './layout'
 
 /**
- * The three emails SAMOSA sends. Pure functions of their input, so every
+ * The emails SAMOSA sends. Pure functions of their input, so every
  * wording decision is testable without a mail server.
  */
 
@@ -126,5 +126,88 @@ export function ownershipTransferredEmail(input: OwnershipEmailInput): RenderedE
     paragraphs,
     action: { label: 'Buka pengaturan', url: input.url },
     footnote: `Email ini dikirim ke pemilik lama dan pemilik baru ${input.organizationName}.`,
+  })
+}
+
+export type RetentionDatasetLine = { name: string; responseCount: number }
+
+type RetentionEmailBase = {
+  recipientName: string
+  organizationName: string
+  datasets: RetentionDatasetLine[]
+  /** Settings → Data, where the export button and the archive list are. */
+  url: string
+}
+
+/** Enough names to recognise the data, not a list nobody reads to the end. */
+const NAMED_DATASETS = 5
+
+function datasetFacts(datasets: RetentionDatasetLine[]) {
+  const named = datasets.slice(0, NAMED_DATASETS).map((dataset) => ({
+    label: dataset.name,
+    value: `${dataset.responseCount.toLocaleString('id-ID')} aspirasi`,
+  }))
+  const rest = datasets.length - named.length
+  return rest > 0 ? [...named, { label: 'Dan lainnya', value: `${rest} dataset` }] : named
+}
+
+function countOf(datasets: RetentionDatasetLine[]): string {
+  return `${datasets.length.toLocaleString('id-ID')} dataset`
+}
+
+export type RetentionNoticeInput = RetentionEmailBase & {
+  /** The 7-day notice rather than the 30-day one. */
+  final: boolean
+  archiveOn: string
+}
+
+/**
+ * Sent 30 and 7 days before a dataset's retention period ends. Says what
+ * happens, when, and the two ways out — download it, or keep it by changing
+ * plan — because a deadline with no way out is only a threat.
+ */
+export function retentionNoticeEmail(input: RetentionNoticeInput): RenderedEmail {
+  const count = countOf(input.datasets)
+  return renderEmail(
+    input.final
+      ? `Terakhir: ${count} di ${input.organizationName} diarsipkan ${input.archiveOn}`
+      : `${count} di ${input.organizationName} akan diarsipkan ${input.archiveOn}`,
+    {
+      preheader: `Masa simpannya habis pada ${input.archiveOn}.`,
+      heading: input.final
+        ? 'Pengingat terakhir sebelum diarsipkan'
+        : 'Masa simpan hampir habis',
+      paragraphs: [
+        greeting(input.recipientName),
+        `Paketmu menyimpan dataset untuk jangka waktu tertentu, dan masa simpan ${count} di ${input.organizationName} habis pada ${input.archiveOn}.`,
+        'Pada tanggal itu dataset dan laporannya diarsipkan: tidak tampil lagi di aplikasi, tapi belum dihapus. Selama 90 hari berikutnya semuanya masih bisa kamu unduh, dan pulih sepenuhnya kalau paketmu diganti ke yang menyimpan data permanen. Setelah 90 hari, baru dihapus.',
+        'Kalau datanya masih kamu perlukan, unduh arsipnya sekarang — satu file berisi setiap dataset dan laporan.',
+      ],
+      facts: datasetFacts(input.datasets),
+      action: { label: 'Unduh atau tinjau data', url: input.url },
+      footnote: `Kamu menerima email ini sebagai pemilik ${input.organizationName}. Email soal masa simpan selalu dikirim, apa pun pengaturan notifikasimu, karena menyangkut penghapusan data.`,
+    },
+  )
+}
+
+export type RetentionArchivedInput = RetentionEmailBase & { deleteOn: string }
+
+/** Sent the day datasets are archived; starts the 90 days before deletion. */
+export function retentionArchivedEmail(input: RetentionArchivedInput): RenderedEmail {
+  const count = countOf(input.datasets)
+  return renderEmail(`${count} di ${input.organizationName} sudah diarsipkan`, {
+    preheader: `Masih bisa diunduh sampai ${input.deleteOn}.`,
+    heading: 'Dataset diarsipkan',
+    paragraphs: [
+      greeting(input.recipientName),
+      `Masa simpan ${count} di ${input.organizationName} sudah habis, jadi dataset dan laporannya kami arsipkan. Semuanya tidak tampil lagi di aplikasi, tapi belum dihapus.`,
+      `Sampai ${input.deleteOn} kamu masih bisa mengunduh semuanya dari Pengaturan → Data, dan semuanya pulih kalau paketmu diganti ke yang menyimpan data permanen. Setelah tanggal itu datanya dihapus dan tidak bisa dikembalikan.`,
+    ],
+    facts: [
+      ...datasetFacts(input.datasets),
+      { label: 'Dihapus pada', value: input.deleteOn },
+    ],
+    action: { label: 'Unduh arsip', url: input.url },
+    footnote: `Kamu menerima email ini sebagai pemilik ${input.organizationName}. Email soal masa simpan selalu dikirim, apa pun pengaturan notifikasimu, karena menyangkut penghapusan data.`,
   })
 }

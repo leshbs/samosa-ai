@@ -15,7 +15,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { formatIdr, getUsageSummary, listJobs } from '@/modules/analysis'
-import type { SessionUser } from '@/modules/auth'
+import { getWorkspacePlan, type SessionUser } from '@/modules/auth'
+import { PLAN_LABELS } from '@/lib/plans'
+import { ARCHIVE_GRACE_DAYS } from '@/lib/retention'
 import { formatDateTime } from '@/lib/utils'
 import { isReportable, type JobStatus } from '@/types/domain'
 
@@ -32,10 +34,30 @@ const STATUS_LABELS: Record<JobStatus, string> = {
 const JOBS_SHOWN = 50
 
 export async function UsageTab({ session }: { session: SessionUser }) {
-  const [usage, jobs] = await Promise.all([
+  const [usage, jobs, plan] = await Promise.all([
     getUsageSummary(session.organizationId),
     listJobs(session.organizationId, { limit: JOBS_SHOWN }),
+    getWorkspacePlan(session.organizationId),
   ])
+
+  const { maxMembersPerWorkspace, retentionDays } = plan.limits
+  const retention =
+    retentionDays === null
+      ? 'Permanen, sampai kamu menghapusnya'
+      : retentionDays % 365 === 0
+        ? `${retentionDays / 365} tahun sejak diunggah`
+        : `${retentionDays} hari sejak diunggah`
+  const planFacts = [
+    { label: 'Paket', value: PLAN_LABELS[plan.plan] },
+    {
+      label: 'Orang per ruang kerja',
+      value:
+        maxMembersPerWorkspace === null
+          ? 'Tanpa batas'
+          : `Sampai ${maxMembersPerWorkspace}`,
+    },
+    { label: 'Dataset disimpan', value: retention },
+  ]
 
   const summary = usage.ok
     ? [
@@ -58,9 +80,39 @@ export async function UsageTab({ session }: { session: SessionUser }) {
     <div className="space-y-6">
       <Card>
         <CardHeader>
+          <CardTitle className="text-base">Paket</CardTitle>
+          <CardDescription>
+            Kualitas analisis dan export sama di semua paket. Yang berbeda hanya di bawah
+            ini.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {planFacts.map((row) => (
+            <div key={row.label} className="flex justify-between gap-4 text-sm">
+              <span className="text-muted-foreground">{row.label}</span>
+              <span className="text-right font-medium">{row.value}</span>
+            </div>
+          ))}
+          {retentionDays !== null ? (
+            <p className="pt-1 text-xs text-muted-foreground">
+              Setelah masa simpan habis, dataset diarsipkan — tidak langsung dihapus. Kamu
+              dikabari lewat email 30 dan 7 hari sebelumnya, dan arsipnya masih bisa
+              diunduh selama {ARCHIVE_GRACE_DAYS} hari. Tanggal tiap dataset ada di
+              halaman{' '}
+              <Link href="/datasets" className="font-medium underline underline-offset-4">
+                Dataset
+              </Link>
+              .
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle className="text-base">Total pemakaian</CardTitle>
           <CardDescription>
-            Belum ada batas kuota selama masa pilot; angka ini untuk memantau biaya.
+            Tidak ada kuota analisis; angka ini untuk memantau biaya.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">

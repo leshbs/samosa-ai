@@ -129,10 +129,38 @@ export default async function PrivacyPage({
           security), bukan hanya di kode aplikasi.
         </p>
         <p>
-          Dataset disimpan sampai kamu menghapusnya. Menghapus dataset akan menghapus
-          seluruh aspirasi, hasil analisis, dan laporannya. Penghapusan akun belum
-          tersedia lewat aplikasi; sampai fitur itu ada, kirim permintaan ke alamat di
-          bagian 1 dan datamu akan dihapus.
+          Berapa lama dataset disimpan bergantung pada paketmu. Di paket Gratis, dataset
+          disimpan satu tahun sejak diunggah; untuk dataset yang sudah ada sebelum aturan
+          ini berlaku, satu tahun itu dihitung sejak aturannya berlaku, bukan sejak
+          diunggah. Di paket Organization dan Enterprise, dataset disimpan sampai kamu
+          menghapusnya. Paket dan tanggal tiap dataset terlihat di Pengaturan dan di
+          halaman Dataset.
+        </p>
+        <p>Saat masa simpan sebuah dataset habis, urutannya selalu begini:</p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            30 hari dan 7 hari sebelumnya, pemilik ruang kerja dikabari lewat email dan di
+            dalam aplikasi.
+          </li>
+          <li>
+            Pada tanggalnya, dataset beserta hasil analisis dan laporannya diarsipkan:
+            tidak tampil lagi di aplikasi, tapi belum dihapus, dan masih bisa diunduh.
+          </li>
+          <li>
+            90 hari setelah diarsipkan, semuanya dihapus permanen, termasuk file unggahan
+            aslinya. Kalau sebelum itu paketmu diganti ke yang menyimpan data permanen,
+            semuanya pulih.
+          </li>
+        </ul>
+        <p>
+          Kami tidak mengarsipkan atau menghapus apa pun tanpa lebih dulu mengirim email
+          pemberitahuannya. Kalau email itu tidak bisa dikirim, datanya dibiarkan.
+        </p>
+        <p>
+          Kamu bisa menghapus dataset kapan saja; itu menghapus seluruh aspirasi, hasil
+          analisis, dan laporannya saat itu juga. Penghapusan akun belum tersedia lewat
+          aplikasi; sampai fitur itu ada, kirim permintaan ke alamat di bagian 1 dan
+          datamu akan dihapus.
         </p>
       </LegalSection>
 

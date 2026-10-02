@@ -4,6 +4,7 @@ import { createJob } from '@/modules/analysis'
 import { enforceRateLimit } from '@/modules/security'
 import { ERROR_CODES, appError, logger } from '@/modules/shared'
 import { createAnalysisSchema } from '@/types/api'
+import { checkMonthlyCap } from '@/app/api/_lib/abuse-cap'
 import { requestLog } from '@/app/api/_lib/request-log'
 import { runAnalysisJob } from '@/app/api/_lib/run-analysis'
 import { failure, success } from '@/app/api/_lib/respond'
@@ -34,6 +35,12 @@ export async function POST(request: NextRequest) {
         details: { issues: parsed.error.flatten().fieldErrors },
       }),
     )
+  }
+
+  const cap = await checkMonthlyCap(session.value.organizationId, parsed.data.datasetId)
+  if (!cap.ok) {
+    log.warn('api.analysis.monthly_cap_reached')
+    return failure(cap.error)
   }
 
   const result = await createJob({

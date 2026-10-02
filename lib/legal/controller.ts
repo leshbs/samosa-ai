@@ -23,7 +23,7 @@ export const CONTROLLER = {
   jurisdiction: 'Indonesia',
 } as const
 
-export const LAST_UPDATED = '2026-09-24'
+export const LAST_UPDATED = '2026-10-03'
 
 export function isPlaceholder(): boolean {
   return Object.values(CONTROLLER).some((value) => value.startsWith('TODO'))
