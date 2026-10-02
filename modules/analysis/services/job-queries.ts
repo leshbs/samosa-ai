@@ -12,8 +12,11 @@ import {
 } from '@/types/domain'
 
 /**
- * Reads go through the request-scoped client so RLS scopes them to the
- * caller's organization; none of these take a tenant id.
+ * Reads go through the request-scoped client, so RLS keeps other tenants out.
+ * RLS is not enough on its own, though: it admits every workspace the caller
+ * belongs to, and a person can be in two (ADR-0012). So each read also takes
+ * the active workspace's id and filters on it — including the lookups by id,
+ * because the caller's role was resolved for that workspace and no other.
  */
 
 /**
@@ -59,6 +62,7 @@ export type ListJobsOptions = {
 const DEFAULT_JOB_LIMIT = 50
 
 export async function listJobs(
+  organizationId: string,
   options: ListJobsOptions = {},
 ): Promise<Result<JobListItem[], AppError>> {
   const supabase = await createClient()
@@ -66,6 +70,7 @@ export async function listJobs(
   let query = supabase
     .from('analysis_jobs')
     .select(JOB_COLUMNS)
+    .eq('organization_id', organizationId)
     .order('created_at', { ascending: false })
     .limit(options.limit ?? DEFAULT_JOB_LIMIT)
   if (options.createdBy) query = query.eq('created_by', options.createdBy)
@@ -83,6 +88,7 @@ export async function listJobs(
   const { data: datasets } = await supabase
     .from('datasets')
     .select('id, name')
+    .eq('organization_id', organizationId)
     .in('id', [...new Set(jobs.map((job) => job.datasetId))])
 
   const nameById = new Map(
@@ -97,16 +103,21 @@ export async function listJobs(
   )
 }
 
-export async function getJob(jobId: string): Promise<Result<AnalysisJob, AppError>> {
+export async function getJob(
+  organizationId: string,
+  jobId: string,
+): Promise<Result<AnalysisJob, AppError>> {
   const supabase = await createClient()
 
   const { data, error } = await supabase
     .from('analysis_jobs')
     .select(JOB_COLUMNS)
     .eq('id', jobId)
+    .eq('organization_id', organizationId)
     .maybeSingle()
 
-  // RLS turns another tenant's job into "no rows", which is what we want.
+  // Another tenant's job (RLS) and a job in the caller's other workspace (the
+  // filter) both come back as "no rows", which is what we want.
   if (error || !data)
     return err(appError(ERROR_CODES.NOT_FOUND, 'Job analisis tidak ditemukan'))
 
@@ -128,6 +139,7 @@ export type AnalysisResultRow = {
  * visible aspiration next to it is unreviewable.
  */
 export async function listJobResults(
+  organizationId: string,
   jobId: string,
 ): Promise<Result<AnalysisResultRow[], AppError>> {
   const supabase = await createClient()
@@ -136,6 +148,7 @@ export async function listJobResults(
     .from('analysis_results')
     .select('response_id, sentiment, sentiment_confidence, topics, keywords, summary')
     .eq('job_id', jobId)
+    .eq('organization_id', organizationId)
 
   if (error)
     return err(appError(ERROR_CODES.INTERNAL, 'Hasil analisis tidak bisa dimuat'))
@@ -146,6 +159,7 @@ export async function listJobResults(
   const { data: responses } = await supabase
     .from('responses')
     .select('id, text')
+    .eq('organization_id', organizationId)
     .in('id', [...new Set(results.map((row) => String(row.response_id)))])
 
   const textById = new Map(
@@ -167,6 +181,7 @@ export async function listJobResults(
 
 /** Latest job for a dataset, so the detail page can link straight to it. */
 export async function getLatestJobForDataset(
+  organizationId: string,
   datasetId: string,
 ): Promise<Result<AnalysisJob | null, AppError>> {
   const supabase = await createClient()
@@ -175,6 +190,7 @@ export async function getLatestJobForDataset(
     .from('analysis_jobs')
     .select(JOB_COLUMNS)
     .eq('dataset_id', datasetId)
+    .eq('organization_id', organizationId)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -225,12 +241,15 @@ export async function getUsageSummary(
  * How many finished jobs have a report to open — the badge on the sidebar's
  * "Laporan" entry. A HEAD count, so it costs one indexed scan and no rows.
  */
-export async function countReports(): Promise<Result<number, AppError>> {
+export async function countReports(
+  organizationId: string,
+): Promise<Result<number, AppError>> {
   const supabase = await createClient()
 
   const { count, error } = await supabase
     .from('analysis_jobs')
     .select('id', { count: 'exact', head: true })
+    .eq('organization_id', organizationId)
     .in('status', [...REPORTABLE_STATUSES])
 
   if (error || count === null)
@@ -259,6 +278,7 @@ export const MAX_COUNTED_JOBS = 6
  * number of result rows it stored, so callers need only the numerator.
  */
 export async function countResultsBySentiment(
+  organizationId: string,
   jobIds: readonly string[],
   sentiment: Sentiment,
 ): Promise<Result<Record<string, number>, AppError>> {
@@ -273,6 +293,7 @@ export async function countResultsBySentiment(
         .from('analysis_results')
         .select('id', { count: 'exact', head: true })
         .eq('job_id', jobId)
+        .eq('organization_id', organizationId)
         .eq('sentiment', sentiment)
 
       return error || count === null ? null : ([jobId, count] as const)

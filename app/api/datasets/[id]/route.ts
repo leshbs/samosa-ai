@@ -19,7 +19,8 @@ export async function DELETE(
     return failure(appError(ERROR_CODES.VALIDATION, 'ID dataset tidak valid'))
   }
 
-  // RLS re-checks ownership, so a valid id from another tenant still 404s.
-  const result = await deleteDataset(id)
+  // Scoped to the workspace the role above was checked for; RLS re-checks
+  // ownership, so a valid id from another tenant still 404s.
+  const result = await deleteDataset(session.value.organizationId, id)
   return result.ok ? success({ id }) : failure(result.error)
 }

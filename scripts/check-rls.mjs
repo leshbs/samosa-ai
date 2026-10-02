@@ -158,14 +158,25 @@ async function seedTenant(label) {
 }
 
 async function cleanup(tenants) {
+  for (const orgId of extraOrgIds) {
+    await admin.from('organizations').delete().eq('id', orgId)
+  }
   for (const tenant of tenants) {
     if (!tenant) continue
     await admin.from('organizations').delete().eq('id', tenant.orgId)
     await admin.auth.admin.deleteUser(tenant.userId)
   }
+  // Last: an account cannot go while an organization still points at it, and
+  // deleting its owner only empties owner_id.
+  for (const accountId of accountIds) {
+    await admin.from('accounts').delete().eq('id', accountId)
+  }
 }
 
 const tenants = []
+/** Organizations and accounts made outside seedTenant, for cleanup. */
+const extraOrgIds = []
+const accountIds = []
 
 try {
   tenants.push(await seedTenant('a'), await seedTenant('b'))
@@ -363,6 +374,137 @@ try {
 
     await admin.storage.from('branding').remove([probeLogo])
   }
+
+  // ── Accounts (20261001000100) ────────────────────────────────────────
+  const accountsProbe = await asA.from('accounts').select('id').limit(1)
+  if (accountsProbe.error?.message?.includes('Could not find the table')) {
+    skip(
+      'accounts are private to their workspace and read-only',
+      'table does not exist yet — apply 20261001000100_accounts.sql',
+    )
+  } else {
+    const accountOf = {}
+    for (const tenant of [a, b]) {
+      const { data: account, error } = await admin
+        .from('accounts')
+        .insert({ owner_id: tenant.userId })
+        .select('id')
+        .single()
+      if (error) throw new Error(`accounts(${tenant.label}): ${error.message}`)
+      accountIds.push(account.id)
+      accountOf[tenant.label] = account.id
+      await admin
+        .from('organizations')
+        .update({ account_id: account.id })
+        .eq('id', tenant.orgId)
+    }
+
+    const ownAccount = await asA.from('accounts').select('id, plan')
+    check(
+      'user A reads their own account, and only that',
+      ownAccount.data?.length === 1 && ownAccount.data[0].id === accountOf.a,
+      ownAccount.error
+        ? `error: ${ownAccount.error.message}`
+        : `${(ownAccount.data ?? []).length} row(s) visible`,
+    )
+
+    const upgrade = await asA
+      .from('accounts')
+      .update({ plan: 'enterprise' })
+      .eq('id', accountOf.a)
+      .select('id')
+    check('user A cannot change their own plan', Boolean(upgrade.error))
+
+    const lifted = await asA
+      .from('accounts')
+      .update({ limits: { maxWorkspaces: 99 } })
+      .eq('id', accountOf.a)
+      .select('id')
+    check('user A cannot lift their own limits', Boolean(lifted.error))
+
+    const minted = await asA.from('accounts').insert({ plan: 'org' }).select('id')
+    check('nobody creates an account from the browser', Boolean(minted.error))
+
+    const moved = await asA
+      .from('organizations')
+      .update({ account_id: accountOf.b })
+      .eq('id', a.orgId)
+      .select('id')
+    check('a workspace cannot be moved onto another account', Boolean(moved.error))
+
+    const { data: after } = await admin
+      .from('accounts')
+      .select('plan, limits')
+      .eq('id', accountOf.a)
+      .single()
+    check(
+      'the account is unchanged after all of that',
+      after?.plan === 'free' && Object.keys(after?.limits ?? {}).length === 0,
+      JSON.stringify(after),
+    )
+  }
+
+  // ── Two workspaces, one person (ADR-0012) ────────────────────────────
+  // RLS admits every workspace a person is in, so it cannot keep two of them
+  // apart on one page; only the filter on the active workspace does. The first
+  // check documents that, the rest prove the filter is enough.
+  const { data: second, error: secondError } = await admin
+    .from('organizations')
+    .insert({ name: `RLS Probe a2 ${stamp}`, slug: `rls-probe-a2-${stamp}` })
+    .select('id')
+    .single()
+  if (secondError) throw new Error(`organizations(a2): ${secondError.message}`)
+  extraOrgIds.push(second.id)
+
+  const { error: secondMemberError } = await admin
+    .from('organization_members')
+    .insert({ user_id: a.userId, organization_id: second.id, role: 'member' })
+  if (secondMemberError) throw new Error(`members(a2): ${secondMemberError.message}`)
+
+  const { error: secondDatasetError } = await admin.from('datasets').insert({
+    organization_id: second.id,
+    uploader_id: a.userId,
+    name: 'probe-a2',
+    source: 'csv',
+  })
+  if (secondDatasetError) throw new Error(`datasets(a2): ${secondDatasetError.message}`)
+
+  const both = await asA.from('datasets').select('organization_id')
+  const visibleOrgs = new Set((both.data ?? []).map((row) => row.organization_id))
+  check(
+    'RLS alone shows a person both of their workspaces',
+    visibleOrgs.size === 2 && visibleOrgs.has(a.orgId) && visibleOrgs.has(second.id),
+    `${visibleOrgs.size} workspace(s) visible`,
+  )
+
+  const narrowed = await asA
+    .from('datasets')
+    .select('organization_id')
+    .eq('organization_id', second.id)
+  check(
+    'the workspace filter narrows a listing to one',
+    (narrowed.data ?? []).length === 1 &&
+      narrowed.data.every((row) => row.organization_id === second.id),
+    `${(narrowed.data ?? []).length} row(s) visible`,
+  )
+
+  const crossed = await asA
+    .from('datasets')
+    .select('id')
+    .eq('organization_id', second.id)
+    .eq('id', a.datasetId)
+  check(
+    'a dataset of one workspace is not found under the other',
+    (crossed.data ?? []).length === 0,
+    `${(crossed.data ?? []).length} row(s) returned`,
+  )
+
+  const stillClosed = await asA.from('datasets').select('id').eq('id', b.datasetId)
+  check(
+    'a second workspace does not open org B',
+    (stillClosed.data ?? []).length === 0,
+    `${(stillClosed.data ?? []).length} row(s) returned`,
+  )
 
   // ── And an anonymous caller must see nothing at all ──────────────────
   const anonymous = createClient(URL, ANON, {

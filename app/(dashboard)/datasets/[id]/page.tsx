@@ -1,7 +1,7 @@
 import { ShieldCheck } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { AnalyzeButton } from '@/components/analysis/analyze-button'
 import { DeleteDatasetButton } from '@/components/datasets/delete-dataset-button'
 import { InlineError } from '@/components/layout/inline-error'
@@ -41,19 +41,22 @@ export default async function DatasetDetailPage({
   const { id } = await params
   const { page } = await searchParams
 
-  const dataset = await getDataset(id)
+  const session = await getSessionUser()
+  if (!session.ok) redirect('/login')
+  const { organizationId } = session.value
+
+  const dataset = await getDataset(organizationId, id)
   if (!dataset.ok) notFound()
 
   const currentPage = Number.parseInt(page ?? '1', 10)
-  const [responses, session, latestJob] = await Promise.all([
-    listResponses(id, Number.isNaN(currentPage) ? 1 : currentPage),
-    getSessionUser(),
-    getLatestJobForDataset(id),
+  const [responses, latestJob] = await Promise.all([
+    listResponses(organizationId, id, Number.isNaN(currentPage) ? 1 : currentPage),
+    getLatestJobForDataset(organizationId, id),
   ])
 
-  const canDelete = session.ok && can(session.value.role, 'dataset:delete')
-  const timezone = session.ok ? session.value.organizationTimezone : undefined
-  const canAnalyze = session.ok && can(session.value.role, 'analysis:run')
+  const canDelete = can(session.value.role, 'dataset:delete')
+  const timezone = session.value.organizationTimezone
+  const canAnalyze = can(session.value.role, 'analysis:run')
 
   // Pricing tables stay on the server; the button receives a formatted string.
   const estimatedCost = formatIdr(

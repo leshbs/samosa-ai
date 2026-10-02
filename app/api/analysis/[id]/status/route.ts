@@ -12,11 +12,13 @@ export async function GET(_request: Request, context: RouteContext) {
   const { id } = await context.params
   const supabase = await createClient()
 
-  // RLS scopes this to the caller's organization; no extra filter needed.
+  // RLS keeps other tenants out; the filter keeps this to the active
+  // workspace, like every other read of a job (ADR-0012).
   const { data, error } = await supabase
     .from('analysis_jobs')
     .select('id, status, processed_count, total_count, error_message, finished_at')
     .eq('id', id)
+    .eq('organization_id', session.value.organizationId)
     .maybeSingle()
 
   if (error)

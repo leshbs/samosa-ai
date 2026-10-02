@@ -16,12 +16,25 @@ export type JobStatus =
 export type DatasetSource = 'csv' | 'xlsx' | 'google_forms' | 'manual'
 export type OrgRole = 'owner' | 'admin' | 'member' | 'viewer'
 
+export type AccountPlan = 'free' | 'org' | 'enterprise'
+
 export type OrgTimeZone = 'Asia/Jakarta' | 'Asia/Makassar' | 'Asia/Jayapura'
+
+type AccountsRow = {
+  id: string
+  owner_id: string | null
+  plan: AccountPlan
+  limits: Json
+  billing_email: string | null
+  created_at: string
+  updated_at: string
+}
 
 type OrganizationsRow = {
   id: string
   name: string
   slug: string
+  account_id: string | null
   logo_path: string | null
   timezone: OrgTimeZone
   report_include_quotes: boolean
@@ -143,9 +156,14 @@ type Table<Row, Generated extends keyof Row> = {
 export type Database = {
   public: {
     Tables: {
+      accounts: Table<
+        AccountsRow,
+        'id' | 'plan' | 'limits' | 'billing_email' | 'created_at' | 'updated_at'
+      >
       organizations: Table<
         OrganizationsRow,
         | 'id'
+        | 'account_id'
         | 'logo_path'
         | 'timezone'
         | 'report_include_quotes'
@@ -228,6 +246,7 @@ export type Database = {
       job_status: JobStatus
       dataset_source: DatasetSource
       org_role: OrgRole
+      account_plan: AccountPlan
     }
     CompositeTypes: Record<never, never>
   }

@@ -9,6 +9,47 @@ import { slugify, withSuffix } from './slug'
 const UNIQUE_VIOLATION = '23505'
 const SLUG_ATTEMPTS = 5
 
+/**
+ * The billing account this person owns, created on first need (ADR-0012). One
+ * per person: deleting a workspace and making another must land on the same
+ * account, or a plan would be lost by starting over.
+ *
+ * Returns null instead of failing. The accounts migration is pasted in by
+ * hand, and refusing every sign-up until someone has done so would be the
+ * wrong trade for a row that nothing reads yet — an organization without an
+ * account resolves to the free plan.
+ */
+async function ensureAccount(
+  supabase: ReturnType<typeof createAdminClient>,
+  userId: string,
+): Promise<string | null> {
+  const lookup = () =>
+    supabase.from('accounts').select('id').eq('owner_id', userId).maybeSingle()
+
+  const existing = await lookup()
+  if (existing.data) return String(existing.data.id)
+  if (existing.error) {
+    logger.warn('auth.account.unavailable', { code: existing.error.code })
+    return null
+  }
+
+  const created = await supabase
+    .from('accounts')
+    .insert({ owner_id: userId })
+    .select('id')
+    .single()
+  if (created.data) return String(created.data.id)
+
+  // Two first sign-ins racing: the other one won the unique index.
+  if (created.error?.code === UNIQUE_VIOLATION) {
+    const raced = await lookup()
+    if (raced.data) return String(raced.data.id)
+  }
+
+  logger.warn('auth.account.create_failed', { code: created.error?.code })
+  return null
+}
+
 export type ProvisionInput = {
   userId: string
   organizationName: string
@@ -39,13 +80,18 @@ export async function provisionOrganization(
   }
 
   const base = slugify(input.organizationName)
+  const accountId = await ensureAccount(supabase, input.userId)
 
   for (let attempt = 0; attempt < SLUG_ATTEMPTS; attempt += 1) {
     const slug = attempt === 0 ? base : withSuffix(base, crypto.randomUUID().slice(0, 6))
 
     const { data, error } = await supabase
       .from('organizations')
-      .insert({ name: input.organizationName, slug })
+      .insert({
+        name: input.organizationName,
+        slug,
+        ...(accountId ? { account_id: accountId } : {}),
+      })
       .select('id')
       .single()
 

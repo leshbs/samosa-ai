@@ -1,4 +1,5 @@
 import { Upload } from 'lucide-react'
+import { redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { DeleteDatasetButton } from '@/components/datasets/delete-dataset-button'
@@ -23,7 +24,9 @@ import { listDatasets } from '@/modules/ingestion'
 export const metadata: Metadata = { title: 'Dataset' }
 
 export default async function DatasetsPage() {
-  const [session, datasets] = await Promise.all([getSessionUser(), listDatasets()])
+  const session = await getSessionUser()
+  if (!session.ok) redirect('/login')
+  const datasets = await listDatasets(session.value.organizationId)
 
   if (!datasets.ok) {
     return (
@@ -33,10 +36,10 @@ export default async function DatasetsPage() {
     )
   }
 
-  const canDelete = session.ok && can(session.value.role, 'dataset:delete')
-  const timezone = session.ok ? session.value.organizationTimezone : undefined
+  const canDelete = can(session.value.role, 'dataset:delete')
+  const timezone = session.value.organizationTimezone
   // §5: an action this role cannot take is absent, not disabled.
-  const canUpload = session.ok && can(session.value.role, 'dataset:create')
+  const canUpload = can(session.value.role, 'dataset:create')
 
   return (
     <section className="mx-auto max-w-wide space-y-6">
