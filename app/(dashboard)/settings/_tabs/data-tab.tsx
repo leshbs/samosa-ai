@@ -22,8 +22,8 @@ export async function DataTab({ session }: { session: SessionUser }) {
 
   const [datasets, reports, members] = canDelete
     ? await Promise.all([
-        countDatasets(),
-        countReports(),
+        countDatasets(session.organizationId),
+        countReports(session.organizationId),
         listMembers(session.organizationId),
       ])
     : [null, null, null]

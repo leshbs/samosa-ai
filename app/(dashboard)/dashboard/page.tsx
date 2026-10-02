@@ -1,4 +1,5 @@
 import { FileBarChart2 } from 'lucide-react'
+import { redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import { type MockupReport } from '@/components/dashboard/banner-mockup'
 import { Greeting } from '@/components/dashboard/greeting'
@@ -86,7 +87,10 @@ function sublineFor(summary: HomeSummary | null): string {
 }
 
 export default async function DashboardHomePage() {
-  const [session, jobs] = await Promise.all([getSessionUser(), listJobs()])
+  const session = await getSessionUser()
+  if (!session.ok) redirect('/login')
+  const { organizationId } = session.value
+  const jobs = await listJobs(organizationId)
 
   const items = jobs.ok ? jobs.value : []
   const reports = items
@@ -98,13 +102,12 @@ export default async function DashboardHomePage() {
   // negative count the latest report's split needs, and its stored summary.
   const [positive, negative, stored] = await Promise.all([
     countResultsBySentiment(
+      organizationId,
       reports.map((job) => job.id),
       'positive',
     ),
-    countResultsBySentiment(latest ? [latest.id] : [], 'negative'),
-    latest && session.ok
-      ? getStoredSummary(session.value.organizationId, latest.id)
-      : Promise.resolve(null),
+    countResultsBySentiment(organizationId, latest ? [latest.id] : [], 'negative'),
+    latest ? getStoredSummary(organizationId, latest.id) : Promise.resolve(null),
   ])
 
   const summary = jobs.ok
@@ -117,7 +120,7 @@ export default async function DashboardHomePage() {
       })
     : null
 
-  const canCreate = session.ok && can(session.value.role, 'dataset:create')
+  const canCreate = can(session.value.role, 'dataset:create')
   const firstName = session.ok
     ? (session.value.displayName.trim().split(/\s+/)[0] ?? '') || null
     : null

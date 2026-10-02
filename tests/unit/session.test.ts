@@ -7,17 +7,27 @@ vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({ auth: { getUser }, from }),
 }))
 
+/** The active-workspace cookie; null is a browser that has never chosen. */
+let activeWorkspace: string | null = null
+
+vi.mock('next/headers', () => ({
+  cookies: async () => ({
+    get: () => (activeWorkspace ? { value: activeWorkspace } : undefined),
+  }),
+}))
+
 const { getAuthUser, getSessionUser, requireSessionUser } =
   await import('@/modules/auth/services/session')
 
-/** Stands in for the chained `.select().eq().limit().single()` builder. */
+/**
+ * Stands in for `.select().eq()`, which resolves to every membership the user
+ * has. One row may be passed bare; null is a query that returned nothing.
+ */
 function membershipQuery(result: { data: unknown; error: unknown }) {
+  const rows =
+    result.data === null || Array.isArray(result.data) ? result.data : [result.data]
   return {
-    select: () => ({
-      eq: () => ({
-        limit: () => ({ single: async () => result }),
-      }),
-    }),
+    select: () => ({ eq: async () => ({ data: rows, error: result.error }) }),
   }
 }
 
@@ -38,6 +48,7 @@ const SIGNED_IN = {
 beforeEach(() => {
   getUser.mockReset()
   from.mockReset()
+  activeWorkspace = null
 })
 
 describe('getAuthUser', () => {
@@ -237,6 +248,77 @@ describe('getSessionUser', () => {
     expect(result.ok).toBe(false)
     // Signed in but not in any organization is a different fix than signing in.
     if (!result.ok) expect(result.error.code).toBe('FORBIDDEN')
+  })
+
+  it('fails as FORBIDDEN when the membership list is simply empty', async () => {
+    getUser.mockResolvedValue(SIGNED_IN)
+    from.mockReturnValue(membershipQuery({ data: [], error: null }))
+
+    const result = await getSessionUser()
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error.code).toBe('FORBIDDEN')
+  })
+
+  describe('with two workspaces', () => {
+    const TWO = [
+      { organization_id: 'org-joined', role: 'viewer', created_at: '2026-01-01' },
+      { organization_id: 'org-owned', role: 'owner', created_at: '2026-06-01' },
+    ]
+
+    /** Records which organization the session went on to read. */
+    function twoWorkspaces() {
+      const read: string[] = []
+      from.mockImplementation((table: string) => {
+        if (table === 'organization_members') {
+          return membershipQuery({ data: TWO, error: null })
+        }
+        if (table === 'profiles') return organizationQuery({ data: null, error: null })
+        return {
+          select: () => ({
+            eq: (_column: string, id: string) => {
+              read.push(id)
+              return { single: async () => ({ data: { name: id }, error: null }) }
+            },
+          }),
+        }
+      })
+      return read
+    }
+
+    it('opens the owned workspace when the browser has not chosen', async () => {
+      getUser.mockResolvedValue(SIGNED_IN)
+      const read = twoWorkspaces()
+
+      const result = await getSessionUser()
+
+      expect(result.ok && result.value.organizationId).toBe('org-owned')
+      expect(result.ok && result.value.role).toBe('owner')
+      expect(read).toEqual(['org-owned'])
+    })
+
+    it('opens the chosen workspace, with the role held there', async () => {
+      getUser.mockResolvedValue(SIGNED_IN)
+      const read = twoWorkspaces()
+      activeWorkspace = 'org-joined'
+
+      const result = await getSessionUser()
+
+      expect(result.ok && result.value.organizationId).toBe('org-joined')
+      // The role must follow the workspace: owner of one is not owner of both.
+      expect(result.ok && result.value.role).toBe('viewer')
+      expect(read).toEqual(['org-joined'])
+    })
+
+    it('ignores a cookie naming a workspace the user is not in', async () => {
+      getUser.mockResolvedValue(SIGNED_IN)
+      twoWorkspaces()
+      activeWorkspace = 'org-of-someone-else'
+
+      const result = await getSessionUser()
+
+      expect(result.ok && result.value.organizationId).toBe('org-owned')
+    })
   })
 
   it('falls back to a placeholder when the organization name cannot be read', async () => {

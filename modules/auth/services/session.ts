@@ -10,6 +10,7 @@ import {
   type OrgRole,
   type OrgTimeZone,
 } from '@/types/domain'
+import { pickMembership, readActiveWorkspaceId } from './active-workspace'
 
 export type AuthUser = {
   userId: string
@@ -25,6 +26,11 @@ export type SessionUser = {
   title: string
   /** Storage path, not a URL; signed on demand by the branding service. */
   avatarPath: string | null
+  /**
+   * The *active* workspace — the one this request is about — not "the"
+   * organization of the account: a person can belong to more than one
+   * (ADR-0012). `role` below is their role in this workspace only.
+   */
   organizationId: string
   organizationName: string
   /** Every date the app prints for this organization is in this zone. */
@@ -62,8 +68,10 @@ function text(value: unknown): string {
 }
 
 /**
- * Resolves the signed-in user together with their organization. Every server
- * entry point starts here — organizationId is what all RLS policies scope to.
+ * Resolves the signed-in user together with their active workspace. Every
+ * server entry point starts here, and passes `organizationId` on to every
+ * query: RLS admits all of a person's workspaces, so only that explicit filter
+ * keeps one of them out of the other's pages.
  *
  * The organization is read with `*` and the profile is optional on purpose.
  * The dashboard layout calls this on every page, so a query naming a column
@@ -78,18 +86,30 @@ async function loadSessionUser(): Promise<Result<SessionUser, AppError>> {
     return err(appError(ERROR_CODES.UNAUTHORIZED, 'Kamu belum masuk'))
   }
 
-  const { data: membership, error: membershipError } = await supabase
-    .from('organization_members')
-    .select('organization_id, role')
-    .eq('user_id', auth.user.id)
-    .limit(1)
-    .single()
+  // Every membership, not `.limit(1)`: a person may be in two workspaces, and
+  // which one this request is about is a choice, not whichever row came first.
+  const [{ data: rows, error: membershipError }, preferredId] = await Promise.all([
+    supabase
+      .from('organization_members')
+      .select('organization_id, role, created_at')
+      .eq('user_id', auth.user.id),
+    readActiveWorkspaceId(),
+  ])
+
+  const membership = pickMembership(
+    (rows ?? []).map((row) => ({
+      organizationId: String(row.organization_id),
+      role: row.role as OrgRole,
+      joinedAt: String(row.created_at),
+    })),
+    preferredId,
+  )
 
   if (membershipError || !membership) {
     return err(appError(ERROR_CODES.FORBIDDEN, 'Akunmu belum punya organisasi'))
   }
 
-  const organizationId = String(membership.organization_id)
+  const { organizationId } = membership
 
   // Separate round-trips rather than a nested select: types/database.ts is
   // hand-written and declares no relationships for the client to infer.
@@ -114,7 +134,7 @@ async function loadSessionUser(): Promise<Result<SessionUser, AppError>> {
     organizationId,
     organizationName: organization?.name ?? 'Organisasi',
     organizationTimezone: isOrgTimeZone(timezone) ? timezone : DEFAULT_TIME_ZONE,
-    role: membership.role as OrgRole,
+    role: membership.role,
     hasPassword: hasEmailIdentity(auth.user.app_metadata?.providers),
   })
 }
