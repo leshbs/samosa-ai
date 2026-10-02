@@ -12,7 +12,15 @@ export {
   deleteDataset,
   RESPONSES_PAGE_SIZE,
 } from './services/dataset-queries'
-export type { ResponsePage } from './services/dataset-queries'
+export type { ArchivedFilter, ResponsePage } from './services/dataset-queries'
+export {
+  archiveDatasets,
+  listRetentionDatasets,
+  purgeArchivedDatasets,
+  recordRetentionNotice,
+  restoreDatasets,
+} from './services/dataset-retention'
+export type { RetentionDataset } from './services/dataset-retention'
 export { previewDataset, PREVIEW_ROW_COUNT } from './services/preview-dataset'
 export type { DatasetPreview } from './services/preview-dataset'
 export { extractResponses, validateUploadSize } from './validators/dataset-validator'

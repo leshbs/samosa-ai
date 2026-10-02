@@ -5,6 +5,8 @@ export { ACTIVE_WORKSPACE_COOKIE, setActiveWorkspace } from './services/active-w
 export { createWorkspace, provisionOrganization } from './services/provision'
 export { describeFullWorkspace, getWorkspaceCapacity } from './services/capacity'
 export type { WorkspaceCapacity } from './services/capacity'
+export { getAccountScope, getRetentionPolicies, getWorkspacePlan } from './services/plan'
+export type { AccountScope, RetentionPolicy, WorkspacePlan } from './services/plan'
 export type { ProvisionInput } from './services/provision'
 export {
   getNotificationTarget,

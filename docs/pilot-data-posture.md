@@ -41,12 +41,33 @@ siswa hilang dari sistem sepenuhnya. Itu satu tombol, bukan proyek.
 
 ## 2. Retensi
 
-| Data                        | Disimpan sampai           |
-| --------------------------- | ------------------------- |
-| File unggahan asli (CSV)    | dataset dihapus           |
-| Teks aspirasi (`responses`) | dataset dihapus           |
-| Hasil analisis + laporan    | dataset dihapus (cascade) |
-| Data akun pengurus OSIS     | akun dihapus manual       |
+| Data                        | Disimpan sampai                               |
+| --------------------------- | --------------------------------------------- |
+| File unggahan asli (CSV)    | dataset dihapus, atau masa simpan paket habis |
+| Teks aspirasi (`responses`) | dataset dihapus, atau masa simpan paket habis |
+| Hasil analisis + laporan    | mengikuti datasetnya (cascade)                |
+| Data akun pengurus OSIS     | akun dihapus manual                           |
+
+**Masa simpan per paket** (ADR-0012, `lib/plans.ts`): Gratis satu tahun sejak
+`datasets.retention_clock_at`; Organization dan Enterprise permanen. Untuk
+dataset yang sudah ada saat `20261003000100_retention.sql` ditempel, jamnya
+mulai saat itu, bukan saat diunggah.
+
+Habisnya masa simpan tidak langsung menghapus. Sweep harian
+(`/api/cron/retention`) berjalan satu langkah per hari per dataset:
+
+1. email ke pemilik 30 hari sebelum tenggat, lalu 7 hari sebelumnya;
+2. pada tenggat, dan paling cepat 7 hari setelah email kedua terkirim:
+   **diarsipkan** — `archived_at` diisi, hilang dari semua halaman, masih ikut
+   di unduhan arsip organisasi;
+3. 90 hari setelah pemilik dikabari bahwa datanya diarsipkan: **dihapus**,
+   termasuk file unggahannya.
+
+Setiap langkah hanya terjadi **setelah emailnya benar-benar terkirim**. Tanpa
+`RESEND_API_KEY` dan `EMAIL_FROM`, sweep tidak mengarsipkan dan tidak menghapus
+apa pun; peringatan hanya muncul di dalam aplikasi. Akun yang pindah ke paket
+dengan masa simpan permanen mendapatkan kembali dataset yang masih di arsip
+pada sweep berikutnya.
 
 **Untuk pilot ini:** seluruh dataset pilot dihapus paling lambat
 **2026-10-31**, setelah evaluasi selesai dan catatan temuannya ditulis. Yang

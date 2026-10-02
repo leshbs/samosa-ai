@@ -23,6 +23,7 @@ export type {
   AnalysisResultRow,
   UsageSummary,
 } from './services/job-queries'
+export { countResponsesSubmittedSince, setJobsArchived } from './services/job-archive'
 export { analyzeResponses, BATCH_SIZE, MAX_CONCURRENCY } from './services/orchestrator'
 export { planBatches, MAX_ANALYZED_LENGTH } from './services/batcher'
 export type { BatchPlan, Analyzable } from './services/batcher'

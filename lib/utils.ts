@@ -96,3 +96,15 @@ export function formatDateTime(
   }).format(date)
   return `${formatted} ${TIME_ZONE_ABBREVIATIONS[timeZone]}`
 }
+
+/**
+ * A date with no time, in the organization's zone: "2 Okt 2027". For
+ * deadlines, where the hour would only invite an argument about midnight.
+ */
+export function formatDate(
+  value: string | Date,
+  timeZone: OrgTimeZone = DEFAULT_TIME_ZONE,
+): string {
+  const date = typeof value === 'string' ? new Date(value) : value
+  return new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeZone }).format(date)
+}

@@ -962,5 +962,70 @@ check('analysis_jobs.created_by exists', rows.length === 1)
 rows = await sql(`select id from storage.buckets where id = 'branding'`)
 check('branding bucket exists', rows.length === 1)
 
+// ── retention (20261003000100) ──
+// ORG.dualSecond still has its owner and its dataset at this point.
+const RETENTION = readFileSync(join(MIGRATIONS, '20261003000100_retention.sql'), 'utf8')
+rows = await sql(
+  `select retention_clock_at, archived_at, retention_stage from public.datasets where organization_id = '${ORG.dualSecond}'`,
+)
+check(
+  'retention: a dataset starts with a clock, live, and unnotified',
+  rows.length === 1 &&
+    rows[0].retention_clock_at !== null &&
+    rows[0].archived_at === null &&
+    rows[0].retention_stage === 0,
+  JSON.stringify(rows),
+)
+await db.exec(
+  `update public.datasets set retention_clock_at = '2020-06-15' where organization_id = '${ORG.dualSecond}'`,
+)
+await db.exec(RETENTION)
+rows = await sql(
+  `select retention_clock_at from public.datasets where organization_id = '${ORG.dualSecond}'`,
+)
+check(
+  'retention: a second paste does not restart a clock',
+  new Date(rows[0].retention_clock_at).getUTCFullYear() === 2020,
+  JSON.stringify(rows),
+)
+r = await as(
+  U.dual,
+  `update public.datasets set retention_clock_at = now() where organization_id = '${ORG.dualSecond}'`,
+)
+check(
+  'retention: an owner cannot reset the clock on their own data',
+  r.affected === 0,
+  r.error ?? `${r.affected} rows`,
+)
+await db.exec(
+  `update public.datasets set archived_at = now() where organization_id = '${ORG.dualSecond}'`,
+)
+r = await as(
+  U.dual,
+  `update public.datasets set archived_at = null where organization_id = '${ORG.dualSecond}'`,
+)
+check('retention: nor un-archive it', r.affected === 0, r.error ?? `${r.affected} rows`)
+r = await as(
+  U.dual,
+  `select id from public.datasets where organization_id = '${ORG.dualSecond}'`,
+)
+check(
+  'retention: an archived dataset is still readable, for the export',
+  r.rows.length === 1,
+  r.error ?? `${r.rows.length} rows`,
+)
+try {
+  await db.exec(
+    `update public.datasets set retention_stage = 4 where organization_id = '${ORG.dualSecond}'`,
+  )
+  check('retention: the stage is one of four', false, 'accepted 4')
+} catch (error) {
+  check('retention: the stage is one of four', true, error.message)
+}
+rows = await sql(
+  `select column_name from information_schema.columns where table_name = 'analysis_jobs' and column_name = 'archived_at'`,
+)
+check('retention: reports can be archived with their dataset', rows.length === 1)
+
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`)
 process.exit(failures === 0 ? 0 : 1)

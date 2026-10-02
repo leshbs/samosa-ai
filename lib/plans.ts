@@ -15,6 +15,13 @@ import { z } from 'zod'
 export const ACCOUNT_PLANS = ['free', 'org', 'enterprise'] as const
 export type AccountPlan = (typeof ACCOUNT_PLANS)[number]
 
+/** What a plan is called in the app. */
+export const PLAN_LABELS: Record<AccountPlan, string> = {
+  free: 'Gratis',
+  org: 'Organization',
+  enterprise: 'Enterprise',
+}
+
 export function isAccountPlan(value: unknown): value is AccountPlan {
   return typeof value === 'string' && (ACCOUNT_PLANS as readonly string[]).includes(value)
 }

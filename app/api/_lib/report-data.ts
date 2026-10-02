@@ -96,9 +96,10 @@ function personLine(person: { displayName: string; title: string } | undefined) 
 export async function loadReportExport(
   jobId: string,
   context: ExportContext,
+  options: { includeArchived?: boolean } = {},
 ): Promise<Result<ReportExportBundle, AppError>> {
   const { organizationId } = context
-  const job = await getJob(organizationId, jobId)
+  const job = await getJob(organizationId, jobId, options)
   if (!job.ok) return job
 
   const results = await listJobResults(organizationId, jobId)
@@ -110,7 +111,7 @@ export async function loadReportExport(
   }
 
   const [dataset, summary, people] = await Promise.all([
-    getDataset(organizationId, job.value.datasetId),
+    getDataset(organizationId, job.value.datasetId, options),
     getStoredSummary(organizationId, jobId),
     getPeople([job.value.createdBy]),
   ])
