@@ -45,8 +45,10 @@ export async function buildOrganizationArchive(
   session: SessionUser,
 ): Promise<Result<OrganizationArchive, AppError>> {
   const [datasets, jobs, members, context] = await Promise.all([
-    listDatasets(session.organizationId),
-    listJobs(session.organizationId, { limit: ALL_JOBS }),
+    // Archived datasets and their reports are hidden from the app but still
+    // the organization's data: the archive is how they are got out.
+    listDatasets(session.organizationId, { archived: 'include' }),
+    listJobs(session.organizationId, { limit: ALL_JOBS, includeArchived: true }),
     listMembers(session.organizationId),
     loadExportContext(session),
   ])
@@ -74,7 +76,7 @@ export async function buildOrganizationArchive(
 
   for (const job of jobs.value.filter((candidate) => isReportable(candidate.status))) {
     const stem = `reports/${archiveSlug(job.datasetName, 'laporan')}-${shortId(job.id)}`
-    const bundle = await loadReportExport(job.id, context)
+    const bundle = await loadReportExport(job.id, context, { includeArchived: true })
     const pdf = bundle.ok ? await exportReportToPdf(bundle.value.document) : bundle
 
     if (!bundle.ok || !pdf.ok) {
@@ -117,6 +119,7 @@ export async function buildOrganizationArchive(
       textColumn: dataset.textColumnName,
       keptColumns: dataset.keptColumns,
       createdAt: dataset.createdAt,
+      archivedAt: dataset.archivedAt,
       file: datasetFiles.get(dataset.id) ?? null,
     })),
     analyses: jobs.value.map((job) => ({

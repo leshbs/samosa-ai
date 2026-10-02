@@ -170,8 +170,8 @@ undangan tanpa kehilangan apa pun, lalu keluar lagi dan tetap punya datanya.
 - [x] Serah terima satu-satunya ruang kerja milik akun ikut memindahkan akunnya
       (`20261002000300_transfer_moves_account.sql`). Batas ruang kerja sekarang
       dihitung per akun.
-- [ ] Tempel `20261002000300_transfer_moves_account.sql` ke SQL Editor — boleh
-      kapan saja. `scripts/check-rls.mjs` harus 46/46 tanpa SKIP.
+- [x] `20261002000300_transfer_moves_account.sql` aktif di project hosted —
+      `scripts/check-rls.mjs` 46/46 tanpa SKIP pada 2026-10-03.
 
 **Menyimpang dari rencana awal:**
 
@@ -189,10 +189,36 @@ ia sendiri menekan "Undang".
 
 ### Ronde 4 — Paket dan retensi
 
-- **Halaman privasi dan `docs/pilot-data-posture.md` diubah lebih dulu.**
-- Pengaturan menampilkan paket dan "Disimpan sampai …".
-- Peringatan di aplikasi dan lewat email; arsip → 90 hari → hapus.
-- Batas penyalahgunaan per akun.
+- [x] **Halaman privasi dan `docs/pilot-data-posture.md` diubah lebih dulu** —
+      keduanya ada di PR yang sama dengan kodenya, dan tidak ada yang diarsipkan
+      sebelum setahun dari sekarang.
+- [x] Pengaturan → Pemakaian menampilkan paket, batas anggota, dan masa simpan.
+      Halaman Dataset dan halaman tiap dataset menampilkan "Disimpan sampai …".
+- [x] Peringatan di aplikasi (banner di halaman Dataset, 30 hari sebelum
+      tenggat) dan lewat email (30 dan 7 hari); arsip → 90 hari → hapus, lewat
+      sweep harian `/api/cron/retention`. Dataset yang diarsipkan terdaftar di
+      Pengaturan → Data dan tetap ikut di unduhan arsip.
+- [x] Batas penyalahgunaan per akun: `monthlyResponseCap`, dihitung lintas
+      ruang kerja di akun yang sama, diperiksa di `POST /api/analysis`.
+- [x] `20261003000100_retention.sql` aktif di project hosted sebelum PR-nya
+      di-merge — `scripts/check-rls.mjs` 50/50 tanpa SKIP pada 2026-10-03. Jam
+      masa simpan dataset yang sudah ada mulai dihitung hari itu.
+- [x] `CRON_SECRET` di Vercel.
+- [ ] `RESEND_API_KEY` dan `EMAIL_FROM` di Vercel. Tanpa keduanya sweep
+      berjalan tapi tidak mengirim peringatan dan tidak mengarsipkan apa pun.
+
+**Menyimpang dari rencana awal:**
+
+- Jam masa simpan dicatat per dataset (`retention_clock_at`), bukan dihitung
+  dari tanggal pengumuman: dataset lama mulai dihitung saat migrasi ditempel,
+  dataset baru saat diunggah.
+- Sweep maju **satu langkah per hari per dataset, dan hanya setelah emailnya
+  terkirim.** Email pengingat terakhir yang terlambat tetap memberi tujuh hari
+  penuh, dan 90 hari dihitung sejak pemilik dikabari, bukan sejak diarsipkan.
+- "Pulih kalau upgrade" terjadi di sweep berikutnya, bukan seketika — paket
+  diubah dengan tangan di database, dan tidak ada kejadian yang bisa dikaitkan.
+- Email masa simpan dikirim ke pemilik ruang kerja dan tidak bisa dimatikan
+  dari Pengaturan → Notifikasi.
 
 **Selesai kalau:** dataset uji yang tenggatnya dimajukan melewati ketiga tahap —
 peringatan, arsip, hapus — dan pulih kalau paketnya dinaikkan sebelum tahap
@@ -231,3 +257,4 @@ satu organisasi yang diikuti; item Enterprise.
 | Undangan pertama di Free: peringatan atau pilihan pisah?  | Peringatan saja |
 | Berapa organisasi yang bisa diikuti di awal?              | Satu            |
 | Logo di PDF: gratis atau paket Organization?              | Tetap gratis    |
+| Serah terima ke orang yang sudah punya akun: paket siapa? | Paket penerima  |
