@@ -59,6 +59,10 @@ type DatasetsRow = {
   storage_path: string | null
   response_count: number
   metadata: Json
+  retention_clock_at: string
+  archived_at: string | null
+  retention_stage: number
+  retention_notified_at: string | null
   created_at: string
 }
 
@@ -88,6 +92,7 @@ type AnalysisJobsRow = {
   started_at: string | null
   finished_at: string | null
   created_by: string | null
+  archived_at: string | null
   created_at: string
 }
 
@@ -173,12 +178,21 @@ export type Database = {
       organization_members: Table<OrganizationMembersRow, 'role' | 'created_at'>
       datasets: Table<
         DatasetsRow,
-        'id' | 'storage_path' | 'response_count' | 'metadata' | 'created_at'
+        | 'id'
+        | 'storage_path'
+        | 'response_count'
+        | 'metadata'
+        | 'retention_clock_at'
+        | 'archived_at'
+        | 'retention_stage'
+        | 'retention_notified_at'
+        | 'created_at'
       >
       responses: Table<ResponsesRow, 'id' | 'respondent_meta' | 'created_at'>
       analysis_jobs: Table<
         AnalysisJobsRow,
         | 'id'
+        | 'archived_at'
         | 'status'
         | 'model_id'
         | 'processed_count'

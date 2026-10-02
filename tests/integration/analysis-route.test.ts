@@ -8,6 +8,7 @@ const getSessionUser = vi.fn()
 const createJob = vi.fn()
 const runJob = vi.fn()
 const generateReportSummary = vi.fn()
+const checkMonthlyCap = vi.fn()
 
 /** Captures the callback instead of running it, so the test controls timing. */
 const afterCallbacks: Array<() => Promise<void>> = []
@@ -31,6 +32,7 @@ vi.mock('@/modules/auth', async () => {
 
 vi.mock('@/modules/analysis', () => ({ createJob, runJob }))
 vi.mock('@/modules/reporting', () => ({ generateReportSummary }))
+vi.mock('@/app/api/_lib/abuse-cap', () => ({ checkMonthlyCap }))
 
 const { POST } = await import('@/app/api/analysis/route')
 
@@ -61,6 +63,7 @@ beforeEach(() => {
   runJob.mockReset()
   generateReportSummary.mockReset()
   generateReportSummary.mockResolvedValue({ ok: true, value: { insights: [] } })
+  checkMonthlyCap.mockReset().mockResolvedValue({ ok: true, value: undefined })
   afterCallbacks.length = 0
 })
 
@@ -230,6 +233,21 @@ describe('POST /api/analysis', () => {
     const response = await POST(request({ datasetId: DATASET_ID }) as never)
 
     expect(response.status).toBe(422)
+    expect(afterCallbacks).toHaveLength(0)
+  })
+
+  it('creates no job for an account over its monthly ceiling', async () => {
+    getSessionUser.mockResolvedValue(SESSION)
+    checkMonthlyCap.mockResolvedValue({
+      ok: false,
+      error: { code: 'RATE_LIMITED', message: 'Hubungi kami' },
+    })
+
+    const response = await POST(request({ datasetId: DATASET_ID }) as never)
+
+    expect(response.status).toBe(429)
+    expect(checkMonthlyCap).toHaveBeenCalledWith('org-1', DATASET_ID)
+    expect(createJob).not.toHaveBeenCalled()
     expect(afterCallbacks).toHaveLength(0)
   })
 })

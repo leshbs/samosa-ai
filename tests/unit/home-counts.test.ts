@@ -35,6 +35,10 @@ function countBuilder(resolve: (filters: Record<string, unknown>) => CountResult
       filters[column] = values
       return builder
     },
+    is: (column: string, value: unknown) => {
+      filters[column] = value
+      return builder
+    },
     then: (onFulfilled: (value: CountResult) => unknown) =>
       Promise.resolve(resolve(filters)).then(onFulfilled),
   }
