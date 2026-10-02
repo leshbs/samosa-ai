@@ -32,13 +32,15 @@ export async function POST(request: Request) {
   const created = await createInvitation(session.value, parsed.data)
   if (!created.ok) return failure(created.error)
 
-  const { invitation, token } = created.value
+  const { invitation, token, organizationName } = created.value
   const email = await sendInvitationEmail({
     to: invitation.email,
     token,
     role: invitation.role,
     expiresAt: invitation.expiresAt,
-    inviter: session.value,
+    // The first invitation may have just named the organization; the email
+    // must carry that name, not the placeholder the session was loaded with.
+    inviter: { ...session.value, organizationName },
   })
   log.info('api.invitation.created', { email })
 

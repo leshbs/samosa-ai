@@ -82,8 +82,8 @@ export const updateOrganizationSchema = z
     name: z
       .string()
       .trim()
-      .min(1, 'Nama organisasi wajib diisi')
-      .max(120, 'Nama organisasi maksimal 120 karakter')
+      .min(1, 'Nama wajib diisi')
+      .max(120, 'Nama maksimal 120 karakter')
       .optional(),
     timezone: orgTimeZoneSchema.optional(),
     reportIncludeQuotes: z.boolean().optional(),
@@ -97,7 +97,7 @@ export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>
  * Typed confirmation for the two actions that cannot be undone from inside the
  * app. Checked again on the server: a disabled button is not a control.
  */
-const confirmationSchema = z.string().trim().min(1, 'Ketik nama organisasi')
+const confirmationSchema = z.string().trim().min(1, 'Ketik namanya untuk konfirmasi')
 
 export const transferOwnershipSchema = z.object({
   newOwnerId: z.string().uuid('Anggota tidak valid'),
@@ -115,6 +115,13 @@ export const createInvitationSchema = z.object({
     .email('Masukkan email yang valid')
     .max(320, 'Email terlalu panjang'),
   role: invitableRoleSchema,
+  /** Sent with the first invitation, which is when a workspace gets a name. */
+  organizationName: z
+    .string()
+    .trim()
+    .min(2, 'Nama minimal 2 karakter')
+    .max(120, 'Nama maksimal 120 karakter')
+    .optional(),
 })
 export type CreateInvitationInput = z.infer<typeof createInvitationSchema>
 

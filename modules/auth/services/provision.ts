@@ -141,10 +141,9 @@ export async function provisionOrganization(
  * A workspace somebody asked for: the welcome page of a person who has none,
  * or a member of someone else's organization starting their own.
  *
- * How many a person may own is the plan's `maxWorkspaces`. Ownership is
- * counted from memberships rather than from the account's organizations: until
- * handing a workspace over also moves its account (round 3), a former owner's
- * account still lists a workspace that is no longer theirs.
+ * How many a person may own is the plan's `maxWorkspaces`, counted per
+ * account: handing a workspace over takes it off the account (see
+ * transfer_organization_ownership), so the count is what they still pay for.
  */
 export async function createWorkspace(
   name: string,
@@ -161,10 +160,9 @@ export async function createWorkspace(
   if (!account.ok) return account
 
   const owned = await supabase
-    .from('organization_members')
-    .select('organization_id', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .eq('role', 'owner')
+    .from('organizations')
+    .select('id', { count: 'exact', head: true })
+    .eq('account_id', account.value.id)
   if (owned.error) {
     return err(
       appError(ERROR_CODES.INTERNAL, 'Ruang kerja tidak bisa dibuat. Coba lagi.'),

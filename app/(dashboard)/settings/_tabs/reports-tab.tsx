@@ -58,8 +58,9 @@ export async function ReportsTab({ session }: { session: SessionUser }) {
       <CardHeader>
         <CardTitle className="text-base">Isi laporan PDF</CardTitle>
         <CardDescription>
-          Berlaku untuk setiap unduhan PDF berikutnya, oleh siapa pun di organisasi ini.
-          Grafik, ringkasan, dan tabel sentimen selalu ada.
+          Berlaku untuk setiap unduhan PDF berikutnya
+          {session.solo ? '' : ', oleh siapa pun di organisasi ini'}. Grafik, ringkasan,
+          dan tabel sentimen selalu ada.
         </CardDescription>
       </CardHeader>
       <CardContent>

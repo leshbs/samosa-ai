@@ -1,6 +1,6 @@
 # 0012. Akun, ruang kerja, dan keanggotaan yang menambah — bukan memindahkan
 
-- **Status:** Accepted — ronde 1–2 diimplementasikan (butir 1–6); sisanya
+- **Status:** Accepted — ronde 1–3 diimplementasikan (butir 1–7); sisanya
   dikerjakan bertahap menurut [`docs/workspace-plan.md`](../workspace-plan.md)
 - **Date:** 2026-10-01
 - **Menggantikan sebagian:** ADR-0009 butir 2 (organisasi dibuat di setiap pintu
@@ -124,6 +124,20 @@ Isi paket, urutan pengerjaan, dan risikonya ada di
   bukan fungsi baru.
 - **Nama yang sudah keluar** tetap terbaca lewat `profiles_select`: profil
   terbaca oleh anggota ruang kerja tempat orang itu pernah menjalankan analisis.
+
+## Catatan implementasi (ronde 3, 2026-10-02)
+
+- **"Solo" diturunkan, tidak disimpan:** satu anggota dan tidak ada undangan
+  yang belum dipakai atau dibatalkan. Hitungan yang gagal dibaca berarti "bukan
+  solo" — menampilkan lebih banyak dari yang perlu, bukan menyembunyikan
+  anggota dari sebuah tim.
+- **Undangan yang menunggu memakai satu tempat.** Orang keempat mendengar
+  "tidak" saat diundang, bukan seminggu kemudian saat membuka tautannya.
+- **Satu akun per orang menang atas "akun ikut pindah".** Kalau penerima serah
+  terima sudah punya akun, ruang kerjanya yang pindah ke akun itu, bukan
+  akunnya yang berpindah tangan.
+- **Logo di PDF tetap gratis** (butir 8 bertambah satu). Fiturnya sudah dipakai
+  sebelum paket ada; menguncinya berarti mengambilnya dari pengguna.
 
 ## Alternatives considered
 
