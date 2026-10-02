@@ -581,6 +581,8 @@ hitung `organizations where account_id = …`.
 
 ### Migrasi ronde 3 belum diterapkan ke project hosted
 
+**Lunas 2026-10-03.** `scripts/check-rls.mjs` 46/46 tanpa SKIP. Catatan aslinya:
+
 `20261002000300_transfer_moves_account.sql` mengganti
 `transfer_organization_ownership` supaya akun ikut pindah. Boleh ditempel kapan
 saja, sebelum atau sesudah deploy. Sampai ditempel: serah terima tetap jalan
@@ -598,10 +600,16 @@ penerima bisa memuat dua ruang kerja (batasnya hanya diperiksa saat membuat).
 Tidak ada yang terhapus atau terkunci hari ini karena belum ada fitur yang
 dibatasi paket selain jumlah anggota dan ruang kerja.
 
-**Pemicu:** pelanggan berbayar pertama, atau ronde 4 (retensi mengikuti paket —
-saat itu turun paket berarti data mulai punya tenggat). **Bayar dengan:**
-peringatan di dialog serah terima yang menyebut paket kedua pihak, dan
-keputusan produk: paket mana yang menang.
+**Diputuskan 2026-10-03:** paket penerima yang berlaku. Sejak ronde 4 itu
+berarti ruang kerja dari akun berbayar yang diserahkan ke pemilik akun Gratis
+mulai punya masa simpan, dihitung dari `retention_clock_at` tiap dataset — data
+yang sudah lebih dari setahun langsung masuk masa peringatan. Tidak ada yang
+terjadi tanpa pemberitahuan: sweep tetap mengirim dua email dan menunggu paling
+sedikit 7 hari sebelum mengarsipkan, lalu 90 hari sebelum menghapus.
+
+**Pemicu:** pelanggan berbayar pertama. **Bayar dengan:** kalimat di dialog
+serah terima yang menyebut paket kedua pihak dan apa akibatnya untuk masa
+simpan.
 
 ### "Solo" diturunkan dari dua hitungan di setiap request
 
@@ -707,3 +715,71 @@ puluhan laporan; organisasi dengan ratusan laporan akan kena batas waktu.
 
 **Pemicu:** export pertama yang gagal karena timeout. **Bayar dengan:** job
 latar belakang yang menulis zip ke storage lalu mengirim tautannya.
+
+### Migrasi retensi harus ditempel sebelum PR-nya di-merge
+
+**Lunas 2026-10-03.** Ditempel sebelum merge; `scripts/check-rls.mjs` 50/50
+tanpa SKIP. Catatan aslinya:
+
+`20261003000100_retention.sql` menambah `datasets.retention_clock_at`,
+`archived_at`, `retention_stage`, `retention_notified_at`, dan
+`analysis_jobs.archived_at`. Kebalikan dari migrasi sebelumnya: kode ronde 4
+menyebut kolom-kolom itu di setiap daftar dataset dan laporan, jadi **tanpa
+migrasinya halaman Dataset, Laporan, dan dashboard gagal dimuat.** Migrasinya
+sendiri hanya menambah kolom ber-default, jadi aman untuk kode yang sedang
+berjalan.
+
+**Pemicu:** sebelum merge. **Bayar dengan:** tempel file itu, lalu
+`node --env-file=.env.local scripts/check-rls.mjs` — satu SKIP jadi empat PASS.
+
+### Retensi tidak berjalan sampai email dan cron dikonfigurasi
+
+**Diperbarui 2026-10-03:** `CRON_SECRET` sudah diisi di Vercel, jadi sweep
+berjalan setiap hari. Yang tersisa adalah dua env var email. Catatan aslinya:
+
+Sweep `/api/cron/retention` menolak berjalan tanpa `CRON_SECRET`, dan tanpa
+`RESEND_API_KEY` + `EMAIL_FROM` ia tidak mengirim peringatan, tidak
+mengarsipkan, dan tidak menghapus (hanya memulihkan). Itu disengaja: data orang
+yang tidak pernah membuka aplikasi tidak boleh dihapus tanpa pernah dikirimi
+email. Akibatnya sampai ketiganya diisi, "Disimpan sampai …" di aplikasi adalah
+tanggal yang tidak dipaksakan siapa pun.
+
+Tidak mendesak: dataset tertua baru jatuh tempo setahun setelah migrasi
+ditempel.
+
+**Pemicu:** sama dengan "Email aplikasi mati sampai ada domain", dan paling
+lambat sebelas bulan setelah migrasi retensi ditempel. **Bayar dengan:** tiga
+env var itu di Vercel, lalu panggil `/api/cron/retention` sekali dengan
+`Authorization: Bearer $CRON_SECRET` dan baca ringkasannya (`held` harus 0).
+
+### Menurunkan paket dengan tangan tidak mengulang jam masa simpan
+
+Paket diubah di SQL Editor. Akun yang turun dari Organization ke Gratis
+langsung mewarisi masa simpan satu tahun dihitung dari `retention_clock_at`
+tiap dataset — yang bisa sudah lewat. Pemiliknya tetap mendapat dua email dan
+paling sedikit 7 hari sebelum diarsipkan, tapi bukan satu tahun.
+
+**Pemicu:** penurunan paket pertama. **Bayar dengan:** saat menurunkan, jalankan
+juga `update datasets set retention_clock_at = now(), retention_stage = 0,
+retention_notified_at = null where organization_id in (…)`; atau jadikan itu
+fungsi `set_account_plan`.
+
+### Sweep retensi membaca semua dataset setiap hari
+
+`listRetentionDatasets` memuat setiap dataset (sampai 5.000) lalu memutuskan di
+kode. Cukup untuk pilot; di atas itu sweep mencatat
+`ingestion.retention.sweep_limit_reached` dan sisanya tidak tersentuh.
+
+**Pemicu:** log itu muncul, atau jumlah dataset mendekati 5.000. **Bayar
+dengan:** saring di SQL — dataset yang jamnya lebih tua dari masa simpan
+terpendek dikurangi 30 hari, ditambah yang sudah diarsipkan.
+
+### Batas penyalahgunaan dihitung per bulan kalender UTC, tanpa penguncian
+
+`checkMonthlyCap` menjumlahkan `analysis_jobs.total_count` bulan berjalan lalu
+membandingkan. Dua analisis yang dimulai bersamaan bisa sama-sama lolos, dan
+batasnya terbuka (fail-open) kalau hitungannya gagal dibaca. Cukup untuk
+tujuannya — menahan tagihan tak terbatas, bukan menegakkan kuota.
+
+**Pemicu:** batas ini pernah benar-benar tercapai. **Bayar dengan:** penghitung
+per akun di Postgres, seperti `rate_limits`.

@@ -18,8 +18,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { formatDateTime } from '@/lib/utils'
-import { can, getSessionUser } from '@/modules/auth'
+import { retentionDeadline } from '@/lib/retention'
+import { formatDate, formatDateTime } from '@/lib/utils'
+import { can, getSessionUser, getWorkspacePlan } from '@/modules/auth'
 import {
   BATCH_SIZE,
   estimateJobCostMicroIdr,
@@ -49,10 +50,15 @@ export default async function DatasetDetailPage({
   if (!dataset.ok) notFound()
 
   const currentPage = Number.parseInt(page ?? '1', 10)
-  const [responses, latestJob] = await Promise.all([
+  const [responses, latestJob, plan] = await Promise.all([
     listResponses(organizationId, id, Number.isNaN(currentPage) ? 1 : currentPage),
     getLatestJobForDataset(organizationId, id),
+    getWorkspacePlan(organizationId),
   ])
+  const deadline = retentionDeadline(
+    dataset.value.retentionClockAt,
+    plan.limits.retentionDays,
+  )
 
   const canDelete = can(session.value.role, 'dataset:delete')
   const timezone = session.value.organizationTimezone
@@ -68,6 +74,10 @@ export default async function DatasetDetailPage({
     { label: 'Jumlah aspirasi', value: String(dataset.value.responseCount) },
     { label: 'Kolom teks', value: dataset.value.textColumnName ?? '—' },
     { label: 'Diunggah', value: formatDateTime(dataset.value.createdAt, timezone) },
+    // Absent on a plan that keeps data: there is no date to state.
+    ...(deadline
+      ? [{ label: 'Disimpan sampai', value: formatDate(deadline, timezone) }]
+      : []),
   ]
 
   const kept = dataset.value.keptColumns
