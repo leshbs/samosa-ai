@@ -12,11 +12,12 @@ export default async function DashboardLayout({
   const session = await getSessionUser()
   if (!session.ok) {
     // Two different states land here. Not signed in is the ordinary one.
-    // Signed in with no organization is the other: the member was removed, or
-    // the organization deleted. A login form tells them nothing, so they get a
-    // page that says why and lets them start over.
+    // Signed in with no workspace is the other: they left or were removed, the
+    // workspace was deleted, or they signed up through an invitation they have
+    // not accepted yet. A login form tells them nothing, so they get a page
+    // that shows what is waiting and lets them start their own.
     const identity = await getAuthUser()
-    redirect(identity.ok ? '/no-organization' : '/login')
+    redirect(identity.ok ? '/welcome' : '/login')
   }
 
   // Badge counts only. A failed count hides its badge rather than showing 0,
@@ -33,6 +34,8 @@ export default async function DashboardLayout({
         email: session.value.email,
         displayName: session.value.displayName,
         organizationName: session.value.organizationName,
+        organizationId: session.value.organizationId,
+        workspaces: session.value.workspaces,
       }}
       counts={{
         datasets: datasets.ok ? datasets.value : null,

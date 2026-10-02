@@ -124,17 +124,33 @@ satu ruang kerja.
 
 ### Ronde 2 — Bergabung dan keluar
 
-- Berhenti membuat organisasi untuk pendaftar lewat undangan dan untuk login
-  berikutnya.
-- Halaman sambutan menggantikan `/no-organization`: undangan yang menunggu dan
-  "Buat ruang kerja".
-- `accept_organization_invitation` jadi menambah: buang `membership_conflict`
-  dan penghapusan organisasi kosong.
-- Pemilih ruang kerja — hanya untuk orang yang punya dua.
-- "Keluar dari organisasi". Pemilik harus menyerahkan atau menghapus dulu.
-- Nama anggota yang sudah keluar tetap tertulis di analisis lama.
-- `organizations.account_id` jadi `NOT NULL` (ditunda dari ronde 1), setelah
-  dipastikan tidak ada baris kosong di project hosted.
+- [x] Berhenti membuat organisasi untuk pendaftar lewat undangan dan untuk login
+      berikutnya. `completeSignIn()` membedakan kedatangan pertama dari yang
+      berikutnya lewat baris `profiles`.
+- [x] Halaman sambutan `/welcome` menggantikan `/no-organization`: undangan yang
+      menunggu dan "Buat ruang kerja" (`POST /api/workspace`, dibatasi paket).
+- [x] `accept_organization_invitation` jadi menambah: `membership_conflict` dan
+      penghapusan organisasi kosong dibuang. Undangan kedua meminta konfirmasi
+      keluar dari organisasi yang sedang diikuti, dalam satu transaksi.
+- [x] Pemilih ruang kerja di menu akun — hanya untuk orang yang punya dua.
+- [x] "Keluar" di halaman Profil. Pemilik harus menyerahkan atau menghapus dulu.
+- [x] Nama anggota yang sudah keluar tetap terbaca di analisis lama.
+- [x] `organizations.account_id` jadi `NOT NULL`, di file terpisah
+      (`20261002000200_account_required.sql`) yang mengulang backfill dulu.
+- [ ] Tempel `20261002000100_join_and_leave.sql` (kapan saja), lalu — **setelah
+      deploy** — `20261002000200_account_required.sql`. `scripts/check-rls.mjs`
+      harus 44/44 tanpa SKIP.
+
+**Menyimpang dari rencana awal:**
+
+- Undangan di `/welcome` hanya ditampilkan; bergabung tetap lewat tautannya, dan
+  daftarnya hanya muncul untuk alamat yang terverifikasi (lihat `DEBT.md`).
+- "Keluar" ada di Profil, bukan di Pengaturan: Profil tentang orangnya dan
+  memuat semua ruang kerjanya; Pengaturan hanya tentang yang sedang dibuka.
+- Kartu "Ruang kerja" di Profil tidak muncul untuk orang yang sendirian di satu
+  ruang kerja miliknya — tidak ada yang bisa dipilih atau ditinggalkan.
+- Formulir daftar masih menanyakan nama organisasi. Menyembunyikannya bagian
+  dari ronde 3.
 
 **Selesai kalau:** orang yang sudah punya ruang kerja berisi data bisa menerima
 undangan tanpa kehilangan apa pun, lalu keluar lagi dan tetap punya datanya.
