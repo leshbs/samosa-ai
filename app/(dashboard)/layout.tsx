@@ -21,7 +21,11 @@ export default async function DashboardLayout({
 
   // Badge counts only. A failed count hides its badge rather than showing 0,
   // which would be a claim ("you have no datasets") the page cannot back.
-  const [datasets, reports] = await Promise.all([countDatasets(), countReports()])
+  const { organizationId } = session.value
+  const [datasets, reports] = await Promise.all([
+    countDatasets(organizationId),
+    countReports(organizationId),
+  ])
 
   return (
     <AppShell

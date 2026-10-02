@@ -236,6 +236,7 @@ samosa/
 │   │   ├── server.ts                # Server client
 │   │   └── admin.ts                 # Service role — use carefully!
 │   ├── env.ts                       # Zod-validated env vars
+│   ├── plans.ts                     # Batas tiap paket + override per akun (ADR-0012)
 │   └── utils.ts
 │
 ├── types/
@@ -307,7 +308,9 @@ User uploads CSV
 ### Data model (skema utama)
 
 ```
-organizations      — tenant root
+accounts           — unit tagihan: satu pemilik, paket, override batas (ADR-0012)
+  ↓
+organizations      — tenant root ("ruang kerja"); account_id → accounts
   ↓
 users              — anggota organisasi (via organization_members)
   ↓
@@ -327,7 +330,22 @@ organization_invitations — undangan tertunda; hanya SHA-256 token yang disimpa
 
 Satu akun hanya anggota satu organisasi (ADR-0010) — untuk sekarang. ADR-0012
 menggantinya dengan akun → ruang kerja → anggota, dikerjakan bertahap menurut
-[`workspace-plan.md`](workspace-plan.md). Pengaturan organisasi —
+[`workspace-plan.md`](workspace-plan.md). Fondasinya (ronde 1) sudah ada:
+
+- **`accounts`** memegang paket. Hanya service role yang menulisnya; batas tiap
+  paket ada di `lib/plans.ts` (`resolveLimits(plan, accounts.limits)`), dan
+  dipaksakan di service, tidak di RLS. Organisasi tanpa akun = paket gratis.
+- **Ruang kerja aktif.** `getSessionUser()` membaca semua keanggotaan dan
+  memilih satu: cookie `samosa_workspace` kalau orangnya masih anggota di sana,
+  kalau tidak yang ia miliki, lalu yang paling lama diikuti. Cookie itu hanya
+  preferensi — `POST /api/workspace/active` menolak ruang kerja yang bukan
+  miliknya.
+- **Setiap query memfilter `organization_id` ruang kerja aktif**, termasuk
+  pencarian per-id. RLS mengizinkan _semua_ ruang kerja seseorang, jadi RLS saja
+  akan mencampur dua ruang kerja di satu halaman.
+  `tests/unit/workspace-scoping.test.ts` menjaga aturan ini.
+
+Pengaturan organisasi —
 logo, zona waktu, isi default PDF — adalah kolom di `organizations`.
 Kepemilikan hanya berpindah lewat fungsi `transfer_organization_ownership`, dan
 kolom yang tidak boleh ditulis browser (`logo_path`, `avatar_path`,
@@ -469,7 +487,7 @@ Audit penuh beserta buktinya ada di **[`docs/security-audit.md`](security-audit.
 - ✅ **CSRF** — pengecekan `Origin` untuk setiap metode tulis di middleware; `/api/webhooks/*` dikecualikan karena memakai shared secret.
 - ✅ **Content Security Policy** — nonce per request, `strict-dynamic`, plus header konstan di `next.config.ts`. Nol pelanggaran di enam route, diperiksa di browser sungguhan.
 - ✅ **Auth** — email wajib diverifikasi; tautan email ditebus di server lewat `token_hash` (ADR-0009); reset password mengeluarkan sesi di perangkat lain; form lupa-password tidak membocorkan email mana yang terdaftar; setiap `?next=` lewat `safeNextPath()` (menutup open redirect `//` dan `/\`). Diverifikasi end-to-end di project hosted dengan akun sekali pakai. Pengiriman email sungguhan menunggu SMTP — lihat `DEBT.md`.
-- ✅ **Keanggotaan dan kepemilikan** — admin tidak bisa menaikkan dirinya jadi pemilik, menyentuh baris pemilik, atau menambah anggota langsung; kepemilikan hanya berpindah lewat fungsi `security definer` dalam satu transaksi. Undangan menyimpan hash token, bukan tokennya. Diverifikasi dengan `pnpm db:check` (57 cek di PGlite); `scripts/check-rls.mjs` mengulang cek lintas-tenant-nya terhadap project hosted setelah migrasi diterapkan (ADR-0010).
+- ✅ **Keanggotaan dan kepemilikan** — admin tidak bisa menaikkan dirinya jadi pemilik, menyentuh baris pemilik, atau menambah anggota langsung; kepemilikan hanya berpindah lewat fungsi `security definer` dalam satu transaksi. Undangan menyimpan hash token, bukan tokennya. Diverifikasi dengan `pnpm db:check` (74 cek di PGlite, termasuk `accounts` yang tidak bisa ditulis dari browser); `scripts/check-rls.mjs` mengulang cek lintas-tenant-nya terhadap project hosted setelah migrasi diterapkan (ADR-0010).
 - ✅ **Korelasi log** — satu `requestId` dari edge sampai ke log line, dikembalikan sebagai header `x-request-id`.
 - 🟡 **Rate limiting di endpoint upload dan analysis** — kodenya ada dan gagal-terbuka dengan benar, tapi migrasinya belum diterapkan ke project hosted. Postgres, bukan Upstash: penghitung in-process tidak berguna di serverless. Lihat `DEBT.md`.
 - ⬜ **PII handling** — belum diimplementasi. Rencana: opsi anonymize (hapus nama, email) sebelum data disimpan. Saat ini `respondent_meta` disimpan apa adanya dan **tidak** ikut dikirim ke LLM.

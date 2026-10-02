@@ -517,6 +517,41 @@ yang sketsa di atas lewatkan: query yang hanya mengandalkan RLS (misalnya
 `listJobs()`) akan mencampur data dua ruang kerja, jadi semuanya harus diaudit
 sebelum akun mana pun boleh punya dua keanggotaan.
 
+**Diperbarui 2026-10-02:** audit itu selesai (ronde 1). Sesi memilih ruang kerja
+aktif dan setiap query memfilternya; yang tersisa di ronde 2 adalah membiarkan
+orang benar-benar punya dua keanggotaan, dan pemilihnya.
+
+### Migrasi `accounts` belum diterapkan ke project hosted
+
+**Lunas 2026-10-02.** File sudah ditempel; `scripts/check-rls.mjs` 35/35 tanpa
+baris SKIP. Backfill di project hosted: 6 organisasi, 6 akun (satu tanpa
+pemilik), tidak ada organisasi tanpa akun. Catatan aslinya:
+
+`20261001000100_accounts.sql` menambah `accounts` dan `organizations.account_id`
+dan mengisi satu akun per pemilik. Sudah diverifikasi di PGlite (`pnpm
+db:check`, 74 cek), belum di project hosted — `scripts/check-rls.mjs` mencetak
+SKIP "accounts are private to their workspace and read-only".
+
+Tidak ada yang rusak tanpanya: belum ada kode yang membaca paket, dan
+`provisionOrganization` membuat organisasi tanpa akun kalau tabelnya belum ada
+(log `auth.account.unavailable`). Organisasi yang lahir di sela itu diisi oleh
+backfill saat file ditempel — karena itu menempelnya dua kali aman dan berguna.
+
+**Pemicu:** sebelum ronde 2. **Bayar dengan:** tempel file itu ke SQL Editor,
+lalu `node --env-file=.env.local scripts/check-rls.mjs` — SKIP harus jadi enam
+PASS.
+
+### `organizations.account_id` masih boleh kosong
+
+Sengaja, supaya urutan "tempel migrasi" dan "deploy kode" tidak penting. Selama
+kolom ini nullable, `resolveLimits` harus terus memperlakukan akun yang hilang
+sebagai paket gratis.
+
+**Pemicu:** ronde 2, setelah migrasi di atas aktif dan `select count(*) from
+organizations where account_id is null` mengembalikan 0. **Bayar dengan:**
+migrasi `alter column account_id set not null`, dan `ensureAccount` yang gagal
+keras alih-alih mengembalikan null.
+
 ### Email aplikasi mati sampai ada domain
 
 Undangan, pemberitahuan serah terima, dan "analisis selesai" sudah ditulis dan

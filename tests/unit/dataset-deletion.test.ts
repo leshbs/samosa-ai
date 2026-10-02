@@ -53,7 +53,7 @@ describe('deleteDataset', () => {
       deleteBuilder({ data: [{ storage_path: 'org-1/abc-aspirasi.csv' }] }),
     )
 
-    const result = await deleteDataset('dataset-1')
+    const result = await deleteDataset('org-1', 'dataset-1')
 
     expect(result.ok).toBe(true)
     expect(storageFrom).toHaveBeenCalledWith('datasets')
@@ -63,7 +63,7 @@ describe('deleteDataset', () => {
   it('touches no file when RLS refused the delete', async () => {
     requestFrom.mockReturnValue(deleteBuilder({ data: [] }))
 
-    const result = await deleteDataset('someone-elses-dataset')
+    const result = await deleteDataset('org-1', 'someone-elses-dataset')
 
     expect(result.ok).toBe(false)
     if (result.ok) return
@@ -80,7 +80,7 @@ describe('deleteDataset', () => {
     )
     remove.mockResolvedValue({ error: { message: 'bucket down' } })
 
-    const result = await deleteDataset('dataset-1')
+    const result = await deleteDataset('org-1', 'dataset-1')
 
     expect(result.ok).toBe(true)
   })
@@ -88,7 +88,7 @@ describe('deleteDataset', () => {
   it('does not call storage for a dataset that has no file', async () => {
     requestFrom.mockReturnValue(deleteBuilder({ data: [{ storage_path: null }] }))
 
-    expect((await deleteDataset('dataset-1')).ok).toBe(true)
+    expect((await deleteDataset('org-1', 'dataset-1')).ok).toBe(true)
     expect(remove).not.toHaveBeenCalled()
   })
 })

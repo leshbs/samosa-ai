@@ -42,6 +42,8 @@ export type ReportExportBundle = {
  * archive's twenty reports read the logo once, not twenty times.
  */
 export type ExportContext = {
+  /** The active workspace; every read below is filtered to it. */
+  organizationId: string
   organizationName: string
   timezone: OrgTimeZone
   preferences: ReportPreferences
@@ -60,6 +62,7 @@ export async function loadExportContext(
   ])
 
   return {
+    organizationId: session.organizationId,
     organizationName: session.organizationName,
     timezone: session.organizationTimezone,
     // Report defaults that cannot be read fall back to what the PDF always
@@ -87,16 +90,18 @@ function personLine(person: { displayName: string; title: string } | undefined) 
  * wrong place to be joining four queries twice.
  *
  * Reads go through the session client, so RLS decides what this user may
- * export — an id from another tenant comes back as "not found".
+ * export — an id from another tenant comes back as "not found", and so does
+ * one from the requester's other workspace.
  */
 export async function loadReportExport(
   jobId: string,
   context: ExportContext,
 ): Promise<Result<ReportExportBundle, AppError>> {
-  const job = await getJob(jobId)
+  const { organizationId } = context
+  const job = await getJob(organizationId, jobId)
   if (!job.ok) return job
 
-  const results = await listJobResults(jobId)
+  const results = await listJobResults(organizationId, jobId)
   if (!results.ok) return results
   if (results.value.length === 0) {
     return err(
@@ -105,8 +110,8 @@ export async function loadReportExport(
   }
 
   const [dataset, summary, people] = await Promise.all([
-    getDataset(job.value.datasetId),
-    getStoredSummary(job.value.organizationId, jobId),
+    getDataset(organizationId, job.value.datasetId),
+    getStoredSummary(organizationId, jobId),
     getPeople([job.value.createdBy]),
   ])
 
