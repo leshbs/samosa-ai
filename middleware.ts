@@ -7,7 +7,7 @@ import { isSameOrigin } from '@/lib/security/same-origin'
 
 /**
  * Everything behind the dashboard shell requires a session, and so does the
- * page for an account that has lost its organization.
+ * welcome page for an account that is in no workspace.
  */
 const PROTECTED_PREFIXES = [
   '/dashboard',
@@ -16,7 +16,7 @@ const PROTECTED_PREFIXES = [
   '/reports',
   '/settings',
   '/profile',
-  '/no-organization',
+  '/welcome',
 ]
 /** Pages for signed-out users; a signed-in visitor is sent to the dashboard. */
 const AUTH_PAGES = ['/login', '/signup', '/forgot-password', '/verify-email']
