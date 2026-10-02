@@ -10,7 +10,9 @@ import {
 } from '@/components/ui/card'
 import { countReports } from '@/modules/analysis'
 import { can, listMembers, type SessionUser } from '@/modules/auth'
-import { countDatasets } from '@/modules/ingestion'
+import { countDatasets, listDatasets } from '@/modules/ingestion'
+import { deletionDate } from '@/lib/retention'
+import { formatDate } from '@/lib/utils'
 
 /**
  * Checklist 5.7: the portability promise (docs/OVERVIEW.md, "semua data user
@@ -28,8 +30,47 @@ export async function DataTab({ session }: { session: SessionUser }) {
       ])
     : [null, null, null]
 
+  const archived = await listDatasets(session.organizationId, { archived: 'only' })
+  const timezone = session.organizationTimezone
+
   return (
     <div className="space-y-6">
+      {archived.ok && archived.value.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              Diarsipkan ({archived.value.length})
+            </CardTitle>
+            <CardDescription>
+              Masa simpannya sudah habis, jadi dataset ini dan laporannya tidak tampil
+              lagi di aplikasi. Semuanya masih ikut di unduhan di bawah, dan pulih kalau
+              paketmu diganti ke yang menyimpan data permanen.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y">
+              {archived.value.map((dataset) => (
+                <li
+                  key={dataset.id}
+                  className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3 first:pt-0 last:pb-0"
+                >
+                  <span className="min-w-0 truncate text-sm font-medium">
+                    {dataset.name}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {dataset.responseCount.toLocaleString('id-ID')} aspirasi · dihapus{' '}
+                    {formatDate(
+                      deletionDate(dataset.archivedAt ?? dataset.createdAt),
+                      timezone,
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Unduh semua data</CardTitle>

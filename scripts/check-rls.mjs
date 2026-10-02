@@ -627,6 +627,69 @@ try {
     )
   }
 
+  // ── Retention (20261003000100) ───────────────────────────────────────
+  const clock = await admin
+    .from('datasets')
+    .select('retention_clock_at')
+    .eq('id', a.datasetId)
+    .single()
+  if (clock.error) {
+    skip(
+      'retention state cannot be changed from the browser',
+      'datasets.retention_clock_at does not exist — apply 20261003000100_retention.sql',
+    )
+  } else {
+    const reset = await asA
+      .from('datasets')
+      .update({ retention_clock_at: new Date().toISOString() })
+      .eq('id', a.datasetId)
+      .select('id')
+    check(
+      'user A cannot reset the retention clock on their own dataset',
+      (reset.data ?? []).length === 0,
+      reset.error ? reset.error.message : 'no rows updated',
+    )
+
+    await admin
+      .from('datasets')
+      .update({ archived_at: new Date().toISOString() })
+      .eq('id', a.datasetId)
+    const unarchive = await asA
+      .from('datasets')
+      .update({ archived_at: null })
+      .eq('id', a.datasetId)
+      .select('id')
+    check(
+      'user A cannot un-archive a dataset',
+      (unarchive.data ?? []).length === 0,
+      unarchive.error ? unarchive.error.message : 'no rows updated',
+    )
+
+    const hide = await asA
+      .from('analysis_jobs')
+      .update({ archived_at: null })
+      .eq('id', a.jobId)
+      .select('id')
+    check(
+      'user A cannot change whether a report is archived',
+      (hide.data ?? []).length === 0,
+      hide.error ? hide.error.message : 'no rows updated',
+    )
+
+    const { data: state } = await admin
+      .from('datasets')
+      .select('retention_clock_at, archived_at')
+      .eq('id', a.datasetId)
+      .single()
+    check(
+      'the retention state is unchanged after all of that',
+      state?.retention_clock_at === clock.data.retention_clock_at &&
+        state?.archived_at !== null,
+      JSON.stringify(state),
+    )
+    await admin.from('datasets').update({ archived_at: null }).eq('id', a.datasetId)
+  }
+
   // ── Handing over moves the bill (20261002000300) ─────────────────────
   // Last, because it changes who owns org A.
   await admin

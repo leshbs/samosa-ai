@@ -17,8 +17,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { formatDateTime } from '@/lib/utils'
-import { can, getSessionUser } from '@/modules/auth'
+import { daysUntil, isNearDeadline, retentionDeadline } from '@/lib/retention'
+import { formatDate, formatDateTime } from '@/lib/utils'
+import { can, getSessionUser, getWorkspacePlan } from '@/modules/auth'
 import { listDatasets } from '@/modules/ingestion'
 
 export const metadata: Metadata = { title: 'Dataset' }
@@ -26,7 +27,10 @@ export const metadata: Metadata = { title: 'Dataset' }
 export default async function DatasetsPage() {
   const session = await getSessionUser()
   if (!session.ok) redirect('/login')
-  const datasets = await listDatasets(session.value.organizationId)
+  const [datasets, plan] = await Promise.all([
+    listDatasets(session.value.organizationId),
+    getWorkspacePlan(session.value.organizationId),
+  ])
 
   if (!datasets.ok) {
     return (
@@ -40,6 +44,15 @@ export default async function DatasetsPage() {
   const timezone = session.value.organizationTimezone
   // §5: an action this role cannot take is absent, not disabled.
   const canUpload = can(session.value.role, 'dataset:create')
+
+  // Only on a plan with a retention period; elsewhere there is no date to show.
+  const { retentionDays } = plan.limits
+  const deadlineOf = (clockAt: string) => retentionDeadline(clockAt, retentionDays)
+  const expiring = datasets.value
+    .map((dataset) => deadlineOf(dataset.retentionClockAt))
+    .filter((deadline): deadline is Date => isNearDeadline(deadline))
+    .sort((a, b) => a.getTime() - b.getTime())
+  const soonest = expiring[0]
 
   return (
     <section className="mx-auto max-w-wide space-y-6">
@@ -58,6 +71,26 @@ export default async function DatasetsPage() {
           ) : null
         }
       />
+
+      {soonest ? (
+        <p role="status" className="rounded-lg border bg-muted/40 p-4 text-sm">
+          <span className="font-medium">
+            {expiring.length} dataset{' '}
+            {daysUntil(soonest) > 0
+              ? `diarsipkan mulai ${formatDate(soonest, timezone)}`
+              : 'sudah melewati masa simpannya dan segera diarsipkan'}
+            .
+          </span>{' '}
+          Dataset yang diarsipkan tidak tampil lagi di sini, tapi masih bisa diunduh
+          selama 90 hari sebelum dihapus.{' '}
+          <Link
+            href="/settings?tab=data"
+            className="font-medium underline underline-offset-4"
+          >
+            Unduh semua data
+          </Link>
+        </p>
+      ) : null}
 
       {datasets.value.length === 0 ? (
         <EmptyState
@@ -79,6 +112,9 @@ export default async function DatasetsPage() {
                 <TableHead className="hidden sm:table-cell">Sumber</TableHead>
                 <TableHead className="text-right">Aspirasi</TableHead>
                 <TableHead className="hidden md:table-cell">Diunggah</TableHead>
+                {retentionDays !== null ? (
+                  <TableHead className="hidden lg:table-cell">Disimpan sampai</TableHead>
+                ) : null}
                 {canDelete ? <TableHead className="w-10" /> : null}
               </TableRow>
             </TableHeader>
@@ -106,6 +142,14 @@ export default async function DatasetsPage() {
                   <TableCell className="hidden text-muted-foreground md:table-cell">
                     {formatDateTime(dataset.createdAt, timezone)}
                   </TableCell>
+                  {retentionDays !== null ? (
+                    <TableCell className="hidden text-muted-foreground lg:table-cell">
+                      {formatDate(
+                        deadlineOf(dataset.retentionClockAt) ?? dataset.createdAt,
+                        timezone,
+                      )}
+                    </TableCell>
+                  ) : null}
                   {canDelete ? (
                     <TableCell>
                       <DeleteDatasetButton

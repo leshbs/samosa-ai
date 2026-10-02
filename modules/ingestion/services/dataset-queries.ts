@@ -24,8 +24,17 @@ type DatasetRow = {
   storage_path: string | null
   response_count: number
   metadata: unknown
+  retention_clock_at: string
+  archived_at: string | null
   created_at: string
 }
+
+/**
+ * Archived datasets (ADR-0012) are hidden from every page by default. The two
+ * callers that want them say so: the settings page that lists what is waiting
+ * to be deleted, and the export, which must still contain them.
+ */
+export type ArchivedFilter = 'exclude' | 'only' | 'include'
 
 /** metadata is free-form jsonb; read the one key we rely on defensively. */
 function textColumnOf(metadata: unknown): string | null {
@@ -63,23 +72,31 @@ function toDataset(row: DatasetRow): Dataset {
     uploaderId: row.uploader_id,
     textColumnName: textColumnOf(row.metadata),
     keptColumns: keptColumnsOf(row.metadata),
+    retentionClockAt: row.retention_clock_at,
+    archivedAt: row.archived_at,
     createdAt: row.created_at,
   }
 }
 
 const DATASET_COLUMNS =
-  'id, organization_id, uploader_id, name, source, storage_path, response_count, metadata, created_at'
+  'id, organization_id, uploader_id, name, source, storage_path, response_count, metadata, retention_clock_at, archived_at, created_at'
 
 export async function listDatasets(
   organizationId: string,
+  options: { archived?: ArchivedFilter } = {},
 ): Promise<Result<Dataset[], AppError>> {
   const supabase = await createClient()
+  const archived = options.archived ?? 'exclude'
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('datasets')
     .select(DATASET_COLUMNS)
     .eq('organization_id', organizationId)
     .order('created_at', { ascending: false })
+  if (archived === 'exclude') query = query.is('archived_at', null)
+  if (archived === 'only') query = query.not('archived_at', 'is', null)
+
+  const { data, error } = await query
 
   if (error) {
     return err(appError(ERROR_CODES.INTERNAL, 'Daftar dataset tidak bisa dimuat'))
@@ -102,6 +119,7 @@ export async function countDatasets(
     .from('datasets')
     .select('id', { count: 'exact', head: true })
     .eq('organization_id', organizationId)
+    .is('archived_at', null)
 
   if (error || count === null) {
     return err(appError(ERROR_CODES.INTERNAL, 'Jumlah dataset tidak bisa dimuat'))
@@ -113,15 +131,19 @@ export async function countDatasets(
 export async function getDataset(
   organizationId: string,
   datasetId: string,
+  options: { includeArchived?: boolean } = {},
 ): Promise<Result<Dataset, AppError>> {
   const supabase = await createClient()
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('datasets')
     .select(DATASET_COLUMNS)
     .eq('id', datasetId)
     .eq('organization_id', organizationId)
-    .maybeSingle()
+  // An archived dataset is "not found" to every page; only the export asks.
+  if (!options.includeArchived) query = query.is('archived_at', null)
+
+  const { data, error } = await query.maybeSingle()
 
   // Another tenant's dataset (RLS) and one in the caller's other workspace
   // (the filter) both come back as "no rows", which is what we want.

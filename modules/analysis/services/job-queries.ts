@@ -47,6 +47,7 @@ function toJob(row: JobRow): AnalysisJob {
     startedAt: row.started_at ? String(row.started_at) : null,
     finishedAt: row.finished_at ? String(row.finished_at) : null,
     createdBy: row.created_by ? String(row.created_by) : null,
+    archivedAt: row.archived_at ? String(row.archived_at) : null,
     createdAt: String(row.created_at),
   }
 }
@@ -57,6 +58,11 @@ export type ListJobsOptions = {
   /** Only jobs this user started — the profile's "my recent activity". */
   createdBy?: string
   limit?: number
+  /**
+   * Reports follow their dataset into the archive (ADR-0012) and are hidden
+   * from every page. The export is the one caller that still wants them.
+   */
+  includeArchived?: boolean
 }
 
 const DEFAULT_JOB_LIMIT = 50
@@ -74,6 +80,7 @@ export async function listJobs(
     .order('created_at', { ascending: false })
     .limit(options.limit ?? DEFAULT_JOB_LIMIT)
   if (options.createdBy) query = query.eq('created_by', options.createdBy)
+  if (!options.includeArchived) query = query.is('archived_at', null)
 
   const { data, error } = await query
 
@@ -106,15 +113,18 @@ export async function listJobs(
 export async function getJob(
   organizationId: string,
   jobId: string,
+  options: { includeArchived?: boolean } = {},
 ): Promise<Result<AnalysisJob, AppError>> {
   const supabase = await createClient()
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('analysis_jobs')
     .select(JOB_COLUMNS)
     .eq('id', jobId)
     .eq('organization_id', organizationId)
-    .maybeSingle()
+  if (!options.includeArchived) query = query.is('archived_at', null)
+
+  const { data, error } = await query.maybeSingle()
 
   // Another tenant's job (RLS) and a job in the caller's other workspace (the
   // filter) both come back as "no rows", which is what we want.
@@ -191,6 +201,7 @@ export async function getLatestJobForDataset(
     .select(JOB_COLUMNS)
     .eq('dataset_id', datasetId)
     .eq('organization_id', organizationId)
+    .is('archived_at', null)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -250,6 +261,7 @@ export async function countReports(
     .from('analysis_jobs')
     .select('id', { count: 'exact', head: true })
     .eq('organization_id', organizationId)
+    .is('archived_at', null)
     .in('status', [...REPORTABLE_STATUSES])
 
   if (error || count === null)
