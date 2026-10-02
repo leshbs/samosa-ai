@@ -6,6 +6,7 @@ const rpc = vi.fn()
 const getUser = vi.fn()
 const getUserById = vi.fn()
 const setActiveWorkspace = vi.fn()
+const getWorkspaceCapacity = vi.fn()
 const env = { NEXT_PUBLIC_EMAIL_LINKS_ENABLED: true }
 
 vi.mock('@/lib/env', () => ({ clientEnv: env }))
@@ -19,6 +20,10 @@ vi.mock('@/modules/auth/services/branding', () => ({
   signBrandingUrls: async () => new Map(),
 }))
 vi.mock('@/modules/auth/services/active-workspace', () => ({ setActiveWorkspace }))
+vi.mock('@/modules/auth/services/capacity', () => ({
+  getWorkspaceCapacity,
+  describeFullWorkspace: () => 'Paketmu mencakup 3 orang per ruang kerja.',
+}))
 
 const {
   acceptInvitation,
@@ -56,6 +61,7 @@ beforeEach(() => {
   getUser.mockReset()
   getUserById.mockReset()
   setActiveWorkspace.mockReset()
+  getWorkspaceCapacity.mockReset().mockResolvedValue({ hasRoom: true })
   env.NEXT_PUBLIC_EMAIL_LINKS_ENABLED = true
   signedInAs(BUDI)
 })
@@ -120,6 +126,89 @@ describe('createInvitation', () => {
     expect(row.token_hash).toBe(hashInvitationToken(result.value.token))
     expect(Object.values(row)).not.toContain(result.value.token)
     expect(row).toMatchObject({ invited_by: 'u-admin', organization_id: 'org-1' })
+  })
+})
+
+describe('createInvitation and the plan', () => {
+  const INVITED = {
+    data: {
+      id: 'inv-1',
+      email: 'baru@osis.test',
+      role: 'member',
+      created_at: '2026-09-29T00:00:00Z',
+      expires_at: '2099-10-06T00:00:00Z',
+    },
+    error: null,
+  }
+  const OWNER = { ...ADMIN, userId: 'u-owner', role: 'owner' as const }
+
+  /** members, revoke, then whatever the test queues after them. */
+  function queue(...rest: FakeQuery[]) {
+    const all = [
+      fakeQuery({ data: [], error: null }),
+      fakeQuery({ data: null, error: null }),
+      ...rest,
+    ]
+    from.mockImplementation(() => all.shift())
+  }
+
+  it('refuses the person the plan has no place for, and writes nothing', async () => {
+    getWorkspaceCapacity.mockResolvedValue({ hasRoom: false })
+    const insert = fakeQuery(INVITED)
+    queue(insert)
+
+    const result = await createInvitation(ADMIN, { email: 'x@osis.test', role: 'member' })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.code).toBe('CONFLICT')
+      expect(result.error.message).toContain('3 orang')
+    }
+    expect(insert.calls).toEqual([])
+    expect(getWorkspaceCapacity).toHaveBeenCalledWith('org-1')
+  })
+
+  it('names the organization with the first invitation, when the owner sends it', async () => {
+    const rename = fakeQuery({ data: [{ id: 'org-1' }], error: null })
+    queue(rename, fakeQuery(INVITED))
+
+    const result = await createInvitation(OWNER, {
+      email: 'baru@osis.test',
+      role: 'member',
+      organizationName: '  OSIS SMA 1 ',
+    })
+
+    expect(result.ok && result.value.organizationName).toBe('OSIS SMA 1')
+    expect(argsOf(rename, 'update')?.[0]).toEqual({ name: 'OSIS SMA 1' })
+    expect(rename.calls).toContainEqual({ method: 'eq', args: ['id', 'org-1'] })
+  })
+
+  it('ignores a name from someone who cannot rename', async () => {
+    const insert = fakeQuery(INVITED)
+    queue(insert)
+
+    const result = await createInvitation(ADMIN, {
+      email: 'baru@osis.test',
+      role: 'member',
+      organizationName: 'Nama Lain',
+    })
+
+    expect(result.ok && result.value.organizationName).toBe('OSIS Nusantara')
+    expect(argsOf(insert, 'insert')).toBeDefined()
+  })
+
+  it('does not invite under a name that could not be saved', async () => {
+    const insert = fakeQuery(INVITED)
+    queue(fakeQuery({ data: [], error: null }), insert)
+
+    const result = await createInvitation(OWNER, {
+      email: 'baru@osis.test',
+      role: 'member',
+      organizationName: 'OSIS SMA 1',
+    })
+
+    expect(result.ok).toBe(false)
+    expect(insert.calls).toEqual([])
   })
 })
 

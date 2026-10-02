@@ -34,6 +34,7 @@ export default async function DashboardLayout({
         email: session.value.email,
         displayName: session.value.displayName,
         organizationName: session.value.organizationName,
+        solo: session.value.solo,
         organizationId: session.value.organizationId,
         workspaces: session.value.workspaces,
       }}

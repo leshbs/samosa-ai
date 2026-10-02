@@ -872,6 +872,72 @@ check(
   rows.filter((row) => row.role === 'owner').length === 1,
 )
 
+// The account follows its only workspace (20261002000300).
+rows = await sql(
+  `select a.owner_id from public.organizations o join public.accounts a on a.id = o.account_id where o.id = '${ORG.main}'`,
+)
+check(
+  'transfer: the account goes with its only workspace',
+  rows[0]?.owner_id === U.admin,
+  JSON.stringify(rows),
+)
+rows = await sql(
+  `select count(*)::int as n from public.accounts where owner_id = '${U.owner}'`,
+)
+check('transfer: the old owner is no longer billed for it', rows[0].n === 0)
+
+// The recipient already has an account: the workspace joins theirs.
+await db.exec(
+  `insert into public.organization_members (user_id, organization_id, role) values ('${U.invitee}', '${ORG.busyOwn}', 'member'), ('${U.invitee}', '${ORG.dualFirst}', 'member')`,
+)
+const [inviteeAccount] = await sql(
+  `select id from public.accounts where owner_id = '${U.invitee}'`,
+)
+const [busyAccount] = await sql(
+  `select id from public.accounts where owner_id = '${U.busy}'`,
+)
+r = await as(
+  U.busy,
+  `select public.transfer_organization_ownership('${ORG.busyOwn}', '${U.invitee}')`,
+)
+rows = await sql(
+  `select account_id from public.organizations where id = '${ORG.busyOwn}'`,
+)
+check(
+  'transfer: a recipient with an account takes the workspace onto it',
+  r.error === null && rows[0]?.account_id === inviteeAccount.id,
+  r.error ?? JSON.stringify(rows),
+)
+rows = await sql(`select owner_id from public.accounts where id = '${busyAccount.id}'`)
+check(
+  'transfer: and the old owner keeps their own, now empty, account',
+  rows[0]?.owner_id === U.busy,
+  JSON.stringify(rows),
+)
+
+// One of several: the account stays where it is.
+const [dualAccount] = await sql(
+  `select account_id from public.organizations where id = '${ORG.dualFirst}'`,
+)
+r = await as(
+  U.dual,
+  `select public.transfer_organization_ownership('${ORG.dualFirst}', '${U.invitee}')`,
+)
+rows = await sql(
+  `select o.account_id, a.owner_id from public.organizations o join public.accounts a on a.id = o.account_id where o.id = '${ORG.dualFirst}'`,
+)
+check(
+  'transfer: one workspace of several leaves the account where it was',
+  r.error === null &&
+    rows[0]?.account_id === dualAccount.account_id &&
+    rows[0]?.owner_id === U.dual,
+  r.error ?? JSON.stringify(rows),
+)
+rows = await sql(
+  `select count(*)::int as n from (select owner_id from public.accounts where owner_id is not null group by owner_id having count(*) > 1) d`,
+)
+check('transfer: nobody ends up with two accounts', rows[0].n === 0)
+
 // ── deletion cascades ──
 r = await as(U.admin, `delete from public.organizations where id = '${ORG.main}'`)
 check(

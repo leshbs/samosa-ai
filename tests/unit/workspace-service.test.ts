@@ -151,11 +151,11 @@ describe('createWorkspace', () => {
   function owning(count: number, account: unknown = ACCOUNT) {
     return admin({
       accounts: [{ data: account, error: null }],
-      organization_members: [
+      organization_members: [{ data: null, error: null }],
+      organizations: [
         { count, error: null },
-        { data: null, error: null },
+        { data: { id: 'org-new' }, error: null },
       ],
-      organizations: [{ data: { id: 'org-new' }, error: null }],
     })
   }
 
@@ -176,11 +176,10 @@ describe('createWorkspace', () => {
 
     expect(result).toEqual({ ok: true, value: { organizationId: 'org-new' } })
     expect(setActiveWorkspace).toHaveBeenCalledWith('org-new')
-    // Counted for this person and for ownership only: a workspace they merely
-    // joined does not use up the one their plan gives them.
-    const count = made.organization_members?.[0] as FakeQuery
-    expect(count.calls).toContainEqual({ method: 'eq', args: ['user_id', 'u-1'] })
-    expect(count.calls).toContainEqual({ method: 'eq', args: ['role', 'owner'] })
+    // Counted on the account: a workspace they merely joined is on someone
+    // else's, and does not use up the one their plan gives them.
+    const count = made.organizations?.[0] as FakeQuery
+    expect(count.calls).toContainEqual({ method: 'eq', args: ['account_id', 'acct-1'] })
   })
 
   it('stops at one owned workspace on the free plan, and says so', async () => {
@@ -193,7 +192,8 @@ describe('createWorkspace', () => {
       expect(result.error.code).toBe('CONFLICT')
       expect(result.error.message).toContain('sudah punya ruang kerja')
     }
-    expect(made.organizations).toBeUndefined()
+    // Only the count was asked for; nothing was inserted.
+    expect(made.organizations).toHaveLength(1)
     expect(setActiveWorkspace).not.toHaveBeenCalled()
   })
 
