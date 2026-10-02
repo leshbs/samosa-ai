@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { ChartFrame } from '@/components/charts/chart-frame'
 import {
   SentimentTable,
@@ -56,24 +56,27 @@ export default async function ReportDetailPage({
 }) {
   const { id } = await params
 
-  const job = await getJob(id)
+  const session = await getSessionUser()
+  if (!session.ok) redirect('/login')
+  const { organizationId } = session.value
+
+  const job = await getJob(organizationId, id)
   if (!job.ok) notFound()
 
-  const [results, session, dataset] = await Promise.all([
-    listJobResults(id),
-    getSessionUser(),
-    getDataset(job.value.datasetId),
+  const [results, dataset] = await Promise.all([
+    listJobResults(organizationId, id),
+    getDataset(organizationId, job.value.datasetId),
   ])
 
   const rows = results.ok ? results.value : []
   const data = buildDashboardData(rows)
   const datasetName = dataset.ok ? dataset.value.name : 'Dataset terhapus'
 
-  const canExport = session.ok && can(session.value.role, 'report:export')
+  const canExport = can(session.value.role, 'report:export')
   // Regenerating spends the organization's OpenAI budget, so it is gated on the
   // same permission the endpoint checks rather than on a weaker read right.
-  const canRegenerate = session.ok && can(session.value.role, 'analysis:run')
-  const timezone = session.ok ? session.value.organizationTimezone : undefined
+  const canRegenerate = can(session.value.role, 'analysis:run')
+  const timezone = session.value.organizationTimezone
   // "Dijalankan oleh" in the provenance strip; read under RLS, so only a
   // colleague's name comes back.
   const runner = job.value.createdBy
