@@ -45,7 +45,7 @@ export default async function DatasetsPage() {
     <section className="mx-auto max-w-wide space-y-6">
       <PageHeader
         title="Dataset"
-        description="Semua aspirasi yang sudah diunggah organisasimu."
+        description="Semua aspirasi yang sudah diunggah ke sini."
         crumbs={[{ label: 'Dataset' }]}
         actions={
           canUpload ? (

@@ -9,6 +9,8 @@ export type ShellUser = {
   email: string
   displayName: string
   organizationName: string
+  /** One person, nobody invited: the shell shows them, not an organization. */
+  solo: boolean
   /** The active workspace, and every workspace the person can switch to. */
   organizationId: string
   workspaces: ShellWorkspace[]
@@ -45,6 +47,7 @@ export function Sidebar({
           email={user.email}
           displayName={user.displayName}
           organizationName={user.organizationName}
+          solo={user.solo}
           organizationId={user.organizationId}
           workspaces={user.workspaces}
         />

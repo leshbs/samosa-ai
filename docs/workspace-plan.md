@@ -43,12 +43,12 @@ Satu ronde, satu PR.
 | Ruang kerja per akun       | 1        | sampai 3     | sesuai kontrak |
 | Retensi                    | 1 tahun  | permanen     | permanen       |
 | Perbandingan antar periode | —        | ya           | ya             |
-| Logo di PDF                | —        | ya           | ya             |
+| Logo di PDF                | ya       | ya           | ya             |
 | Google Forms               | —        | ya           | ya             |
 | Audit log, SSO             | —        | —            | ya             |
 
 - **Tidak pernah dikunci paket:** kualitas analisis, export, serah terima
-  kepemilikan.
+  kepemilikan, dan logo di PDF.
 - **Tidak ada harga per kursi** di bawah Enterprise.
 - **Tidak ada batas volume yang terlihat.** Batas penyalahgunaan (misalnya
   50.000 aspirasi per bulan per akun, rate limit, ukuran file) ada tapi tidak
@@ -137,9 +137,9 @@ satu ruang kerja.
 - [x] Nama anggota yang sudah keluar tetap terbaca di analisis lama.
 - [x] `organizations.account_id` jadi `NOT NULL`, di file terpisah
       (`20261002000200_account_required.sql`) yang mengulang backfill dulu.
-- [ ] Tempel `20261002000100_join_and_leave.sql` (kapan saja), lalu — **setelah
-      deploy** — `20261002000200_account_required.sql`. `scripts/check-rls.mjs`
-      harus 44/44 tanpa SKIP.
+- [x] `20261002000100_join_and_leave.sql` dan
+      `20261002000200_account_required.sql` aktif di project hosted —
+      `scripts/check-rls.mjs` 44/44 tanpa SKIP pada 2026-10-02.
 
 **Menyimpang dari rencana awal:**
 
@@ -157,10 +157,32 @@ undangan tanpa kehilangan apa pun, lalu keluar lagi dan tetap punya datanya.
 
 ### Ronde 3 — Dari solo ke bersama
 
-- Ruang kerja solo menyembunyikan anggota, peran, dan nama organisasi.
-- Undangan pertama: minta nama, tampilkan peringatan.
-- Batas tiga anggota di Free, dengan pesan yang menjelaskan.
-- Serah terima satu-satunya ruang kerja milik akun ikut memindahkan akunnya.
+- [x] Ruang kerja solo menyembunyikan anggota, peran, dan nama organisasi.
+      "Solo" diturunkan, tidak disimpan: satu anggota dan tidak ada undangan
+      yang belum dipakai atau dibatalkan (`session.solo`). Formulir daftar tidak
+      lagi menanyakan nama organisasi; nama awalnya "Ruang kerja <nama email>".
+- [x] Undangan pertama: minta nama organisasi, tampilkan berapa dataset dan
+      laporan yang akan terlihat anggota, dengan tautan untuk menghapus atau
+      mengunduhnya dulu.
+- [x] Batas tiga orang di Free (`maxMembersPerWorkspace`), undangan yang
+      menunggu ikut dihitung. Ruang kerja yang penuh menampilkan sebabnya, bukan
+      formulir yang hanya bisa menjawab "tidak".
+- [x] Serah terima satu-satunya ruang kerja milik akun ikut memindahkan akunnya
+      (`20261002000300_transfer_moves_account.sql`). Batas ruang kerja sekarang
+      dihitung per akun.
+- [ ] Tempel `20261002000300_transfer_moves_account.sql` ke SQL Editor — boleh
+      kapan saja. `scripts/check-rls.mjs` harus 46/46 tanpa SKIP.
+
+**Menyimpang dari rencana awal:**
+
+- Penerima serah terima yang **sudah punya akun** tidak menerima akun kedua
+  (satu akun per orang): ruang kerjanya pindah ke akun penerima dan mengikuti
+  paket akun itu. Lihat `DEBT.md`.
+- Halaman publik (landing, privasi, ketentuan) dan email undangan tetap memakai
+  kata "organisasi" — keduanya menjelaskan produk atau dibaca orang yang
+  diundang, bukan pengguna solo di dalam aplikasi.
+- Nama ruang kerja solo tetap bisa diubah, sebagai "Nama di laporan": nama itu
+  tercetak di PDF, dan pengguna solo pun perlu membetulkannya.
 
 **Selesai kalau:** pengguna solo tidak pernah melihat kata "organisasi" sampai
 ia sendiri menekan "Undang".
@@ -178,7 +200,7 @@ ketiga.
 
 ### Ronde 5 — Belakangan
 
-Perbandingan antar periode, logo di PDF, Google Forms; tautan gabung yang bisa
+Perbandingan antar periode, Google Forms; tautan gabung yang bisa
 dipakai ulang dengan persetujuan; salin dataset antar ruang kerja; lebih dari
 satu organisasi yang diikuti; item Enterprise.
 
@@ -195,11 +217,9 @@ satu organisasi yang diikuti; item Enterprise.
   bukan sesuatu yang boleh dikirim ke produksi.
 - **Paket berbayar belum punya isi sampai ronde 5.** Sampai saat itu yang
   dibeli hanya anggota tanpa batas, tiga ruang kerja, dan retensi permanen.
-- **Logo di PDF sudah ada, dan hari ini gratis untuk semua.** Fase 5 membuatnya
-  (`organizations.logo_path`, dipakai `pdf-exporter.tsx`). Menaruhnya di paket
-  Organization berarti mengambilnya dari pengguna yang sudah memakainya.
-  **Belum diputuskan** — harus dijawab sebelum ronde 4: biarkan gratis, atau
-  kunci hanya untuk akun baru.
+- **Paket Organization kehilangan satu pembeda.** Logo di PDF tetap gratis
+  (diputuskan 2026-10-02), jadi sampai ronde 5 yang dibeli memang hanya anggota,
+  ruang kerja, dan retensi.
 
 ## 4. Keputusan yang sudah dijawab
 
@@ -210,3 +230,4 @@ satu organisasi yang diikuti; item Enterprise.
 | Jarak antara arsip dan hapus                              | 90 hari         |
 | Undangan pertama di Free: peringatan atau pilihan pisah?  | Peringatan saja |
 | Berapa organisasi yang bisa diikuti di awal?              | Satu            |
+| Logo di PDF: gratis atau paket Organization?              | Tetap gratis    |

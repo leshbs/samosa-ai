@@ -9,6 +9,7 @@ import type { AppError } from '@/modules/shared'
 import type { InvitableRole } from '@/types/domain'
 import { can } from '../policies/org-policy'
 import { setActiveWorkspace } from './active-workspace'
+import { describeFullWorkspace, getWorkspaceCapacity } from './capacity'
 import { emailsFor, type MemberActor } from './members'
 
 /**
@@ -100,11 +101,21 @@ export async function listPendingInvitations(
   return ok((data ?? []).map((row) => toView(row)))
 }
 
-export type CreatedInvitation = { invitation: InvitationView; token: string }
+export type CreatedInvitation = {
+  invitation: InvitationView
+  token: string
+  /** The name the invitee will read: the new one when this call renamed it. */
+  organizationName: string
+}
 
+/**
+ * `organizationName` is the first invitation's other half (ADR-0012): a solo
+ * workspace has only ever had a name nobody chose, and the invitee is about to
+ * read it. Only the owner can rename, so from anyone else it is ignored.
+ */
 export async function createInvitation(
   actor: MemberActor,
-  input: { email: string; role: InvitableRole },
+  input: { email: string; role: InvitableRole; organizationName?: string },
 ): Promise<Result<CreatedInvitation, AppError>> {
   if (!can(actor.role, 'member:invite')) {
     return err(appError(ERROR_CODES.FORBIDDEN, 'Kamu tidak bisa mengundang anggota'))
@@ -132,6 +143,27 @@ export async function createInvitation(
     .is('accepted_at', null)
     .is('revoked_at', null)
 
+  // After the revoke above, so re-inviting the same address never counts twice.
+  const capacity = await getWorkspaceCapacity(actor.organizationId)
+  if (!capacity.hasRoom) {
+    return err(appError(ERROR_CODES.CONFLICT, describeFullWorkspace(capacity)))
+  }
+
+  let organizationName = actor.organizationName
+  const name = input.organizationName?.trim()
+  if (name && name !== actor.organizationName && can(actor.role, 'org:manage')) {
+    const renamed = await supabase
+      .from('organizations')
+      .update({ name })
+      .eq('id', actor.organizationId)
+      .select('id')
+    if (renamed.error || !renamed.data || renamed.data.length === 0) {
+      logger.warn('auth.invitation.rename_failed', { code: renamed.error?.code })
+      return err(appError(ERROR_CODES.INTERNAL, 'Nama tidak bisa disimpan. Coba lagi.'))
+    }
+    organizationName = name
+  }
+
   const token = createInvitationToken()
   const { data, error } = await supabase
     .from('organization_invitations')
@@ -151,7 +183,7 @@ export async function createInvitation(
   }
 
   logger.info('auth.invitation.created', { organizationId: actor.organizationId })
-  return ok({ invitation: toView(data), token })
+  return ok({ invitation: toView(data), token, organizationName })
 }
 
 export async function revokeInvitation(

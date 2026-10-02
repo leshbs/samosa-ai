@@ -14,7 +14,7 @@ export default function DashboardNotFound() {
         <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
           <p className="font-medium">Tidak ditemukan</p>
           <p className="max-w-sm text-sm text-muted-foreground">
-            Halaman ini tidak ada, sudah dihapus, atau milik organisasi lain.
+            Halaman ini tidak ada, sudah dihapus, atau bukan untuk akunmu.
           </p>
           <Button asChild variant="outline" size="sm">
             <Link href="/dashboard">Kembali ke beranda</Link>

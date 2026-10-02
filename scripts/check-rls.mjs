@@ -627,6 +627,45 @@ try {
     )
   }
 
+  // ── Handing over moves the bill (20261002000300) ─────────────────────
+  // Last, because it changes who owns org A.
+  await admin
+    .from('organization_members')
+    .insert({ user_id: b.userId, organization_id: a.orgId, role: 'member' })
+  const handover = await asA.rpc('transfer_organization_ownership', {
+    p_organization_id: a.orgId,
+    p_new_owner: b.userId,
+  })
+  const { data: handed } = await admin
+    .from('organizations')
+    .select('account_id')
+    .eq('id', a.orgId)
+    .single()
+  if (handover.error) {
+    check('an owner can hand their workspace over', false, handover.error.message)
+  } else if (handed?.account_id === a.accountId) {
+    skip(
+      "a handed-over workspace leaves the old owner's account",
+      'the transfer does not move the account — apply 20261002000300_transfer_moves_account.sql',
+    )
+  } else {
+    check(
+      "a handed-over workspace leaves the old owner's account",
+      handed?.account_id === b.accountId,
+      `now on ${handed?.account_id === b.accountId ? "the new owner's" : 'an unexpected'} account`,
+    )
+    const { data: kept } = await admin
+      .from('accounts')
+      .select('owner_id')
+      .eq('id', a.accountId)
+      .single()
+    check(
+      'the old owner keeps their own account, and nobody has two',
+      kept?.owner_id === a.userId,
+      JSON.stringify(kept),
+    )
+  }
+
   // ── And an anonymous caller must see nothing at all ──────────────────
   const anonymous = createClient(URL, ANON, {
     auth: { persistSession: false, autoRefreshToken: false },

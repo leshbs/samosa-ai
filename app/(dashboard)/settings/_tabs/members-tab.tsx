@@ -12,13 +12,17 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { UserAvatar } from '@/components/ui/user-avatar'
+import { countReports } from '@/modules/analysis'
 import {
   INVITATION_TTL_DAYS,
   can,
+  describeFullWorkspace,
+  getWorkspaceCapacity,
   listMembers,
   listPendingInvitations,
   type SessionUser,
 } from '@/modules/auth'
+import { countDatasets } from '@/modules/ingestion'
 import { formatDateTime } from '@/lib/utils'
 import {
   ORG_ROLES,
@@ -28,12 +32,15 @@ import {
 } from '@/types/domain'
 
 export async function MembersTab({ session }: { session: SessionUser }) {
+  if (session.solo) return <FirstInvitation session={session} />
+
   const canInvite = can(session.role, 'member:invite')
   const canManage = can(session.role, 'member:manage')
 
-  const [members, invitations] = await Promise.all([
+  const [members, invitations, capacity] = await Promise.all([
     listMembers(session.organizationId),
     canInvite ? listPendingInvitations(session.organizationId) : null,
+    canInvite ? getWorkspaceCapacity(session.organizationId) : null,
   ])
 
   return (
@@ -91,16 +98,25 @@ export async function MembersTab({ session }: { session: SessionUser }) {
         </CardContent>
       </Card>
 
-      {canInvite ? (
+      {capacity ? (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Undang anggota</CardTitle>
             <CardDescription>
               Tautan undangan berlaku {INVITATION_TTL_DAYS} hari, untuk satu alamat email.
+              {capacity.maxMembers !== null
+                ? ` Terpakai ${capacity.members + capacity.pending} dari ${capacity.maxMembers} tempat, termasuk undangan yang menunggu.`
+                : ''}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <InviteForm ttlDays={INVITATION_TTL_DAYS} />
+            {/* No form that can only answer "no": a full workspace gets the
+                reason and what frees a place instead. */}
+            {capacity.hasRoom ? (
+              <InviteForm ttlDays={INVITATION_TTL_DAYS} />
+            ) : (
+              <p className="text-sm">{describeFullWorkspace(capacity)}</p>
+            )}
           </CardContent>
         </Card>
       ) : null}
@@ -160,5 +176,41 @@ export async function MembersTab({ session }: { session: SessionUser }) {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+/**
+ * What the tab is while the workspace is one person (ADR-0012): no member
+ * list of one, no table of roles — just the way to stop being alone. This is
+ * the moment the workspace becomes an organization, so it is also where its
+ * name is asked for and where the person is told what the invitee will see.
+ */
+async function FirstInvitation({ session }: { session: SessionUser }) {
+  const [datasets, reports] = await Promise.all([
+    countDatasets(session.organizationId),
+    countReports(session.organizationId),
+  ])
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Undang rekan</CardTitle>
+        <CardDescription>
+          Bekerja bersama pengurus lain? Setiap orang masuk dengan akunnya sendiri — tidak
+          perlu berbagi password. Tautan undangan berlaku {INVITATION_TTL_DAYS} hari,
+          untuk satu alamat email.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <InviteForm
+          ttlDays={INVITATION_TTL_DAYS}
+          first={{
+            currentName: session.organizationName,
+            datasets: datasets.ok ? datasets.value : null,
+            reports: reports.ok ? reports.value : null,
+          }}
+        />
+      </CardContent>
+    </Card>
   )
 }

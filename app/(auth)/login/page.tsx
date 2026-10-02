@@ -12,7 +12,7 @@ const ERRORS: Record<string, string> = {
   invalid_code: 'Tautan masuk sudah kedaluwarsa atau sudah dipakai. Minta tautan baru.',
   other_browser:
     'Tautan ini tidak bisa dipakai di browser ini. Kalau email kamu sudah terverifikasi, masuk saja dengan password-mu.',
-  provisioning: 'Akun kamu belum punya organisasi. Hubungi admin.',
+  provisioning: 'Akun kamu belum selesai disiapkan. Coba masuk lagi.',
 }
 
 export default async function LoginPage({
@@ -28,9 +28,7 @@ export default async function LoginPage({
     <div className="space-y-6">
       <div className="space-y-1">
         <h1 className="text-xl font-semibold">Masuk ke SAMOSA</h1>
-        <p className="text-sm text-muted-foreground">
-          Kelola aspirasi dan laporan organisasimu.
-        </p>
+        <p className="text-sm text-muted-foreground">Kelola aspirasi dan laporanmu.</p>
       </div>
 
       {error ? (

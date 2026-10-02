@@ -42,12 +42,18 @@ export function SidebarAccountMenu({
   email,
   displayName,
   organizationName,
+  solo = false,
   organizationId,
   workspaces,
 }: {
   email: string
   displayName: string
   organizationName: string
+  /**
+   * While a workspace is one person with nobody invited, the row is about
+   * that person: an organization name they never chose would only confuse.
+   */
+  solo?: boolean
   organizationId: string
   workspaces: ShellWorkspace[]
 }) {
@@ -56,6 +62,7 @@ export function SidebarAccountMenu({
   // and stays visible either way, so nobody loses track of which account
   // they are in.
   const name = displayName.trim() || email
+  const rowLabel = solo ? name : organizationName
 
   async function switchTo(workspace: ShellWorkspace) {
     if (workspace.organizationId === organizationId) return
@@ -91,11 +98,11 @@ export function SidebarAccountMenu({
           aria-hidden
           className="flex size-6 shrink-0 items-center justify-center rounded-md bg-white/10 text-[11px] font-bold text-white"
         >
-          {organizationName.trim().charAt(0).toUpperCase() || 'O'}
+          {rowLabel.trim().charAt(0).toUpperCase() || 'S'}
         </span>
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-white/70">
-          <span className="sr-only">Akun dan organisasi: </span>
-          {organizationName}
+          <span className="sr-only">{solo ? 'Akun: ' : 'Akun dan organisasi: '}</span>
+          {rowLabel}
         </span>
         <ChevronsUpDown aria-hidden className="size-4 shrink-0 text-white/40" />
       </DropdownMenuTrigger>
