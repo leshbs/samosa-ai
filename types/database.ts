@@ -85,6 +85,7 @@ type AnalysisJobsRow = {
   processed_count: number
   total_count: number
   failed_count: number
+  no_content_count: number
   input_tokens: number
   output_tokens: number
   cost_micro_idr: number
@@ -198,6 +199,7 @@ export type Database = {
         | 'processed_count'
         | 'total_count'
         | 'failed_count'
+        | 'no_content_count'
         | 'input_tokens'
         | 'output_tokens'
         | 'cost_micro_idr'

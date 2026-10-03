@@ -5,6 +5,51 @@ Tambahkan baris baru lewat PR yang menciptakan utangnya, jangan belakangan.
 
 ## Terbuka
 
+### Migrasi `no_content_count` harus ditempel sebelum PR-nya di-merge
+
+**Lunas 2026-10-03.** Ditempel sebelum merge; `scripts/check-rls.mjs` 52/52
+tanpa SKIP. Catatan aslinya:
+
+`20261004000100_no_content_count.sql` menambah `analysis_jobs.no_content_count`.
+Job runner menulis kolom itu saat job selesai, jadi tanpa migrasinya setiap
+analisis baru gagal di langkah terakhir. Membaca tetap aman — job lama terbaca 0.
+
+**Pemicu:** sebelum merge. **Bayar dengan:** tempel di SQL Editor, lalu
+`scripts/check-rls.mjs`.
+
+### Jawaban kosong hanya dihitung, tidak bisa ditinjau
+
+Respons yang tersaring sebagai non-jawaban ("tidak ada", "-", atau label
+`no_content` dari model) tidak punya baris hasil; yang tersimpan hanya
+jumlahnya di `analysis_jobs.no_content_count`. Pengguna melihat "12 jawaban",
+tapi tidak bisa membuka dua belas jawaban itu untuk memeriksa kamusnya tidak
+terlalu agresif.
+
+**Pemicu:** pengguna pertama yang bertanya "yang mana saja?", atau anotasi E.1
+yang butuh daftarnya. **Bayar dengan:** simpan id-nya (kolom `uuid[]` di job
+atau penanda di `analysis_results` dengan sentimen nullable) dan tampilkan di
+penjelajah respons.
+
+### Dataset lama kehilangan jawaban satu-dua karakter saat diunggah
+
+Sampai 2026-10-03, validator unggahan membuang jawaban di bawah 3 karakter
+("-", "ga", "no", ".") sebelum disimpan. Sekarang hanya sel kosong yang dibuang,
+tapi dataset yang sudah ada tidak punya baris itu, jadi analisis ulang pun
+menulis "N dari M" dengan M yang terlalu kecil.
+
+**Pemicu:** laporan dataset lama yang angka respondennya dipertanyakan.
+**Bayar dengan:** unggah ulang file aslinya; baris yang dibuang tidak tersimpan
+di mana pun.
+
+### Laporan `analysis.v1` masih menghitung "tidak ada" sebagai netral
+
+Job sebelum `analysis.v2` tidak memisahkan non-jawaban. Laporannya menulis
+"Tidak dihitung" di baris Tanpa aspirasi, bukan "Tidak ada", tapi persentasenya
+tetap seperti dulu.
+
+**Pemicu:** sudah terpicu untuk dataset pilot 01. **Bayar dengan:** jalankan
+ulang analisisnya; tidak ada migrasi data yang bisa memperbaikinya tanpa model.
+
 ### `after()` tidak punya retry di level job
 
 Job analisis dipicu `after()` di route handler ([ADR-0006](adr/0006-after-as-job-trigger.md)).
@@ -166,6 +211,10 @@ pengurus OSIS sungguhan, pakai dataset mereka sendiri.
 
 ### PDF tanpa nomor halaman
 
+**Lunas 2026-10-03, sebagian** (ADR-0013). PDF sekarang dibuat browser dari
+`/reports/[id]/print`; nomor halaman datang dari margin box `@page`, yang ada di
+Chromium 131+. Firefox dan Safari mencetak tanpa nomor. Catatan aslinya:
+
 `render` prop di `@react-pdf/renderer` — satu-satunya cara mendapat
 `pageNumber`/`totalPages` — tidak menghasilkan apa pun di dokumen laporan,
 diam-diam. Diukur, bukan ditebak: di dokumen minimal, `<Text fixed render=...>`
@@ -183,9 +232,10 @@ Satu-satunya cara menemukannya adalah merender PDF-nya lalu melihatnya.
 
 ### Chart PDF digambar ulang, tidak reuse Recharts
 
-Bar di PDF disusun dari primitif `<View>`, terpisah dari komponen Recharts di
-web. Kalau bentuk chart berubah, dua tempat harus diubah. Trade-off ini diambil
-sadar di ADR-0004 dan masih wajar selama chart-nya bar sederhana.
+Bar di halaman cetak (`components/reports/print-document.tsx`) adalah `<div>`
+berukuran, terpisah dari komponen Recharts di web: SVG beranimasi tercetak di
+frame mana pun ia sedang berada. Kalau bentuk chart berubah, dua tempat harus
+diubah. Masih wajar selama chart-nya bar sederhana (ADR-0013, dulu ADR-0004).
 
 ### Settings: foto profil, undang anggota, hapus akun — sebagian lunas (Fase 5)
 
@@ -709,6 +759,10 @@ diukur di project hosted.
 aspirasi menjadi potongan kecil — seribu UUID di satu URL juga terlalu panjang.
 
 ### Arsip organisasi dibuat dalam satu request
+
+**Diperbarui 2026-10-03:** arsip tidak lagi merender PDF (ADR-0013), jadi yang
+tersisa hanya membaca CSV setiap dataset dan laporan — jauh lebih ringan, tapi
+masih satu function (`maxDuration = 300`). Catatan aslinya:
 
 Semua PDF dirender berurutan di satu function (`maxDuration = 300`). Cukup untuk
 puluhan laporan; organisasi dengan ratusan laporan akan kena batas waktu.

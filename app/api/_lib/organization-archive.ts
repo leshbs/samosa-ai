@@ -5,7 +5,6 @@ import {
   archiveSlug,
   buildArchive,
   exportDatasetToCsv,
-  exportReportToPdf,
   exportResponsesToCsv,
   type ArchiveEntry,
 } from '@/modules/reporting'
@@ -21,7 +20,7 @@ const ALL_JOBS = 1_000
 export type OrganizationArchive = {
   bytes: Uint8Array
   fileName: string
-  /** Reports that could not be rendered; the README names them too. */
+  /** Reports that could not be read; the README names them too. */
   skipped: number
 }
 
@@ -37,9 +36,9 @@ function shortId(id: string): string {
  * is filtered to the active workspace, so it holds one organization's data
  * even when its requester belongs to two.
  *
- * Reports are rendered one after another rather than all at once: a PDF holds
- * its whole document in memory while it renders, and twenty in parallel is how
- * a serverless function runs out of it.
+ * Each report goes in as its CSV, not a PDF. PDFs are made by the browser from
+ * the print page now (pilot 01, §2.2: the server renderer timed out), and that
+ * page opens archived reports too — the settings list links to each one.
  */
 export async function buildOrganizationArchive(
   session: SessionUser,
@@ -50,7 +49,7 @@ export async function buildOrganizationArchive(
     listDatasets(session.organizationId, { archived: 'include' }),
     listJobs(session.organizationId, { limit: ALL_JOBS, includeArchived: true }),
     listMembers(session.organizationId),
-    loadExportContext(session),
+    loadExportContext(session, { logo: false }),
   ])
   if (!datasets.ok) return datasets
   if (!jobs.ok) return jobs
@@ -71,25 +70,23 @@ export async function buildOrganizationArchive(
     entries.push({ path, content: exportDatasetToCsv(responses.value) })
   }
 
-  const reportFiles = new Map<string, { pdf: string; csv: string }>()
+  const reportFiles = new Map<string, { csv: string }>()
   const skipped: string[] = []
 
   for (const job of jobs.value.filter((candidate) => isReportable(candidate.status))) {
     const stem = `reports/${archiveSlug(job.datasetName, 'laporan')}-${shortId(job.id)}`
     const bundle = await loadReportExport(job.id, context, { includeArchived: true })
-    const pdf = bundle.ok ? await exportReportToPdf(bundle.value.document) : bundle
 
-    if (!bundle.ok || !pdf.ok) {
+    if (!bundle.ok) {
       skipped.push(`${job.datasetName} (${formatDateTime(job.createdAt, timezone)})`)
       continue
     }
 
-    entries.push({ path: `${stem}.pdf`, content: pdf.value.bytes })
     entries.push({
       path: `${stem}.csv`,
       content: exportResponsesToCsv(bundle.value.rows),
     })
-    reportFiles.set(job.id, { pdf: `${stem}.pdf`, csv: `${stem}.csv` })
+    reportFiles.set(job.id, { csv: `${stem}.csv` })
   }
 
   const exportedAt = new Date()
@@ -178,8 +175,9 @@ function readme(input: {
     'Isi arsip:',
     `  datasets/     ${input.datasets} dataset, satu CSV per dataset: teks aspirasi`,
     '                beserta kolom yang dipilih untuk disimpan saat unggah.',
-    `  reports/      ${input.reports} laporan, masing-masing PDF (siap cetak) dan CSV`,
-    '                (satu baris per aspirasi dengan sentimen, topik, kata kunci).',
+    `  reports/      ${input.reports} laporan, masing-masing satu CSV: satu baris per`,
+    '                aspirasi dengan sentimen, topik, dan kata kunci. Versi siap',
+    '                cetaknya (PDF) dibuat dari tombol "Unduh PDF" di setiap laporan.',
     '  metadata.json organisasi, anggota, dataset, dan setiap analisis — termasuk',
     '                versi prompt dan model, supaya hasilnya bisa ditelusuri ulang.',
     '',

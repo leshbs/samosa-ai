@@ -60,6 +60,27 @@ describe('extractResponses', () => {
     expect(extracted.value.responses[0]?.respondentMeta).toEqual({})
   })
 
+  it('keeps one-character answers: "-" is a respondent saying nothing, and is counted', () => {
+    // A blank cell beside a filled one, as a form export has it: a line with
+    // nothing on it at all never reaches the validator.
+    const parsed = parseCsv(
+      'Kelas,Aspirasi\n12,-\n12,ga\n11,.\n11,   \n10,Kursi kurang\n',
+    )
+    if (!parsed.ok) throw new Error('fixture failed to parse')
+
+    const extracted = extractResponses(parsed.value, 'Aspirasi')
+    expect(extracted.ok).toBe(true)
+    if (!extracted.ok) return
+    expect(extracted.value.responses.map((r) => r.text)).toEqual([
+      '-',
+      'ga',
+      '.',
+      'Kursi kurang',
+    ])
+    // Only the blank cell is not a response at all.
+    expect(extracted.value.skippedEmpty).toBe(1)
+  })
+
   it('keeps only the columns it was explicitly asked to keep', () => {
     const parsed = parseCsv(CSV)
     if (!parsed.ok) throw new Error('fixture failed to parse')

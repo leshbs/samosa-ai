@@ -38,12 +38,16 @@ export type {
 } from './services/summary-generator'
 export { exportReportToCsv, exportResponsesToCsv } from './exporters/csv-exporter'
 export type { ExportableResponse } from './exporters/csv-exporter'
-export { exportReportToPdf } from './exporters/pdf-exporter'
+export {
+  printableReport,
+  reportFileStem,
+  truncateQuote,
+} from './exporters/report-document'
 export type {
-  PdfExport,
+  PrintableReport,
   ReportDocumentData,
   ReportProvenance,
-} from './exporters/pdf-exporter'
+} from './exporters/report-document'
 export { exportDatasetToCsv } from './exporters/csv-exporter'
 export type { ExportableDatasetRow } from './exporters/csv-exporter'
 export { archiveSlug, buildArchive } from './exporters/archive'

@@ -1,6 +1,7 @@
 # 0004. PDF rendering approach
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-0013](0013-pdf-via-browser-print.md) — route ini
+  timeout di produksi pada pilot 01
 - **Date:** 2026-09-22 (diusulkan 2026-09-19)
 
 ## Context

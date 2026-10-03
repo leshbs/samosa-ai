@@ -1,4 +1,4 @@
-import { formatIdr, getJob, listJobResults } from '@/modules/analysis'
+import { formatIdr, getJob, listJobResults, separatesNoContent } from '@/modules/analysis'
 import {
   getOrganizationSettings,
   getPeople,
@@ -35,11 +35,12 @@ const ALL_TOPICS = 10_000
 export type ReportExportBundle = {
   rows: AnalysisResultRow[]
   document: ReportDocumentData
+  /** Retention archived it: printable, but no longer reachable in the app. */
+  archived: boolean
 }
 
 /**
- * What every export from one organization shares. Loaded once, so the
- * archive's twenty reports read the logo once, not twenty times.
+ * What every export from one organization shares. Loaded once per request.
  */
 export type ExportContext = {
   /** The active workspace; every read below is filtered to it. */
@@ -65,7 +66,7 @@ export async function loadExportContext(
     organizationId: session.organizationId,
     organizationName: session.organizationName,
     timezone: session.organizationTimezone,
-    // Report defaults that cannot be read fall back to what the PDF always
+    // Report defaults that cannot be read fall back to what the report always
     // printed, rather than failing a download the reader needs tonight.
     preferences: settings.ok
       ? settings.value.reportPreferences
@@ -77,6 +78,13 @@ export async function loadExportContext(
   }
 }
 
+/** Embedded in the page rather than signed: a printout must not expire. */
+function logoDataUrl(logo: LogoImage | null): string | null {
+  if (!logo) return null
+  const mime = logo.format === 'jpg' ? 'image/jpeg' : 'image/png'
+  return `data:${mime};base64,${Buffer.from(logo.data).toString('base64')}`
+}
+
 function personLine(person: { displayName: string; title: string } | undefined) {
   if (!person?.displayName.trim()) return null
   return person.title.trim()
@@ -86,8 +94,8 @@ function personLine(person: { displayName: string; title: string } | undefined) 
 
 /**
  * Assembles everything an export needs, once, from the modules that own each
- * piece. Both download routes want the same bundle, and a route handler is the
- * wrong place to be joining four queries twice.
+ * piece. The print page and the CSV route want the same bundle, and neither is
+ * the place to be joining four queries.
  *
  * Reads go through the session client, so RLS decides what this user may
  * export — an id from another tenant comes back as "not found", and so does
@@ -123,6 +131,7 @@ export async function loadReportExport(
 
   return ok({
     rows,
+    archived: job.value.archivedAt !== null,
     document: {
       organizationName: context.organizationName,
       datasetName: dataset.ok ? dataset.value.name : 'Dataset',
@@ -131,10 +140,13 @@ export async function loadReportExport(
       summary: summary?.summary ?? null,
       insights: summary?.insights ?? [],
       sentiment: aggregateSentiment(rows),
+      noContent: separatesNoContent(job.value.promptVersion)
+        ? job.value.noContentCount
+        : null,
       topics,
       keywords: aggregateKeywords(rows, KEYWORDS_IN_EXPORT),
       topResponsesByTopic: topResponsesByTopic(rows, topics.slice(0, TOPICS_WITH_QUOTES)),
-      logo: context.logo,
+      logoSrc: logoDataUrl(context.logo),
       preparedBy: context.preparedBy,
       preferences: context.preferences,
       topicTail: allTopics.slice(TOPICS_IN_EXPORT),

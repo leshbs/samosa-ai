@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { Suspense } from 'react'
+import { CardGridSkeleton } from '@/components/layout/page-skeleton'
 import { PageHeader } from '@/components/layout/page-header'
 import {
   SettingsTabs,
@@ -61,7 +63,12 @@ export default async function SettingsPage({
       />
       <SettingsTabs active={tab} solo={session.value.solo} />
       <div role="region" aria-label={settingsTabLabel(tab, session.value.solo)}>
-        <Panel session={session.value} />
+        {/* Keyed on the tab: a query-string change is the same route, so
+            loading.tsx never shows for it. A new boundary per tab does, and
+            the panel streams in behind it. */}
+        <Suspense key={tab} fallback={<CardGridSkeleton count={2} />}>
+          <Panel session={session.value} />
+        </Suspense>
       </div>
     </section>
   )

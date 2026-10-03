@@ -9,14 +9,13 @@ import {
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
-import { PrintButton } from '@/components/reports/print-button'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import type { JobStatus } from '@/types/domain'
 
 /**
  * §6.1. The one element the design system allows to be sticky, and the reason it
  * allows it: this page is long, and the export buttons are what someone came for.
- * Scrolling to the bottom of a 300-row explorer to find "Export PDF" is the
+ * Scrolling to the bottom of a 300-row explorer to find "Unduh PDF" is the
  * interaction this replaces.
  *
  * Solid background, not the translucent blur the app header used — §4 rules out
@@ -36,6 +35,7 @@ export function ReportHeader({
   datasetName,
   status,
   totalResponses,
+  noContent,
   canExport,
 }: {
   jobId: string
@@ -43,6 +43,8 @@ export function ReportHeader({
   datasetName: string
   status: JobStatus
   totalResponses: number
+  /** Respondents who gave no aspiration; null when the job did not count them. */
+  noContent: number | null
   /** §5: an action the role cannot take is absent, not disabled. */
   canExport: boolean
 }) {
@@ -81,14 +83,15 @@ export function ReportHeader({
               <StatusIndicator status={status} size="sm" />
             </div>
             <p className="text-sm text-muted-foreground">
-              {totalResponses} aspirasi dianalisis dari {datasetName}
+              {noContent
+                ? `${totalResponses} dari ${totalResponses + noContent} responden memberikan aspirasi · ${datasetName}`
+                : `${totalResponses} aspirasi dianalisis dari ${datasetName}`}
             </p>
           </div>
 
           {canExport ? (
             <div className="flex shrink-0 flex-wrap items-center gap-2" data-print="hide">
-              <PrintButton />
-              {/* Plain links, not fetch(): a GET that returns a file is already
+              {/* A plain link, not fetch(): a GET that returns a file is already
                   a download, and routing it through JavaScript only adds a way
                   to fail. */}
               <Button asChild variant="outline" size="sm">
@@ -97,11 +100,13 @@ export function ReportHeader({
                   CSV
                 </a>
               </Button>
+              {/* The print page, which opens the print dialog on arrival: the
+                  browser makes the PDF (pilot 01, §2.2). */}
               <Button asChild size="sm">
-                <a href={`/api/reports/${jobId}/pdf`} download>
+                <Link href={`/reports/${jobId}/print?auto=1`}>
                   <FileText aria-hidden />
-                  Export PDF
-                </a>
+                  Unduh PDF
+                </Link>
               </Button>
             </div>
           ) : null}
