@@ -10,6 +10,12 @@ export type ExecutiveSummaryProps = {
   /** §5: hidden entirely for a role that cannot spend the organization's budget. */
   canRegenerate: boolean
   timeZone?: OrgTimeZone
+  /**
+   * More than one when the report has several questions. The narrative is
+   * still written from all of them pooled (the per-question summary comes with
+   * analysis modes), and a reader should not have to guess that.
+   */
+  questionCount?: number
 }
 
 /**
@@ -28,6 +34,7 @@ export function ExecutiveSummary({
   generatedAt,
   canRegenerate,
   timeZone,
+  questionCount = 1,
 }: ExecutiveSummaryProps) {
   return (
     <Card data-print="keep-together">
@@ -49,7 +56,15 @@ export function ExecutiveSummary({
 
       <CardContent>
         {summary ? (
-          <p className="max-w-narrative text-sm leading-relaxed">{summary}</p>
+          <div className="max-w-narrative space-y-3">
+            <p className="text-sm leading-relaxed">{summary}</p>
+            {questionCount > 1 ? (
+              <p className="text-xs text-muted-foreground">
+                Ringkasan ini disusun dari gabungan {questionCount} pertanyaan. Angka dan
+                topik per pertanyaan ada di bagian masing-masing di bawah.
+              </p>
+            ) : null}
+          </div>
         ) : (
           <p className="max-w-narrative text-sm text-muted-foreground">
             Grafik dan tabel di bawah tetap lengkap tanpa ringkasan. Tekan tombol di atas

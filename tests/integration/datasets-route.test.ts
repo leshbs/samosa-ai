@@ -74,9 +74,45 @@ describe('POST /api/datasets', () => {
       expect.objectContaining({
         organizationId: 'org-1',
         uploaderId: 'user-1',
-        textColumn: 'Aspirasi',
+        // The single-column form a wizard loaded before the deploy still posts.
+        textColumns: ['Aspirasi'],
       }),
     )
+  })
+
+  it('takes several columns, one question each', async () => {
+    getSessionUser.mockResolvedValue(SESSION)
+    uploadDataset.mockResolvedValue({
+      ok: true,
+      value: { datasetId: 'dataset-1', responseCount: 3, skippedEmpty: 1 },
+    })
+
+    const body = new FormData()
+    body.append('file', csv())
+    body.append('name', 'Evaluasi Pensi')
+    body.append('source', 'csv')
+    body.append('textColumns', 'Kritik')
+    body.append('textColumns', 'Saran')
+
+    const response = await POST(
+      new Request('http://localhost/api/datasets', { method: 'POST', body }) as never,
+    )
+
+    expect(response.status).toBe(201)
+    expect(uploadDataset).toHaveBeenCalledWith(
+      expect.objectContaining({ textColumns: ['Kritik', 'Saran'] }),
+    )
+  })
+
+  it('refuses an upload that names no column', async () => {
+    getSessionUser.mockResolvedValue(SESSION)
+
+    const response = await POST(
+      request({ file: csv(), name: 'Evaluasi Pensi', source: 'csv' }) as never,
+    )
+
+    expect(response.status).toBe(422)
+    expect(uploadDataset).not.toHaveBeenCalled()
   })
 
   it('rejects an anonymous caller before touching the upload service', async () => {

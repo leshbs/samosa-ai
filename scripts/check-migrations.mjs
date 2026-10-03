@@ -1059,5 +1059,202 @@ check(
   r.error ?? `${r.affected} rows`,
 )
 
+// ── questions (20261005000100) ──
+
+const QUESTIONS = readFileSync(
+  join(MIGRATIONS, '20261005000100_dataset_questions.sql'),
+  'utf8',
+)
+const LEGACY = '20000000-0000-0000-0000-000000000001'
+const FRESH = '20000000-0000-0000-0000-000000000002'
+
+// The hosted project's situation: rows stored before the columns existed.
+await db.exec(`
+  alter table public.responses alter column question_id drop not null;
+  alter table public.responses alter column respondent_index drop not null;
+  alter table public.responses disable trigger responses_fill_question;
+  insert into public.datasets (id, organization_id, uploader_id, name, source, metadata) values
+    ('${LEGACY}', '${ORG.dualSecond}', '${U.dual}', 'Survei lama', 'csv',
+     '{"text_column_name":"Kritik dan saran"}');
+  insert into public.responses (dataset_id, organization_id, text) values
+    ('${LEGACY}', '${ORG.dualSecond}', 'Konsumsi telat'),
+    ('${LEGACY}', '${ORG.dualSecond}', 'tidak ada'),
+    ('${LEGACY}', '${ORG.dualSecond}', 'Kursi kurang');
+  alter table public.responses enable trigger responses_fill_question;
+`)
+await db.exec(QUESTIONS)
+
+rows = await sql(
+  `select column_name, question_text, analysis_mode, detected_mode, position
+   from public.dataset_questions where dataset_id = '${LEGACY}'`,
+)
+check(
+  'questions: an old dataset becomes one evaluative question named after its column',
+  rows.length === 1 &&
+    rows[0].column_name === 'Kritik dan saran' &&
+    rows[0].question_text === 'Kritik dan saran' &&
+    rows[0].analysis_mode === 'evaluative' &&
+    rows[0].detected_mode === null &&
+    rows[0].position === 0,
+  JSON.stringify(rows),
+)
+rows = await sql(
+  `select count(distinct r.question_id)::int as questions,
+          array_agg(r.respondent_index order by r.respondent_index) as indexes
+   from public.responses r where r.dataset_id = '${LEGACY}'`,
+)
+check(
+  'questions: its responses all point at it, numbered 0, 1, 2',
+  rows[0].questions === 1 && JSON.stringify(rows[0].indexes) === '[0,1,2]',
+  JSON.stringify(rows),
+)
+rows = await sql(
+  `select count(*)::int as n from public.datasets d
+   where not exists (select 1 from public.dataset_questions q where q.dataset_id = d.id)`,
+)
+check(
+  'questions: every dataset has a question, even an empty one',
+  rows[0].n === 0,
+  `${rows[0].n} without`,
+)
+
+const before = await sql(
+  `select (select count(*)::int from public.dataset_questions) as questions,
+          (select string_agg(id::text || ':' || question_id::text || ':' || respondent_index, ',' order by id)
+             from public.responses) as responses`,
+)
+await db.exec(QUESTIONS)
+const after = await sql(
+  `select (select count(*)::int from public.dataset_questions) as questions,
+          (select string_agg(id::text || ':' || question_id::text || ':' || respondent_index, ',' order by id)
+             from public.responses) as responses`,
+)
+check(
+  'questions: a second paste changes nothing',
+  JSON.stringify(before) === JSON.stringify(after),
+  `${before[0].questions} → ${after[0].questions} questions`,
+)
+
+rows = await sql(
+  `select is_nullable from information_schema.columns
+   where table_name = 'responses' and column_name in ('question_id', 'respondent_index')`,
+)
+check(
+  'questions: a response always has a question and a respondent number',
+  rows.length === 2 && rows.every((row) => row.is_nullable === 'NO'),
+  JSON.stringify(rows),
+)
+
+// The deployed code between the paste and the merge: rows that name neither.
+await db.exec(`
+  insert into public.datasets (id, organization_id, uploader_id, name, source, metadata) values
+    ('${FRESH}', '${ORG.dualSecond}', '${U.dual}', 'Survei baru', 'csv', '{"text_column_name":"Saran"}');
+  delete from public.dataset_questions where dataset_id = '${FRESH}';
+  insert into public.responses (dataset_id, organization_id, text) values
+    ('${FRESH}', '${ORG.dualSecond}', 'satu'),
+    ('${FRESH}', '${ORG.dualSecond}', 'dua'),
+    ('${FRESH}', '${ORG.dualSecond}', 'tiga');
+`)
+rows = await sql(
+  `select (select count(*)::int from public.dataset_questions where dataset_id = '${FRESH}') as questions,
+          (select question_text from public.dataset_questions where dataset_id = '${FRESH}') as title,
+          (select count(distinct question_id)::int from public.responses where dataset_id = '${FRESH}') as used,
+          (select array_agg(respondent_index order by respondent_index)
+             from public.responses where dataset_id = '${FRESH}') as indexes`,
+)
+check(
+  'questions: rows that name no question get the default one, created once',
+  rows[0].questions === 1 && rows[0].title === 'Saran' && rows[0].used === 1,
+  JSON.stringify(rows),
+)
+check(
+  'questions: and are numbered in the order they arrive',
+  JSON.stringify(rows[0].indexes) === '[0,1,2]',
+  JSON.stringify(rows[0].indexes),
+)
+
+// The current upload: two questions, one respondent answering both.
+await db.exec(`
+  insert into public.dataset_questions (id, dataset_id, organization_id, column_name, question_text, position)
+  values ('30000000-0000-0000-0000-000000000001', '${FRESH}', '${ORG.dualSecond}', 'Kesan', 'Kesan', 1);
+  insert into public.responses (dataset_id, organization_id, text, question_id, respondent_index) values
+    ('${FRESH}', '${ORG.dualSecond}', 'seru', '30000000-0000-0000-0000-000000000001', 0);
+`)
+rows = await sql(
+  `select question_id, respondent_index from public.responses
+   where dataset_id = '${FRESH}' and text = 'seru'`,
+)
+check(
+  'questions: a row that names its question and respondent is stored as given',
+  rows.length === 1 &&
+    rows[0].question_id === '30000000-0000-0000-0000-000000000001' &&
+    rows[0].respondent_index === 0,
+  JSON.stringify(rows),
+)
+
+try {
+  await db.exec(
+    `update public.dataset_questions set analysis_mode = 'sentimen' where dataset_id = '${FRESH}'`,
+  )
+  check('questions: the mode is one of six', false, 'accepted "sentimen"')
+} catch (error) {
+  check('questions: the mode is one of six', true, error.message)
+}
+
+r = await as(
+  U.dual,
+  `select id from public.dataset_questions where dataset_id = '${FRESH}'`,
+)
+check(
+  'questions: a member reads the questions of their workspace',
+  r.rows.length === 2,
+  r.error ?? `${r.rows.length} rows`,
+)
+r = await as(U.stranger, `select id from public.dataset_questions`)
+check(
+  'questions: and nobody else does',
+  r.rows.length === 0,
+  r.error ?? `${r.rows.length} rows`,
+)
+r = await as(
+  U.dual,
+  `update public.dataset_questions set question_text = 'diubah' where dataset_id = '${FRESH}'`,
+)
+check(
+  'questions: a member cannot rewrite a question',
+  r.affected === 0,
+  r.error ?? `${r.affected} rows`,
+)
+r = await as(
+  U.dual,
+  `insert into public.dataset_questions (dataset_id, organization_id, column_name, question_text, position)
+   values ('${FRESH}', '${ORG.dualSecond}', 'Sisipan', 'Sisipan', 9)`,
+)
+check('questions: or add one', r.error !== null, r.error ?? 'inserted')
+
+rows = await sql(`select question_counts from public.analysis_jobs limit 1`)
+check(
+  'questions: a job starts with no per-question counts',
+  rows.length === 1 && JSON.stringify(rows[0].question_counts) === '{}',
+  JSON.stringify(rows),
+)
+r = await as(U.dual, `update public.analysis_jobs set question_counts = '{"x":1}'::jsonb`)
+check(
+  'questions: a member cannot rewrite the counts',
+  r.affected === 0,
+  r.error ?? `${r.affected} rows`,
+)
+
+await db.exec(`delete from public.datasets where id = '${FRESH}'`)
+rows = await sql(
+  `select (select count(*)::int from public.dataset_questions where dataset_id = '${FRESH}') as questions,
+          (select count(*)::int from public.responses where dataset_id = '${FRESH}') as responses`,
+)
+check(
+  'questions: deleting a dataset takes its questions and answers with it',
+  rows[0].questions === 0 && rows[0].responses === 0,
+  JSON.stringify(rows),
+)
+
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`)
 process.exit(failures === 0 ? 0 : 1)
