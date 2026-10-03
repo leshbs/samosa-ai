@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 
 /**
@@ -104,24 +105,21 @@ test.describe('upload to report', () => {
     await page.getByRole('link', { name: 'CSV' }).click()
     expect((await csv).suggestedFilename()).toMatch(/\.csv$/)
 
-    // The PDF is the browser's: "Unduh PDF" opens the print page, which opens
-    // the print dialog by itself. Count the calls instead of opening one.
-    // Both: the link is a client-side navigation, which keeps this window, and
-    // the init script covers a full load if Next ever makes it one.
-    const stubPrint = () => {
-      const counted = window as unknown as { printed: number }
-      counted.printed = 0
-      window.print = () => {
-        counted.printed += 1
-      }
-    }
-    await page.addInitScript(stubPrint)
-    await page.evaluate(stubPrint)
-    await page.getByRole('link', { name: 'Unduh PDF' }).click()
-    await page.waitForURL(/\/reports\/[0-9a-f-]{36}\/print\?auto=1/)
+    // "Unduh PDF" is a real download: the browser draws the file itself and
+    // hands it over, with no dialog (ADR-0014). A real browser is the only
+    // place this path runs — the unit test renders through Node.
+    const pdf = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Unduh PDF' }).click()
+    const file = await pdf
+    expect(file.suggestedFilename()).toMatch(/^samosa-.+\.pdf$/)
+    const saved = await file.path()
+    expect(readFileSync(saved).subarray(0, 5).toString()).toBe('%PDF-')
+    // Still on the report: nothing fell back to the print page.
+    await expect(page).toHaveURL(/\/reports\/[0-9a-f-]{36}$/)
+
+    // "Cetak" opens the print page; the dialog is the reader's to open there.
+    await page.getByRole('link', { name: 'Cetak' }).click()
+    await page.waitForURL(/\/reports\/[0-9a-f-]{36}\/print$/)
     await expect(page.getByRole('heading', { name: 'Ringkasan eksekutif' })).toBeVisible()
-    await expect
-      .poll(() => page.evaluate(() => (window as unknown as { printed: number }).printed))
-      .toBe(1)
   })
 })

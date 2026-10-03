@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   printableReport,
   reportFileStem,
+  reportPdfPayload,
   truncateQuote,
   type ReportDocumentData,
 } from '@/modules/reporting'
@@ -101,5 +102,50 @@ describe('reportFileStem', () => {
   it('names the saved PDF after the dataset', () => {
     expect(reportFileStem('Pensi 2026!')).toBe('samosa-pensi-2026')
     expect(reportFileStem('???')).toBe('samosa-laporan')
+  })
+})
+
+describe('reportPdfPayload', () => {
+  const insight = {
+    title: 'Konsumsi jadi keluhan utama',
+    detail: 'Dua dari lima aspirasi.',
+    evidenceResponseIds: ['r1', 'gone', 'r2', 'r3'],
+  }
+  const quotes = { r1: 'Konsumsi  telat', r2: 'y'.repeat(400), r3: 'Kursi kurang' }
+
+  it('names the file and carries the capped view, so the browser decides nothing', () => {
+    const payload = reportPdfPayload(fixture(), {})
+
+    expect(payload.fileName).toBe('samosa-pensi-2026.pdf')
+    expect(payload.view).toEqual(printableReport(fixture()))
+    expect(payload.noContent).toBe(12)
+    expect(payload.logoSrc).toBeNull()
+  })
+
+  it('puts at most two cited quotes under an insight, cut to length', () => {
+    const payload = reportPdfPayload(fixture({ insights: [insight] }), quotes)
+
+    // "gone" was deleted after the summary was written: skipped, not printed empty.
+    expect(payload.insights[0]?.quotes).toEqual([
+      'Konsumsi telat',
+      `${'y'.repeat(260)}...`,
+    ])
+  })
+
+  it('writes the prepared-by line once, with the title only when there is one', () => {
+    const named = { name: 'Rani Putri', title: 'Sekretaris OSIS' }
+
+    expect(reportPdfPayload(fixture({ preparedBy: named }), {}).preparedLine).toBe(
+      'Disiapkan oleh Rani Putri · Sekretaris OSIS',
+    )
+    expect(
+      reportPdfPayload(fixture({ preparedBy: { ...named, title: '' } }), {}).preparedLine,
+    ).toBe('Disiapkan oleh Rani Putri')
+    expect(reportPdfPayload(fixture(), {}).preparedLine).toBeNull()
+  })
+
+  it('is plain JSON: nothing is lost crossing the network', () => {
+    const payload = reportPdfPayload(fixture({ insights: [insight] }), quotes)
+    expect(JSON.parse(JSON.stringify(payload))).toEqual(payload)
   })
 })

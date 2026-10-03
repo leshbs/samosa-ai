@@ -235,7 +235,7 @@ matcher middleware).
 
 ```
 default-src 'self';
-script-src 'self' 'nonce-<per request>' 'strict-dynamic';
+script-src 'self' 'nonce-<per request>' 'strict-dynamic' 'wasm-unsafe-eval';
 style-src 'self' 'unsafe-inline';
 img-src 'self' data: blob:;
 font-src 'self' data:;
