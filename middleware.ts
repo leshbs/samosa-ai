@@ -64,8 +64,11 @@ function contentSecurityPolicy(nonce: string, isSecure: boolean): string {
 
   const directives = [
     `default-src 'self'`,
-    // React Refresh compiles modules with eval; production never needs it.
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ''}`,
+    // 'wasm-unsafe-eval' lets WebAssembly compile and nothing else: the layout
+    // engine behind "Unduh PDF" is a wasm module, and without this the download
+    // fails in production only (ADR-0014). It does not allow eval() — React
+    // Refresh needs that, and production never does.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval'${isDev ? " 'unsafe-eval'" : ''}`,
     `style-src 'self' 'unsafe-inline'`,
     // Logos and avatars are private objects served by short-lived signed URLs
     // straight from Supabase Storage.
@@ -199,5 +202,9 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|webp)$).*)'],
+  // `ttf`: the PDF's font files in /public/fonts. Three requests on the first
+  // "Unduh PDF", none of which needs a session refresh in front of it.
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|webp|ttf)$).*)',
+  ],
 }

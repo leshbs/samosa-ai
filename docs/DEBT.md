@@ -211,9 +211,12 @@ pengurus OSIS sungguhan, pakai dataset mereka sendiri.
 
 ### PDF tanpa nomor halaman
 
-**Lunas 2026-10-03, sebagian** (ADR-0013). PDF sekarang dibuat browser dari
-`/reports/[id]/print`; nomor halaman datang dari margin box `@page`, yang ada di
-Chromium 131+. Firefox dan Safari mencetak tanpa nomor. Catatan aslinya:
+**Lunas 2026-10-03** (ADR-0014). PDF unduhan punya nomor halaman di setiap
+halaman, di semua browser. Penyebab yang dicatat di bawah ternyata `bottom`:
+`<Text fixed render>` yang diposisikan dengan `bottom` digambar ribuan point di
+atas kertas; dengan `top` ia muncul. Yang tersisa hanya halaman cetak
+(`/reports/[id]/print`), yang nomornya datang dari margin box `@page` dan
+karena itu hanya ada di Chromium 131+. Catatan aslinya:
 
 `render` prop di `@react-pdf/renderer` — satu-satunya cara mendapat
 `pageNumber`/`totalPages` — tidak menghasilkan apa pun di dokumen laporan,
@@ -230,12 +233,42 @@ perlu dibereskan.
 (flex row di dalam box absolute, `left` + `right` bersamaan, dan `render`).
 Satu-satunya cara menemukannya adalah merender PDF-nya lalu melihatnya.
 
-### Chart PDF digambar ulang, tidak reuse Recharts
+### Laporan punya tiga layout
 
-Bar di halaman cetak (`components/reports/print-document.tsx`) adalah `<div>`
-berukuran, terpisah dari komponen Recharts di web: SVG beranimasi tercetak di
-frame mana pun ia sedang berada. Kalau bentuk chart berubah, dua tempat harus
-diubah. Masih wajar selama chart-nya bar sederhana (ADR-0013, dulu ADR-0004).
+Web (Recharts), halaman cetak (`components/reports/print-document.tsx`, `<div>`
+berukuran), dan PDF unduhan (`components/reports/pdf/report-pdf.tsx`,
+react-pdf). Isi dua yang terakhir tidak bisa menyimpang — keduanya menata
+`printableReport()` — tapi tampilannya dikerjakan dua kali: section baru atau
+perubahan chart harus masuk ke ketiga tempat. Masih wajar selama chart-nya bar
+sederhana (ADR-0013, ADR-0014).
+
+**Pemicu:** section laporan baru (mis. per-pertanyaan di C.2) terasa mahal.
+**Bayar dengan:** hapus halaman cetak kalau unduhan terbukti cukup di pilot
+berikutnya, atau pindah ke satu renderer di server (lihat ADR-0014, alternatif).
+
+### PDF unduhan membuang emoji dan aksara non-Latin
+
+`drawableReport()` membuang setiap karakter yang tidak dimiliki Plus Jakarta
+Sans, karena react-pdf mencetaknya sebagai simbol acak. Kutipan
+"pulang duluan 😭🙏" terbit sebagai "pulang duluan". Halaman cetak dan CSV tetap
+memuat teks aslinya. Untuk survei berbahasa Indonesia ini jarang mengubah arti,
+tapi nama organisasi atau kutipan dalam aksara Arab, Tionghoa, atau Kiril akan
+hilang seluruhnya.
+
+**Pemicu:** organisasi pertama yang nama atau datanya bukan aksara Latin, atau
+keluhan soal emoji yang hilang. **Bayar dengan:** font kedua sebagai fallback
+(react-pdf menerima daftar `fontFamily`), dengan ongkos unduhan font tambahan.
+
+### "Unduh PDF" butuh 3-5 detik di tekan pertama
+
+Diukur (ADR-0014): desktop 3,6 detik, ponsel dengan CPU diperlambat 4× 5,0
+detik; tekan berikutnya 1,6 dan 3,3 detik. Sebagian besar adalah bacaan data
+dari database, sisanya menggambar di thread utama — di ponsel halaman tidak
+merespons selama ±2 detik itu.
+
+**Pemicu:** keluhan dari pilot, atau laporan yang jauh lebih panjang.
+**Bayar dengan:** gambar di Web Worker (butuh `worker-src` di CSP), subset font
+ke Latin saja, dan gabungkan bacaan di `loadReportExport` yang masih berurutan.
 
 ### Settings: foto profil, undang anggota, hapus akun — sebagian lunas (Fase 5)
 

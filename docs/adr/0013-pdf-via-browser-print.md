@@ -1,6 +1,8 @@
 # 0013. PDF dibuat browser dari halaman cetak
 
-- **Status:** Accepted
+- **Status:** Accepted, diubah oleh [ADR-0014](0014-pdf-download-in-browser.md):
+  "Unduh PDF" sekarang mengunduh file yang digambar browser; halaman cetak di
+  bawah ini tetap ada sebagai "Cetak" dan sebagai fallback.
 - **Date:** 2026-10-03
 - **Menggantikan:** [ADR-0004](0004-pdf-rendering.md)
 
