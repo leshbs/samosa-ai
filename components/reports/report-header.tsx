@@ -37,6 +37,7 @@ export function ReportHeader({
   status,
   totalResponses,
   noContent,
+  questionCount,
   canExport,
 }: {
   jobId: string
@@ -46,6 +47,11 @@ export function ReportHeader({
   totalResponses: number
   /** Respondents who gave no aspiration; null when the job did not count them. */
   noContent: number | null
+  /**
+   * With several questions a row is an answer, not a respondent — one person
+   * gave several — so the line counts answers and says how many questions.
+   */
+  questionCount: number
   /** §5: an action the role cannot take is absent, not disabled. */
   canExport: boolean
 }) {
@@ -84,9 +90,15 @@ export function ReportHeader({
               <StatusIndicator status={status} size="sm" />
             </div>
             <p className="text-sm text-muted-foreground">
-              {noContent
-                ? `${totalResponses} dari ${totalResponses + noContent} responden memberikan aspirasi · ${datasetName}`
-                : `${totalResponses} aspirasi dianalisis dari ${datasetName}`}
+              {questionCount > 1
+                ? `${questionCount} pertanyaan · ${
+                    noContent
+                      ? `${totalResponses} dari ${totalResponses + noContent} jawaban berisi aspirasi`
+                      : `${totalResponses} jawaban dianalisis`
+                  } · ${datasetName}`
+                : noContent
+                  ? `${totalResponses} dari ${totalResponses + noContent} responden memberikan aspirasi · ${datasetName}`
+                  : `${totalResponses} aspirasi dianalisis dari ${datasetName}`}
             </p>
           </div>
 

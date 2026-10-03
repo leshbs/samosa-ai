@@ -114,13 +114,49 @@ export type OrganizationMember = {
   fullName: string | null
 }
 
+/**
+ * How a question's answers are analysed (pilot 01, §4.1). Only `evaluative`
+ * is in use: the others arrive with mode detection, and are named here so the
+ * column and the type agree from the first migration.
+ */
+export const ANALYSIS_MODES = [
+  'evaluative',
+  'thematic',
+  'categorical',
+  'scale',
+  'segment',
+  'ignore',
+] as const
+export const analysisModeSchema = z.enum(ANALYSIS_MODES)
+export type AnalysisMode = z.infer<typeof analysisModeSchema>
+
+/** One open question of a survey: a column of the uploaded sheet. */
+export type DatasetQuestion = {
+  id: string
+  datasetId: string
+  /** The header as it stood in the sheet. */
+  columnName: string
+  /** What the report prints as the section title. */
+  questionText: string
+  analysisMode: AnalysisMode
+  /** The system's guess before anyone corrected it; null when it never guessed. */
+  detectedMode: AnalysisMode | null
+  position: number
+}
+
 export type Dataset = {
   id: string
   organizationId: string
   name: string
   source: DatasetSource
   storagePath: string | null
+  /** Answers stored: one per respondent per question they answered. */
   responseCount: number
+  /**
+   * Rows of the sheet with at least one answer. Equal to `responseCount` for a
+   * one-question dataset, which is every dataset from before questions existed.
+   */
+  respondentCount: number
   uploaderId: string
   /** Header the responses were taken from; null for datasets created before mapping. */
   textColumnName: string | null
@@ -141,6 +177,10 @@ export type ResponseRecord = {
   id: string
   datasetId: string
   organizationId: string
+  /** The question this answers. */
+  questionId: string
+  /** The sheet row it came from: shared by every answer one respondent gave. */
+  respondentIndex: number
   text: string
   respondentMeta: Record<string, string | number | boolean | null>
   createdAt: string
@@ -161,6 +201,11 @@ export type AnalysisJob = {
    * every sentiment percentage. 0 for jobs from before it was counted.
    */
   noContentCount: number
+  /**
+   * The same counters per question, keyed by question id. Empty for jobs from
+   * before questions existed: their one question reads the job's own counters.
+   */
+  questionCounts: Record<string, QuestionCounts>
   inputTokens: number
   outputTokens: number
   /** Estimated spend in millionths of IDR; integer to avoid float drift. */
@@ -173,6 +218,16 @@ export type AnalysisJob = {
   /** Set when the job's dataset was archived by retention; null otherwise. */
   archivedAt: string | null
   createdAt: string
+}
+
+/** What happened to one question's answers in one job. */
+export type QuestionCounts = {
+  /** Answers with a result row. */
+  analyzed: number
+  /** Answers that held no aspiration: no result row, out of every percentage. */
+  noContent: number
+  /** Answers whose batch failed. */
+  failed: number
 }
 
 export type AnalysisResult = {

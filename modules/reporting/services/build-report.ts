@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { readAll } from '@/lib/supabase/read-all'
 import { ERROR_CODES, appError, err, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
 import type { Report, Sentiment } from '@/types/domain'
@@ -20,16 +21,21 @@ export async function buildReport(
 ): Promise<Result<Report, AppError>> {
   const supabase = createAdminClient()
 
-  const { data: rows, error } = await supabase
-    .from('analysis_results')
-    .select('response_id, sentiment, sentiment_confidence, topics, summary')
-    .eq('job_id', input.jobId)
-    .eq('organization_id', input.organizationId)
+  // Paged: a single select stops at 1,000 rows without saying so.
+  const { data: rows, error } = await readAll((from, to) =>
+    supabase
+      .from('analysis_results')
+      .select('response_id, sentiment, sentiment_confidence, topics, summary')
+      .eq('job_id', input.jobId)
+      .eq('organization_id', input.organizationId)
+      .order('id', { ascending: true })
+      .range(from, to),
+  )
 
   if (error) {
     return err(appError(ERROR_CODES.INTERNAL, 'Hasil analisis tidak bisa dimuat'))
   }
-  if (!rows || rows.length === 0) {
+  if (rows.length === 0) {
     return err(appError(ERROR_CODES.NOT_FOUND, 'Analisis ini belum punya hasil'))
   }
 

@@ -153,7 +153,7 @@ function parseBatch(
         ERROR_CODES.UPSTREAM,
         'Balasan model tidak sesuai format yang diharapkan',
         {
-          details: { issues: result.error.issues.length },
+          details: describeIssues(result.error.issues),
         },
       ),
     )
@@ -166,6 +166,27 @@ function parseBatch(
     else items.push(item)
   }
   return ok({ items, noContentIndexes })
+}
+
+/**
+ * Which fields of a reply failed its schema, and how: "insights.2.title:
+ * too_big". The count alone said that a reply was rejected and nothing about
+ * why, which left a summary that failed one time in fifteen undiagnosable.
+ *
+ * Paths and codes only — never the values, which are respondents' words.
+ *
+ * `malformedReply` marks the failure as the model's reply rather than the
+ * provider being unreachable: the request went through, so asking once more is
+ * a different roll, not a hammering of something that is down.
+ */
+function describeIssues(
+  issues: ReadonlyArray<{ path: ReadonlyArray<string | number>; code: string }>,
+): { malformedReply: true; issues: number; where: string[] } {
+  return {
+    malformedReply: true,
+    issues: issues.length,
+    where: issues.slice(0, 5).map((issue) => `${issue.path.join('.')}: ${issue.code}`),
+  }
 }
 
 /** The narrative is prose, not a per-response table, so it needs far less room. */
@@ -257,6 +278,7 @@ export function createOpenAiAdapter(options: AdapterOptions = {}): LlmAdapter {
             'Model membalas dengan format yang tidak bisa dibaca',
             {
               cause,
+              details: { malformedReply: true },
             },
           ),
         )
@@ -269,7 +291,7 @@ export function createOpenAiAdapter(options: AdapterOptions = {}): LlmAdapter {
             ERROR_CODES.UPSTREAM,
             'Balasan model tidak sesuai format yang diharapkan',
             {
-              details: { issues: summary.error.issues.length },
+              details: describeIssues(summary.error.issues),
             },
           ),
         )
