@@ -28,6 +28,14 @@ import { requestJson } from '@/modules/shared'
 import type { DatasetPreview } from '@/modules/ingestion'
 import type { DatasetSource } from '@/types/domain'
 
+/**
+ * Off until reports can break results down by a column (Phase C.6). Pilot 01:
+ * the tester ticked a column and asked what it did — nothing in the report
+ * used it, and a choice that changes nothing is worse than no choice. The API
+ * still accepts `keepColumns`; only the offer is withdrawn.
+ */
+const OFFER_KEPT_COLUMNS = false
+
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 const ACCEPTED = {
@@ -370,61 +378,71 @@ export function UploadWizard() {
                         <p className="text-sm text-muted-foreground">
                           Kolom selain aspirasi dibuang sebelum disimpan. Analisis tidak
                           memerlukannya, dan kolom seperti nama atau email adalah data
-                          pribadi yang tidak perlu ikut. Centang hanya kalau kamu
-                          benar-benar membutuhkannya di laporan.
+                          pribadi yang tidak perlu ikut.
+                          {OFFER_KEPT_COLUMNS
+                            ? ' Centang hanya kalau kamu benar-benar membutuhkannya di laporan.'
+                            : null}
                         </p>
                       </div>
                     </div>
 
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {otherColumns.map((column) => (
-                        <label
-                          key={column}
-                          className={cn(
-                            'flex cursor-pointer items-start gap-3 rounded-control border p-2 text-sm transition-colors',
-                            keepColumns.includes(column)
-                              ? 'border-notice/50 bg-notice-surface'
-                              : 'hover:bg-accent',
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={keepColumns.includes(column)}
-                            onChange={(event) =>
-                              setKeepColumns((current) =>
-                                event.target.checked
-                                  ? [...current, column]
-                                  : current.filter((kept) => kept !== column),
-                              )
-                            }
-                            className="mt-1 accent-[hsl(var(--primary))]"
-                          />
-                          <span className="min-w-0">
-                            <span className="block truncate font-medium">{column}</span>
-                            <span className="block truncate text-muted-foreground">
-                              {preview.sampleRows[0]?.[column] || '—'}
-                            </span>
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-
-                    <p aria-live="polite" className="text-sm">
-                      {keptColumns.length === 0 ? (
-                        <span className="text-muted-foreground">
-                          Tidak ada kolom tambahan yang disimpan.
-                        </span>
-                      ) : (
-                        <span className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-muted-foreground">Akan disimpan:</span>
-                          {keptColumns.map((column) => (
-                            <Badge key={column} variant="notice">
-                              {column}
-                            </Badge>
+                    {OFFER_KEPT_COLUMNS ? (
+                      <>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {otherColumns.map((column) => (
+                            <label
+                              key={column}
+                              className={cn(
+                                'flex cursor-pointer items-start gap-3 rounded-control border p-2 text-sm transition-colors',
+                                keepColumns.includes(column)
+                                  ? 'border-notice/50 bg-notice-surface'
+                                  : 'hover:bg-accent',
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={keepColumns.includes(column)}
+                                onChange={(event) =>
+                                  setKeepColumns((current) =>
+                                    event.target.checked
+                                      ? [...current, column]
+                                      : current.filter((kept) => kept !== column),
+                                  )
+                                }
+                                className="mt-1 accent-[hsl(var(--primary))]"
+                              />
+                              <span className="min-w-0">
+                                <span className="block truncate font-medium">
+                                  {column}
+                                </span>
+                                <span className="block truncate text-muted-foreground">
+                                  {preview.sampleRows[0]?.[column] || '—'}
+                                </span>
+                              </span>
+                            </label>
                           ))}
-                        </span>
-                      )}
-                    </p>
+                        </div>
+
+                        <p aria-live="polite" className="text-sm">
+                          {keptColumns.length === 0 ? (
+                            <span className="text-muted-foreground">
+                              Tidak ada kolom tambahan yang disimpan.
+                            </span>
+                          ) : (
+                            <span className="flex flex-wrap items-center gap-1.5">
+                              <span className="text-muted-foreground">
+                                Akan disimpan:
+                              </span>
+                              {keptColumns.map((column) => (
+                                <Badge key={column} variant="notice">
+                                  {column}
+                                </Badge>
+                              ))}
+                            </span>
+                          )}
+                        </p>
+                      </>
+                    ) : null}
                   </div>
                 ) : null}
 

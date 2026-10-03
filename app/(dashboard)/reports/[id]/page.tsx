@@ -23,7 +23,7 @@ import { ResponseExplorer } from '@/components/reports/response-explorer'
 import { StatTile } from '@/components/reports/stat-tile'
 import { TopicTail } from '@/components/reports/topic-tail'
 import { Button } from '@/components/ui/button'
-import { formatIdr, getJob, listJobResults } from '@/modules/analysis'
+import { formatIdr, getJob, listJobResults, separatesNoContent } from '@/modules/analysis'
 import { can, getPeople, getSessionUser } from '@/modules/auth'
 import { getDataset } from '@/modules/ingestion'
 import {
@@ -115,6 +115,10 @@ export default async function ReportDetailPage({
   }
 
   const topThree = data.topics.slice(0, 3)
+  // "tidak ada" and friends: never in `rows`, so never in a percentage below.
+  const noContent = separatesNoContent(job.value.promptVersion)
+    ? job.value.noContentCount
+    : null
 
   /**
    * The "Lainnya" bucket is drawn as a bar like any other so the chart accounts
@@ -144,6 +148,7 @@ export default async function ReportDetailPage({
         datasetName={datasetName}
         status={job.value.status}
         totalResponses={data.sentiment.total}
+        noContent={noContent}
         canExport={canExport}
       />
 
@@ -153,6 +158,7 @@ export default async function ReportDetailPage({
           analyzed={data.sentiment.total}
           failed={job.value.failedCount}
           untagged={data.untaggedCount}
+          noContent={noContent}
           isPartial={job.value.status === 'partial'}
         />
 

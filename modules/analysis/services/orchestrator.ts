@@ -29,8 +29,13 @@ export type OrchestratorOutput = {
   costMicroIdr: number
   /** Responses whose batch failed; the caller decides whether to retry. */
   failedResponseIds: string[]
-  /** Responses never sent to the model because they were empty after cleaning. */
-  skippedResponseIds: string[]
+  /**
+   * Responses that hold no aspiration: dropped before the model (empty, or an
+   * exact non-answer like "tidak ada"), or labelled `no_content` by it. No
+   * result row, and out of every percentage — but counted, so the report can
+   * say how many respondents answered.
+   */
+  noContentResponseIds: string[]
 }
 
 /** Runs tasks with a bounded number in flight, preserving result order. */
@@ -80,7 +85,7 @@ export async function analyzeResponses(
     return err(
       appError(
         ERROR_CODES.VALIDATION,
-        'Tidak ada aspirasi yang tersisa setelah dibersihkan',
+        'Tidak ada aspirasi di dataset ini — semua jawabannya kosong atau "tidak ada"',
       ),
     )
   }
@@ -121,6 +126,7 @@ export async function analyzeResponses(
 
   const results: AnalyzedResponse[] = []
   const failedResponseIds: string[] = []
+  const noContentResponseIds: string[] = [...plan.skippedIds]
   let modelId = adapter.name
   let totalInputTokens = 0
   let totalOutputTokens = 0
@@ -152,6 +158,22 @@ export async function analyzeResponses(
       }
       results.push({ ...item, responseId: response.id })
     }
+
+    for (const index of outcome.value.noContentIndexes ?? []) {
+      const response = batch.items[index]
+      if (response) noContentResponseIds.push(response.id)
+    }
+  }
+
+  if (results.length === 0 && failedResponseIds.length === 0) {
+    // Every batch answered and none of it was an aspiration. Not a failure of
+    // the model, and not a report either: there is nothing to chart.
+    return err(
+      appError(
+        ERROR_CODES.VALIDATION,
+        'Tidak ada aspirasi di dataset ini — semua jawabannya kosong atau "tidak ada"',
+      ),
+    )
   }
 
   if (results.length === 0) {
@@ -173,6 +195,6 @@ export async function analyzeResponses(
     totalOutputTokens,
     costMicroIdr,
     failedResponseIds,
-    skippedResponseIds: plan.skippedIds,
+    noContentResponseIds,
   })
 }
