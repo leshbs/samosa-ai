@@ -93,9 +93,19 @@ dan siapa pun tanpa kredensial Supabase.
 ## 4. Pihak ketiga
 
 Teks aspirasi **dikirim ke OpenAI di Amerika Serikat** untuk dianalisis.
-Aplikasi tidak bisa bekerja tanpa itu. Yang dikirim hanya kolom teksnya —
+Aplikasi tidak bisa bekerja tanpa itu. Yang dikirim hanya jawaban di kolom yang
+dipilih untuk dianalisis, bersama judul kolomnya sebagai konteks —
 `respondent_meta` tidak pernah ikut, dan sejak perubahan di atas isinya kosong
 kecuali ada yang sengaja mengisinya.
+
+Sejak mode analisis (ADR-0016), satu hal lagi dikirim, sekali per unggahan:
+**judul semua kolom** di file, bersama gambaran isinya — berapa sel yang terisi,
+berapa yang berbeda, rata-rata jumlah katanya — supaya jenis tiap kolom bisa
+ditebak. **Isi selnya tidak dikirim.** Rancangan awalnya mengirim tiga contoh
+nilai per kolom; itu dibatalkan karena tebakan dibuat sebelum pengunggah
+memilih kolom, sehingga contoh itu akan memuat nama dan email. Kolom yang isinya
+tanggal, email, atau nomor telepon bahkan judulnya tidak dikirim. Diuji di
+`tests/unit/mode-detection.test.ts`.
 
 Daftar lengkap pemroses ada di [`lib/legal/controller.ts`](../lib/legal/controller.ts)
 dan tampil di `/privacy`: Supabase (Tokyo), OpenAI (AS), Vercel (CDN global).

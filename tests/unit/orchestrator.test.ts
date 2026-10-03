@@ -19,11 +19,13 @@ function stubAdapter(overrides: Partial<LlmAdapter> = {}): LlmAdapter {
       ok({
         summary: 'ringkasan eksekutif',
         insights: [],
+        citesQuestions: false,
         modelId: 'stub-model',
         usage: { inputTokens: 0, outputTokens: 0 },
         costMicroIdr: 0,
       }),
     ),
+    classifyColumns: vi.fn(),
     analyzeBatch: vi.fn(async ({ texts }) =>
       ok({
         items: texts.map((_: string, index: number) => ({

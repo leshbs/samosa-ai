@@ -37,7 +37,7 @@ export function crossTabTopicSentiment(
       const counts = byTopic.get(topic)
       if (!counts || seen.has(topic)) continue
       seen.add(topic)
-      counts[record.sentiment] += 1
+      if (record.sentiment !== null) counts[record.sentiment] += 1
     }
   }
 
@@ -94,7 +94,7 @@ export function crossTabTopicSentimentWithOther(
       const topic = normalizeTerm(raw)
       if (!tailTerms.has(topic) || seen.has(topic)) continue
       seen.add(topic)
-      counts[record.sentiment] += 1
+      if (record.sentiment !== null) counts[record.sentiment] += 1
     }
   }
 

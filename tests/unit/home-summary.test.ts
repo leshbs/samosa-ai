@@ -6,9 +6,9 @@ const NOW = new Date('2026-09-27T10:00:00+07:00')
 const TZ = 'Asia/Jakarta'
 
 function job(overrides: Partial<HomeJob> & Pick<HomeJob, 'id'>): HomeJob {
-  return {
+  const base = {
     datasetName: `Dataset ${overrides.id}`,
-    status: 'succeeded',
+    status: 'succeeded' as const,
     processedCount: 100,
     totalCount: 100,
     costMicroIdr: 1_000_000,
@@ -16,6 +16,8 @@ function job(overrides: Partial<HomeJob> & Pick<HomeJob, 'id'>): HomeJob {
     finishedAt: '2026-09-20T03:05:00Z',
     ...overrides,
   }
+  // Every result carries a sentiment unless a test says otherwise.
+  return { evaluatedCount: base.processedCount, ...base }
 }
 
 function summarize(

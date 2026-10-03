@@ -7,8 +7,8 @@ const MAX_TOP_TOPICS = 8
 
 export type AggregateInput = ReadonlyArray<{
   responseId: string
-  sentiment: Sentiment
-  confidence: number
+  sentiment: Sentiment | null
+  confidence: number | null
   topics: string[]
   summary: string | null
 }>
@@ -26,7 +26,8 @@ export type ReportAggregate = {
 const LOW_CONFIDENCE_THRESHOLD = 0.5
 
 export function aggregateResults(results: AggregateInput): ReportAggregate {
-  const total = results.length
+  // Shares are of the results that were read for sentiment.
+  const total = results.filter((result) => result.sentiment !== null).length
   const sentimentCounts = countSentiments(results.map((result) => result.sentiment))
   const topics = buildTopicBreakdown(results).slice(0, MAX_TOP_TOPICS)
 
@@ -44,7 +45,8 @@ export function aggregateResults(results: AggregateInput): ReportAggregate {
     topics,
     sampleQuotes: pickSampleQuotes(results),
     lowConfidenceCount: results.filter(
-      (result) => result.confidence < LOW_CONFIDENCE_THRESHOLD,
+      (result) =>
+        result.confidence !== null && result.confidence < LOW_CONFIDENCE_THRESHOLD,
     ).length,
   }
 }
@@ -57,7 +59,7 @@ function pickSampleQuotes(results: AggregateInput): string[] {
     .flatMap((sentiment) =>
       results
         .filter((result) => result.sentiment === sentiment && result.summary)
-        .sort((a, b) => b.confidence - a.confidence)
+        .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))
         .slice(0, perSentiment)
         .map((result) => result.summary as string),
     )
