@@ -124,6 +124,63 @@ export function printableReport(data: ReportDocumentData): PrintableReport {
   }
 }
 
+/** Quotes printed under one insight: enough to show it is grounded, no more. */
+const MAX_QUOTES_PER_INSIGHT = 2
+
+/**
+ * Everything the browser needs to draw the downloaded PDF, as plain JSON. The
+ * defaults and length caps are already applied here, on the server, so the
+ * drawing code decides nothing about content — it and the print page cannot
+ * disagree about what a report contains, only about how it looks.
+ */
+export type ReportPdfPayload = {
+  fileName: string
+  organizationName: string
+  datasetName: string
+  generatedAt: string
+  promptVersion: string
+  summary: string | null
+  insights: Array<{ title: string; detail: string; quotes: string[] }>
+  sentiment: SentimentDistribution
+  noContent: number | null
+  logoSrc: string | null
+  /** "Disiapkan oleh Rani Putri · Sekretaris OSIS", or null. */
+  preparedLine: string | null
+  view: PrintableReport
+}
+
+export function reportPdfPayload(
+  data: ReportDocumentData,
+  /** Text of the responses the insights cite, by response id. */
+  quotes: Record<string, string>,
+): ReportPdfPayload {
+  const prepared = data.preparedBy
+  return {
+    fileName: `${reportFileStem(data.datasetName)}.pdf`,
+    organizationName: data.organizationName,
+    datasetName: data.datasetName,
+    generatedAt: data.generatedAt,
+    promptVersion: data.promptVersion,
+    summary: data.summary,
+    insights: data.insights.map((insight) => ({
+      title: insight.title,
+      detail: insight.detail,
+      quotes: insight.evidenceResponseIds
+        .map((id) => quotes[id])
+        .filter((text): text is string => Boolean(text))
+        .slice(0, MAX_QUOTES_PER_INSIGHT)
+        .map(truncateQuote),
+    })),
+    sentiment: data.sentiment,
+    noContent: data.noContent,
+    logoSrc: data.logoSrc ?? null,
+    preparedLine: prepared?.name
+      ? `Disiapkan oleh ${prepared.name}${prepared.title ? ` · ${prepared.title}` : ''}`
+      : null,
+    view: printableReport(data),
+  }
+}
+
 /**
  * The browser names a saved PDF after the page title, so the title is the
  * file name: readable and sortable in a downloads folder.
