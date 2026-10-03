@@ -29,9 +29,20 @@ export type ExplorerFocus = {
    * is where the reader can then see and edit what was applied.
    */
   query: string
+  /**
+   * The one question whose answers are shown; null shows every question's. A
+   * chart belongs to a question, so a click on it means "the answers to this
+   * question behind this number" — never the same topic under another one.
+   */
+  questionId: string | null
 }
 
-const EMPTY: ExplorerFocus = { sentiments: [], topics: [], query: '' }
+export const NO_FOCUS: ExplorerFocus = {
+  sentiments: [],
+  topics: [],
+  query: '',
+  questionId: null,
+}
 
 type ExplorerFocusValue = {
   focus: ExplorerFocus
@@ -44,8 +55,30 @@ type ExplorerFocusValue = {
 
 const ExplorerFocusContext = React.createContext<ExplorerFocusValue | null>(null)
 
+/** The question the charts inside it belong to; null outside any section. */
+const ExplorerScopeContext = React.createContext<string | null>(null)
+
+/**
+ * Wraps one question's charts. Everything inside that calls `focusOn` then
+ * filters the explorer to that question as well, without each chart having to
+ * be told which question it is drawing.
+ */
+export function ExplorerScope({
+  questionId,
+  children,
+}: {
+  questionId: string
+  children: React.ReactNode
+}) {
+  return (
+    <ExplorerScopeContext.Provider value={questionId}>
+      {children}
+    </ExplorerScopeContext.Provider>
+  )
+}
+
 export function ExplorerFocusProvider({ children }: { children: React.ReactNode }) {
-  const [focus, setFocus] = React.useState<ExplorerFocus>(EMPTY)
+  const [focus, setFocus] = React.useState<ExplorerFocus>(NO_FOCUS)
 
   const focusOn = React.useCallback((next: Partial<ExplorerFocus>) => {
     // Replaces rather than merges: clicking a topic bar after clicking a
@@ -55,6 +88,7 @@ export function ExplorerFocusProvider({ children }: { children: React.ReactNode 
       sentiments: next.sentiments ?? [],
       topics: next.topics ?? [],
       query: next.query ?? '',
+      questionId: next.questionId ?? null,
     })
 
     // Deferred a frame so the explorer has re-rendered with the new filter
@@ -67,7 +101,7 @@ export function ExplorerFocusProvider({ children }: { children: React.ReactNode 
     })
   }, [])
 
-  const clear = React.useCallback(() => setFocus(EMPTY), [])
+  const clear = React.useCallback(() => setFocus(NO_FOCUS), [])
 
   const value = React.useMemo(
     () => ({ focus, focusOn, setFocus, clear }),
@@ -87,5 +121,18 @@ export function ExplorerFocusProvider({ children }: { children: React.ReactNode 
  * the sentiment bar) without the caller branching.
  */
 export function useExplorerFocus(): ExplorerFocusValue | null {
-  return React.useContext(ExplorerFocusContext)
+  const value = React.useContext(ExplorerFocusContext)
+  const scope = React.useContext(ExplorerScopeContext)
+
+  return React.useMemo(
+    () =>
+      value && scope
+        ? {
+            ...value,
+            focusOn: (next: Partial<ExplorerFocus>) =>
+              value.focusOn({ ...next, questionId: scope }),
+          }
+        : value,
+    [value, scope],
+  )
 }

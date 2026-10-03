@@ -45,22 +45,48 @@ export type ExportableResponse = {
   confidence: number
   topics: readonly string[]
   keywords: readonly string[]
+  questionId?: string
+  /** The sheet row, counted from 0. */
+  respondentIndex?: number
 }
+
+/** A question as a CSV names it: by what the respondent was asked. */
+export type ExportableQuestion = { id: string; text: string }
 
 /**
  * One row per aspiration, for the reader who wants to sort and pivot it
  * themselves. Semicolons join the multi-value columns: a comma inside a cell is
  * legal but turns every topic list into a quoting puzzle in a spreadsheet.
+ *
+ * `question` and `respondent` come last, so the five columns a spreadsheet
+ * built on the earlier export refers to by position stay where they were.
+ * `respondent` is the row of the uploaded sheet, counted from 1: the same
+ * number on every answer one person gave.
  */
-export function exportResponsesToCsv(rows: readonly ExportableResponse[]): string {
+export function exportResponsesToCsv(
+  rows: readonly ExportableResponse[],
+  questions: readonly ExportableQuestion[] = [],
+): string {
+  const textOf = new Map(questions.map((question) => [question.id, question.text]))
+
   const table: Array<Array<string | number>> = [
-    ['response', 'sentiment', 'sentiment_score', 'topics', 'keywords'],
+    [
+      'response',
+      'sentiment',
+      'sentiment_score',
+      'topics',
+      'keywords',
+      'question',
+      'respondent',
+    ],
     ...rows.map((row) => [
       row.responseText,
       row.sentiment,
       row.confidence.toFixed(2),
       row.topics.join('; '),
       row.keywords.join('; '),
+      textOf.get(row.questionId ?? '') ?? '',
+      row.respondentIndex === undefined ? '' : row.respondentIndex + 1,
     ]),
   ]
 
@@ -70,6 +96,9 @@ export function exportResponsesToCsv(rows: readonly ExportableResponse[]): strin
 export type ExportableDatasetRow = {
   id: string
   text: string
+  questionId?: string
+  /** The sheet row, counted from 0. */
+  respondentIndex?: number
   respondentMeta: Record<string, string | number | boolean | null>
 }
 
@@ -78,8 +107,15 @@ export type ExportableDatasetRow = {
  * uploader chose to keep. For the organization archive — the portable form of
  * the data, readable without SAMOSA. Columns are the union across rows, in
  * first-seen order, so a sheet whose later rows gained a column still lines up.
+ *
+ * One row per answer, as stored. `question` and `respondent` are what put the
+ * sheet back together: answers with the same respondent number were one row.
  */
-export function exportDatasetToCsv(rows: readonly ExportableDatasetRow[]): string {
+export function exportDatasetToCsv(
+  rows: readonly ExportableDatasetRow[],
+  questions: readonly ExportableQuestion[] = [],
+): string {
+  const textOf = new Map(questions.map((question) => [question.id, question.text]))
   const metaColumns: string[] = []
   const seen = new Set<string>()
   for (const row of rows) {
@@ -92,10 +128,12 @@ export function exportDatasetToCsv(rows: readonly ExportableDatasetRow[]): strin
   }
 
   const table: Array<Array<string | number>> = [
-    ['response_id', 'response', ...metaColumns],
+    ['response_id', 'response', 'question', 'respondent', ...metaColumns],
     ...rows.map((row) => [
       row.id,
       row.text,
+      textOf.get(row.questionId ?? '') ?? '',
+      row.respondentIndex === undefined ? '' : row.respondentIndex + 1,
       ...metaColumns.map((key) => {
         const value = row.respondentMeta[key]
         return value === null || value === undefined ? '' : String(value)

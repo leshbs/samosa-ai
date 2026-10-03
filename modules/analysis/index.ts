@@ -61,3 +61,4 @@ export type {
   SummaryInput,
   SummaryOutput,
 } from './adapters/types'
+export { questionNoContent } from './services/question-counts'

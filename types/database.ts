@@ -18,6 +18,14 @@ export type OrgRole = 'owner' | 'admin' | 'member' | 'viewer'
 
 export type AccountPlan = 'free' | 'org' | 'enterprise'
 
+export type AnalysisMode =
+  | 'evaluative'
+  | 'thematic'
+  | 'categorical'
+  | 'scale'
+  | 'segment'
+  | 'ignore'
+
 export type OrgTimeZone = 'Asia/Jakarta' | 'Asia/Makassar' | 'Asia/Jayapura'
 
 type AccountsRow = {
@@ -66,10 +74,24 @@ type DatasetsRow = {
   created_at: string
 }
 
+type DatasetQuestionsRow = {
+  id: string
+  dataset_id: string
+  organization_id: string
+  column_name: string
+  question_text: string
+  analysis_mode: AnalysisMode
+  detected_mode: AnalysisMode | null
+  position: number
+  created_at: string
+}
+
 type ResponsesRow = {
   id: string
   dataset_id: string
   organization_id: string
+  question_id: string
+  respondent_index: number
   text: string
   respondent_meta: Json
   created_at: string
@@ -86,6 +108,7 @@ type AnalysisJobsRow = {
   total_count: number
   failed_count: number
   no_content_count: number
+  question_counts: Json
   input_tokens: number
   output_tokens: number
   cost_micro_idr: number
@@ -189,7 +212,16 @@ export type Database = {
         | 'retention_notified_at'
         | 'created_at'
       >
-      responses: Table<ResponsesRow, 'id' | 'respondent_meta' | 'created_at'>
+      dataset_questions: Table<
+        DatasetQuestionsRow,
+        'id' | 'analysis_mode' | 'detected_mode' | 'created_at'
+      >
+      // `question_id` and `respondent_index` are optional on insert: a trigger
+      // fills them for a row that names neither (20261005000100).
+      responses: Table<
+        ResponsesRow,
+        'id' | 'question_id' | 'respondent_index' | 'respondent_meta' | 'created_at'
+      >
       analysis_jobs: Table<
         AnalysisJobsRow,
         | 'id'
@@ -197,6 +229,7 @@ export type Database = {
         | 'status'
         | 'model_id'
         | 'processed_count'
+        | 'question_counts'
         | 'total_count'
         | 'failed_count'
         | 'no_content_count'

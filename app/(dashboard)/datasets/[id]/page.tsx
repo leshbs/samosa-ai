@@ -29,7 +29,12 @@ import {
   formatIdr,
   getLatestJobForDataset,
 } from '@/modules/analysis'
-import { RESPONSES_PAGE_SIZE, getDataset, listResponses } from '@/modules/ingestion'
+import {
+  RESPONSES_PAGE_SIZE,
+  getDataset,
+  listQuestions,
+  listResponses,
+} from '@/modules/ingestion'
 
 export const metadata: Metadata = { title: 'Detail dataset' }
 
@@ -51,11 +56,17 @@ export default async function DatasetDetailPage({
   if (!dataset.ok) notFound()
 
   const currentPage = Number.parseInt(page ?? '1', 10)
-  const [responses, latestJob, plan] = await Promise.all([
+  const [responses, latestJob, plan, storedQuestions] = await Promise.all([
     listResponses(organizationId, id, Number.isNaN(currentPage) ? 1 : currentPage),
     getLatestJobForDataset(organizationId, id),
     getWorkspacePlan(organizationId),
+    listQuestions(organizationId, id),
   ])
+  const questions = storedQuestions.ok ? storedQuestions.value : []
+  const manyQuestions = questions.length > 1
+  const questionText = new Map(
+    questions.map((question) => [question.id, question.questionText]),
+  )
   const deadline = retentionDeadline(
     dataset.value.retentionClockAt,
     plan.limits.retentionDays,
@@ -72,8 +83,20 @@ export default async function DatasetDetailPage({
 
   const facts = [
     { label: 'Sumber', value: dataset.value.source.toUpperCase() },
-    { label: 'Jumlah aspirasi', value: String(dataset.value.responseCount) },
-    { label: 'Kolom teks', value: dataset.value.textColumnName ?? '—' },
+    // With several questions a stored row is an answer, and one respondent
+    // gave several: both numbers are stated rather than one called "aspirasi".
+    manyQuestions
+      ? {
+          label: 'Jawaban',
+          value: `${dataset.value.responseCount} dari ${dataset.value.respondentCount} responden`,
+        }
+      : { label: 'Jumlah aspirasi', value: String(dataset.value.responseCount) },
+    manyQuestions
+      ? { label: 'Pertanyaan', value: String(questions.length) }
+      : {
+          label: 'Kolom teks',
+          value: questions[0]?.questionText ?? dataset.value.textColumnName ?? '—',
+        },
     { label: 'Diunggah', value: formatDateTime(dataset.value.createdAt, timezone) },
     // Absent on a plan that keeps data: there is no date to state.
     ...(deadline
@@ -138,6 +161,21 @@ export default async function DatasetDetailPage({
         </CardContent>
       </Card>
 
+      {manyQuestions ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Pertanyaan</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ol className="list-decimal space-y-1 pl-5 text-sm">
+              {questions.map((question) => (
+                <li key={question.id}>{question.questionText}</li>
+              ))}
+            </ol>
+          </CardContent>
+        </Card>
+      ) : null}
+
       {/**
        * §P4 asks for an explicit kept-column summary. It belongs on this page and
        * not only in the upload wizard: the question "what personal data is in
@@ -194,6 +232,9 @@ export default async function DatasetDetailPage({
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-16">#</TableHead>
+                    {manyQuestions ? (
+                      <TableHead className="w-1/3">Pertanyaan</TableHead>
+                    ) : null}
                     <TableHead>Teks</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -203,6 +244,11 @@ export default async function DatasetDetailPage({
                       <TableCell className="tabular-nums text-muted-foreground">
                         {(responses.value.page - 1) * RESPONSES_PAGE_SIZE + index + 1}
                       </TableCell>
+                      {manyQuestions ? (
+                        <TableCell className="align-top text-muted-foreground">
+                          {questionText.get(response.questionId) ?? '—'}
+                        </TableCell>
+                      ) : null}
                       <TableCell className="whitespace-pre-wrap">
                         {response.text}
                       </TableCell>
@@ -214,7 +260,7 @@ export default async function DatasetDetailPage({
               <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
                 <span className="tabular-nums">
                   Halaman {responses.value.page} dari {responses.value.pageCount} ·{' '}
-                  {responses.value.total} aspirasi
+                  {responses.value.total} {manyQuestions ? 'jawaban' : 'aspirasi'}
                 </span>
                 {/* A disabled Button with asChild would still render a working
                       link, so render plain text when there is nowhere to go. */}

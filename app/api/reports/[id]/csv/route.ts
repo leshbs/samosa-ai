@@ -33,7 +33,7 @@ export async function GET(request: Request, context: RouteContext) {
 
   log.info('api.export.csv.sent', { jobId: id, rows: bundle.value.rows.length })
 
-  return new Response(exportResponsesToCsv(bundle.value.rows), {
+  return new Response(exportResponsesToCsv(bundle.value.rows, bundle.value.questions), {
     headers: {
       // charset matters as much as the BOM: without it some readers still
       // guess ANSI and turn every "dinaikkan" apostrophe into mojibake.

@@ -14,7 +14,8 @@ export type UploadDatasetInput = {
   uploaderId: string
   name: string
   source: DatasetSource
-  textColumn: string
+  /** The open questions: each column becomes a question of the dataset. */
+  textColumns: readonly string[]
   /** Columns stored beside the text. Empty — the default — stores none. */
   keepColumns?: readonly string[]
   file: File
@@ -22,7 +23,10 @@ export type UploadDatasetInput = {
 
 export type UploadDatasetOutput = {
   datasetId: string
+  /** Answers stored: one per respondent per question they answered. */
   responseCount: number
+  respondentCount: number
+  questionCount: number
   skippedEmpty: number
 }
 
@@ -50,10 +54,11 @@ export async function uploadDataset(
 
   const extracted = extractResponses(
     parsed.value,
-    input.textColumn,
+    input.textColumns,
     input.keepColumns ?? [],
   )
   if (!extracted.ok) return extracted
+  const { columns } = extracted.value
 
   const supabase = createAdminClient()
   const storagePath = `${input.organizationId}/${crypto.randomUUID()}-${input.file.name}`
@@ -77,7 +82,12 @@ export async function uploadDataset(
       response_count: extracted.value.responses.length,
       metadata: {
         // Records which column the text came from, so a re-import is reproducible.
-        text_column_name: input.textColumn,
+        // The questions table is the full account; this is its first entry, kept
+        // for what still reads one name.
+        text_column_name: columns[0] ?? '',
+        // Sheet rows with at least one answer: with several questions it is no
+        // longer the number of stored rows.
+        respondent_count: extracted.value.respondentCount,
         // And which columns were deliberately kept, so "what personal data does
         // this dataset hold" is answerable without opening the rows.
         kept_columns: [...(input.keepColumns ?? [])],
@@ -93,10 +103,43 @@ export async function uploadDataset(
   }
 
   const datasetId = String(dataset.id)
+
+  /** Removes everything this upload stored; the row cascade takes the rest. */
+  const undo = async () => {
+    await supabase.from('datasets').delete().eq('id', datasetId)
+    await removeDatasetObject(storagePath)
+  }
+
+  // The header is the question until someone rewords it: it is what the
+  // respondent was asked, and what the report prints over the section.
+  const { data: questions, error: questionsError } = await supabase
+    .from('dataset_questions')
+    .insert(
+      columns.map((column, position) => ({
+        dataset_id: datasetId,
+        organization_id: input.organizationId,
+        column_name: column.slice(0, 200),
+        question_text: column.slice(0, 500),
+        position,
+      })),
+    )
+    .select('id, position')
+
+  if (questionsError || !questions || questions.length !== columns.length) {
+    await undo()
+    return err(appError(ERROR_CODES.INTERNAL, 'Pertanyaan dataset tidak bisa disimpan'))
+  }
+
+  const questionIdOf = new Map(
+    questions.map((row) => [columns[Number(row.position)], String(row.id)]),
+  )
+
   const { error: responsesError } = await supabase.from('responses').insert(
     extracted.value.responses.map((response) => ({
       dataset_id: datasetId,
       organization_id: input.organizationId,
+      question_id: questionIdOf.get(response.column),
+      respondent_index: response.respondentIndex,
       text: response.text,
       respondent_meta: response.respondentMeta,
     })),
@@ -106,8 +149,7 @@ export async function uploadDataset(
     // Leave no half-ingested dataset behind; the row cascade removes responses,
     // and the upload has to go with it or the file outlives everything that
     // referenced it.
-    await supabase.from('datasets').delete().eq('id', datasetId)
-    await removeDatasetObject(storagePath)
+    await undo()
     return err(
       appError(ERROR_CODES.INTERNAL, 'Aspirasi dari dataset tidak bisa disimpan'),
     )
@@ -116,12 +158,16 @@ export async function uploadDataset(
   logger.info('ingestion.dataset.created', {
     datasetId,
     responseCount: extracted.value.responses.length,
+    respondentCount: extracted.value.respondentCount,
+    questionCount: columns.length,
     skippedEmpty: extracted.value.skippedEmpty,
   })
 
   return ok({
     datasetId,
     responseCount: extracted.value.responses.length,
+    respondentCount: extracted.value.respondentCount,
+    questionCount: columns.length,
     skippedEmpty: extracted.value.skippedEmpty,
   })
 }

@@ -8,6 +8,7 @@ import { SENTIMENT_LABELS, SENTIMENT_ORDER } from '@/components/charts/palette'
 import { EASE } from '@/components/motion/motion-provider'
 import {
   EXPLORER_ANCHOR_ID,
+  NO_FOCUS,
   useExplorerFocus,
   type ExplorerFocus,
 } from '@/components/reports/explorer-focus'
@@ -33,6 +34,7 @@ const LOW_CONFIDENCE = 0.6
 
 export type ExplorerRow = {
   responseId: string
+  questionId: string
   responseText: string
   sentiment: Sentiment
   confidence: number
@@ -53,8 +55,6 @@ function toggle<T>(list: readonly T[], value: T): T[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
 }
 
-const NO_FOCUS: ExplorerFocus = { sentiments: [], topics: [], query: '' }
-
 /**
  * §8. Search, sentiment filter, topic chips, confidence sort, 20 per page, no
  * infinite scroll — a report is read in pages and cited by position.
@@ -67,10 +67,17 @@ const NO_FOCUS: ExplorerFocus = { sentiments: [], topics: [], query: '' }
 export function ResponseExplorer({
   rows,
   topics,
+  questions = [],
 }: {
   rows: ExplorerRow[]
   /** Topic vocabulary for the filter, already normalized and ranked. */
   topics: string[]
+  /**
+   * The report's questions, in order. With more than one the explorer offers
+   * them as a filter and names the question in a row's detail; with one there
+   * is nothing to choose between and neither appears.
+   */
+  questions?: ReadonlyArray<{ id: string; text: string }>
 }) {
   const context = useExplorerFocus()
   const [localFocus, setLocalFocus] = useState<ExplorerFocus>(NO_FOCUS)
@@ -103,6 +110,7 @@ export function ResponseExplorer({
     const needle = deferredQuery.trim().toLowerCase()
 
     const matched = rows.filter((row) => {
+      if (focus.questionId !== null && row.questionId !== focus.questionId) return false
       if (focus.sentiments.length > 0 && !focus.sentiments.includes(row.sentiment)) {
         return false
       }
@@ -141,7 +149,14 @@ export function ResponseExplorer({
   const visible = filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)
 
   const hasFilters =
-    query.length > 0 || focus.sentiments.length > 0 || focus.topics.length > 0
+    query.length > 0 ||
+    focus.sentiments.length > 0 ||
+    focus.topics.length > 0 ||
+    focus.questionId !== null
+
+  const manyQuestions = questions.length > 1
+  const questionText = (id: string) =>
+    questions.find((question) => question.id === id)?.text ?? null
 
   function reset() {
     setFocus(NO_FOCUS)
@@ -192,6 +207,32 @@ export function ResponseExplorer({
             </select>
           </label>
         </div>
+
+        {manyQuestions ? (
+          <label
+            className="flex flex-col gap-1 text-sm text-muted-foreground sm:flex-row sm:items-center sm:gap-2"
+            data-print="hide"
+          >
+            <span className="text-xs uppercase tracking-wide">Pertanyaan</span>
+            <select
+              value={focus.questionId ?? ''}
+              onChange={(event) =>
+                setFocus((current) => ({
+                  ...current,
+                  questionId: event.target.value || null,
+                }))
+              }
+              className="h-9 min-w-0 max-w-full rounded-control border bg-background px-2 text-sm text-foreground sm:max-w-md"
+            >
+              <option value="">Semua pertanyaan</option>
+              {questions.map((question) => (
+                <option key={question.id} value={question.id}>
+                  {question.text}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-2" data-print="hide">
           <span className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -364,6 +405,14 @@ export function ResponseExplorer({
                     : ''}
                 </DialogDescription>
               </DialogHeader>
+              {manyQuestions && questionText(open.questionId) ? (
+                <div>
+                  <h3 className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Pertanyaan
+                  </h3>
+                  <p className="mt-1 text-sm">{questionText(open.questionId)}</p>
+                </div>
+              ) : null}
               <p className="whitespace-pre-wrap text-sm">{open.responseText}</p>
               {open.summary ? (
                 <div>

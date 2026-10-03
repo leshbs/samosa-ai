@@ -1,35 +1,30 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-import { ChartFrame } from '@/components/charts/chart-frame'
-import {
-  SentimentTable,
-  TermTable,
-  TopicSentimentTable,
-} from '@/components/charts/chart-tables'
-// Recharts is loaded on demand; the sentiment bar is plain HTML and is not.
-import { KeywordBar, TopicBar } from '@/components/charts/lazy-charts'
-import { SENTIMENT_LABELS } from '@/components/charts/palette'
-import { SentimentBar } from '@/components/charts/sentiment-bar'
-import { Reveal, Stagger, StaggerItem } from '@/components/motion/primitives'
+import { Reveal } from '@/components/motion/primitives'
 import { DataConditionStrip } from '@/components/reports/data-condition-strip'
 import { ExecutiveSummary } from '@/components/reports/executive-summary'
-import { ExplorerFocusProvider } from '@/components/reports/explorer-focus'
+import { ExplorerFocusProvider, ExplorerScope } from '@/components/reports/explorer-focus'
 import { InsightCards } from '@/components/reports/insight-cards'
 import { ReportRealtime } from '@/components/reports/lazy-report-realtime'
 import { ProvenanceStrip } from '@/components/reports/provenance-strip'
+import { QuestionCharts } from '@/components/reports/question-charts'
 import { ReportHeader } from '@/components/reports/report-header'
 import { ResponseExplorer } from '@/components/reports/response-explorer'
-import { StatTile } from '@/components/reports/stat-tile'
-import { TopicTail } from '@/components/reports/topic-tail'
 import { Button } from '@/components/ui/button'
-import { formatIdr, getJob, listJobResults, separatesNoContent } from '@/modules/analysis'
-import { can, getPeople, getSessionUser } from '@/modules/auth'
-import { getDataset } from '@/modules/ingestion'
 import {
-  OTHER_TOPIC_LABEL,
+  formatIdr,
+  getJob,
+  listJobResults,
+  questionNoContent,
+  separatesNoContent,
+} from '@/modules/analysis'
+import { can, getPeople, getSessionUser } from '@/modules/auth'
+import { getDataset, listQuestions } from '@/modules/ingestion'
+import {
   buildDashboardData,
   getStoredSummary,
+  groupByQuestion,
 } from '@/modules/reporting'
 
 export const metadata: Metadata = { title: 'Laporan' }
@@ -43,6 +38,10 @@ const FILTERABLE_TOPICS = 12
  *
  *   1 sticky header · 2 data condition · 3 executive summary · 4 insight cards
  *   5 charts · 6 topic disclosure · 7 response explorer · 8 provenance
+ *
+ * A dataset with several questions repeats 5 and 6 once per question, under
+ * the question as its heading: answers to different questions are never drawn
+ * into one chart (pilot 01, §4.4).
  *
  * The reasoning behind it is worth keeping visible: the reader is told what the
  * data cannot support (2) *before* being told what it means (3, 4), and the raw
@@ -63,14 +62,26 @@ export default async function ReportDetailPage({
   const job = await getJob(organizationId, id)
   if (!job.ok) notFound()
 
-  const [results, dataset] = await Promise.all([
+  const [results, dataset, questions] = await Promise.all([
     listJobResults(organizationId, id),
     getDataset(organizationId, job.value.datasetId),
+    listQuestions(organizationId, job.value.datasetId),
   ])
 
   const rows = results.ok ? results.value : []
+  // The whole job: what the header, the data-condition strip and the
+  // explorer's topic chips speak about. The charts are drawn per question.
   const data = buildDashboardData(rows)
   const datasetName = dataset.ok ? dataset.value.name : 'Dataset terhapus'
+
+  const sections = groupByQuestion(
+    rows,
+    (questions.ok ? questions.value : []).map((question) => ({
+      id: question.id,
+      text: question.questionText,
+    })),
+  )
+  const manyQuestions = sections.length > 1
 
   const canExport = can(session.value.role, 'report:export')
   // Regenerating spends the organization's OpenAI budget, so it is gated on the
@@ -114,24 +125,10 @@ export default async function ReportDetailPage({
     if (citedIds.has(row.responseId)) citedQuotes[row.responseId] = row.responseText
   }
 
-  const topThree = data.topics.slice(0, 3)
   // "tidak ada" and friends: never in `rows`, so never in a percentage below.
   const noContent = separatesNoContent(job.value.promptVersion)
     ? job.value.noContentCount
     : null
-
-  /**
-   * The "Lainnya" bucket is drawn as a bar like any other so the chart accounts
-   * for every tagged mention. Appended last, it reads as the floor the ranked
-   * topics sit on rather than competing with them for the top spot.
-   */
-  const topicRows = data.topicSentimentOther
-    ? [...data.topicSentiment, data.topicSentimentOther]
-    : data.topicSentiment
-
-  const topicChartDescription = data.topicSentimentOther
-    ? `Panjang batang menunjukkan berapa aspirasi menyebut topik itu; warnanya menunjukkan sentimennya. “Lainnya” menggabungkan ${data.topicTail.length} topik sisanya. Klik satu batang untuk menyaring tabel di bawah.`
-    : 'Panjang batang menunjukkan berapa aspirasi menyebut topik itu; warnanya menunjukkan sentimennya. Klik satu batang untuk menyaring tabel di bawah.'
 
   return (
     <ExplorerFocusProvider>
@@ -149,6 +146,7 @@ export default async function ReportDetailPage({
         status={job.value.status}
         totalResponses={data.sentiment.total}
         noContent={noContent}
+        questionCount={sections.length}
         canExport={canExport}
       />
 
@@ -170,103 +168,70 @@ export default async function ReportDetailPage({
             generatedAt={stored?.createdAt ?? null}
             canRegenerate={canRegenerate}
             timeZone={timezone}
+            questionCount={sections.length}
           />
         </Reveal>
 
         {/* ── 4. Insight cards ──────────────────────────────────────── */}
         <InsightCards insights={stored?.insights ?? []} quotes={citedQuotes} />
 
-        {/* ── 5. Charts ─────────────────────────────────────────────── */}
-        <section aria-labelledby="charts-heading" className="space-y-6">
-          <h2 id="charts-heading" className="sr-only">
-            Grafik
-          </h2>
+        {/* ── 5 and 6. Charts and topic disclosure, per question ────── */}
+        {manyQuestions ? (
+          sections.map((section, index) => {
+            const sectionNoContent = questionNoContent(
+              job.value,
+              section.question.id,
+              sections.length,
+            )
+            const headingId = `question-${index + 1}`
 
-          <Stagger className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StaggerItem>
-              <StatTile label="Total aspirasi" value={data.sentiment.total} />
-            </StaggerItem>
-            <StaggerItem>
-              <StatTile
-                label="Positif"
-                value={data.sentiment.shares.positive}
-                format="percent"
-                detail={`${data.sentiment.counts.positive} aspirasi`}
-                focus={{ sentiments: ['positive'] }}
-              />
-            </StaggerItem>
-            <StaggerItem>
-              <StatTile
-                label="Negatif"
-                value={data.sentiment.shares.negative}
-                format="percent"
-                detail={`${data.sentiment.counts.negative} aspirasi`}
-                focus={{ sentiments: ['negative'] }}
-              />
-            </StaggerItem>
-            <StaggerItem>
-              <StatTile
-                label="Kecenderungan"
-                value={
-                  data.sentiment.dominant
-                    ? SENTIMENT_LABELS[data.sentiment.dominant]
-                    : 'Seimbang'
-                }
-                detail={
-                  topThree.length > 0
-                    ? `Topik teratas: ${topThree.map((topic) => topic.term).join(', ')}`
-                    : 'Belum ada topik terdeteksi'
-                }
-              />
-            </StaggerItem>
-          </Stagger>
+            return (
+              <section
+                key={section.question.id || headingId}
+                aria-labelledby={headingId}
+                className="space-y-6 border-t pt-10"
+              >
+                <header className="space-y-1">
+                  <p className="eyebrow text-muted-foreground">
+                    Pertanyaan {index + 1} dari {sections.length}
+                  </p>
+                  <h2 id={headingId} className="text-xl font-semibold md:text-2xl">
+                    {section.question.text}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    {sectionNoContent
+                      ? `${section.rows.length} dari ${section.rows.length + sectionNoContent} jawaban berisi aspirasi`
+                      : `${section.rows.length} jawaban dianalisis`}
+                  </p>
+                </header>
 
-          <Reveal>
-            <ChartFrame
-              title="Sebaran sentimen"
-              description="Proporsi aspirasi negatif, netral, dan positif dari seluruh dataset. Klik satu bagian untuk menyaring tabel di bawah."
-              table={<SentimentTable data={data.sentiment} />}
-            >
-              <SentimentBar data={data.sentiment} />
-            </ChartFrame>
-          </Reveal>
-
-          <Reveal>
-            <ChartFrame
-              title={`Topik teratas (${data.topicSentiment.length} dari ${data.distinctTopicCount})`}
-              description={topicChartDescription}
-              empty={data.topicSentiment.length === 0}
-              emptyMessage="Model tidak menandai satu pun topik pada dataset ini."
-              table={<TopicSentimentTable rows={topicRows} />}
-            >
-              <TopicBar
-                rows={topicRows}
-                otherTopics={data.topicTail.map((topic) => topic.term)}
-                otherLabel={data.topicSentimentOther ? OTHER_TOPIC_LABEL : undefined}
-              />
-            </ChartFrame>
-          </Reveal>
-
-          <Reveal>
-            <ChartFrame
-              title={`Kata kunci teratas (${data.keywords.length})`}
-              description="Kata yang paling sering muncul di seluruh aspirasi. Klik satu batang untuk mencarinya di tabel di bawah."
-              empty={data.keywords.length === 0}
-              emptyMessage="Model tidak menandai satu pun kata kunci pada dataset ini."
-              table={<TermTable terms={data.keywords} header="Kata kunci" />}
-            >
-              <KeywordBar keywords={data.keywords} />
-            </ChartFrame>
-          </Reveal>
-        </section>
-
-        {/* ── 6. Topic disclosure ───────────────────────────────────── */}
-        <TopicTail topics={data.topicTail} />
+                {section.rows.length === 0 ? (
+                  <p className="rounded-card border bg-card px-4 py-6 text-sm text-muted-foreground">
+                    Tidak ada aspirasi untuk pertanyaan ini: jawabannya kosong, “tidak
+                    ada”, atau gagal dianalisis.
+                  </p>
+                ) : (
+                  <ExplorerScope questionId={section.question.id}>
+                    <QuestionCharts data={buildDashboardData(section.rows)} />
+                  </ExplorerScope>
+                )}
+              </section>
+            )
+          })
+        ) : (
+          <section aria-labelledby="charts-heading">
+            <h2 id="charts-heading" className="sr-only">
+              Grafik
+            </h2>
+            <QuestionCharts data={data} />
+          </section>
+        )}
 
         {/* ── 7. Response explorer ──────────────────────────────────── */}
         <ResponseExplorer
           rows={rows}
           topics={data.topics.slice(0, FILTERABLE_TOPICS).map((topic) => topic.term)}
+          questions={sections.map((section) => section.question)}
         />
 
         {/* ── 8. Provenance strip ───────────────────────────────────── */}

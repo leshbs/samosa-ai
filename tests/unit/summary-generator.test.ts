@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ok } from '@/modules/shared'
+import { ERROR_CODES, appError, err, ok } from '@/modules/shared'
 import type { LlmAdapter, SummaryInput } from '@/modules/analysis/adapters/types'
 
 const upsert = vi.fn()
@@ -15,6 +15,9 @@ vi.mock('@/lib/supabase/admin', () => ({
           return chain
         },
         eq: () => chain,
+        // The read is paged; one short page is the whole result.
+        order: () => chain,
+        range: () => chain,
         then: (resolve: (value: unknown) => unknown) => resolve(rowsFromDb),
       }
       return chain
@@ -142,6 +145,76 @@ describe('generateReportSummary', () => {
 
     expect(result.ok).toBe(false)
     expect(upsert).not.toHaveBeenCalled()
+  })
+
+  /** The adapter's account of a reply that broke the output format. */
+  const malformed = () =>
+    err(
+      appError(
+        ERROR_CODES.UPSTREAM,
+        'Balasan model tidak sesuai format yang diharapkan',
+        {
+          details: {
+            malformedReply: true,
+            issues: 1,
+            where: ['insights.0.title: too_big'],
+          },
+        },
+      ),
+    )
+
+  it('asks once more when the model\u2019s reply broke the format', async () => {
+    const { adapter } = stubAdapter([{ evidence: [1] }])
+    const summarize = vi.mocked(adapter.summarize)
+    const good = summarize.getMockImplementation()
+    summarize.mockImplementationOnce(async () => malformed())
+
+    const result = await generateReportSummary({
+      organizationId: 'org-1',
+      jobId: 'job-1',
+      adapter,
+    })
+
+    // The second reply is the one stored; the reader never sees the first.
+    expect(result.ok).toBe(true)
+    expect(summarize).toHaveBeenCalledTimes(2)
+    expect(summarize.mock.calls[1]?.[0]).toEqual(summarize.mock.calls[0]?.[0])
+    expect(upsert).toHaveBeenCalledTimes(1)
+    expect(good).toBeDefined()
+  })
+
+  it('gives up after the second malformed reply rather than asking forever', async () => {
+    const { adapter } = stubAdapter([{ evidence: [] }])
+    const summarize = vi.mocked(adapter.summarize)
+    summarize.mockImplementation(async () => malformed())
+
+    const result = await generateReportSummary({
+      organizationId: 'org-1',
+      jobId: 'job-1',
+      adapter,
+    })
+
+    expect(result.ok).toBe(false)
+    expect(summarize).toHaveBeenCalledTimes(2)
+    expect(upsert).not.toHaveBeenCalled()
+  })
+
+  it('does not ask again when the provider itself was unreachable', async () => {
+    const { adapter } = stubAdapter([{ evidence: [] }])
+    const summarize = vi.mocked(adapter.summarize)
+    // Already retried inside the adapter; a second round only holds the job open.
+    summarize.mockImplementation(async () =>
+      err(appError(ERROR_CODES.UPSTREAM, 'Penyedia AI tidak merespons')),
+    )
+
+    const result = await generateReportSummary({
+      organizationId: 'org-1',
+      jobId: 'job-1',
+      adapter,
+    })
+
+    expect(result.ok).toBe(false)
+    expect(summarize).toHaveBeenCalledTimes(1)
   })
 })
 

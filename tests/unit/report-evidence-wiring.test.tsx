@@ -2,7 +2,7 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MotionProvider } from '@/components/motion/motion-provider'
-import { ExplorerFocusProvider } from '@/components/reports/explorer-focus'
+import { ExplorerFocusProvider, ExplorerScope } from '@/components/reports/explorer-focus'
 import {
   ResponseExplorer,
   type ExplorerRow,
@@ -24,6 +24,7 @@ import { StatTile } from '@/components/reports/stat-tile'
 const ROWS: ExplorerRow[] = [
   {
     responseId: 'r1',
+    questionId: 'q1',
     responseText: 'Konsumsinya telat hampir dua jam.',
     sentiment: 'negative',
     confidence: 0.91,
@@ -33,6 +34,7 @@ const ROWS: ExplorerRow[] = [
   },
   {
     responseId: 'r2',
+    questionId: 'q1',
     responseText: 'Acaranya seru, panitianya ramah.',
     sentiment: 'positive',
     confidence: 0.95,
@@ -42,6 +44,7 @@ const ROWS: ExplorerRow[] = [
   },
   {
     responseId: 'r3',
+    questionId: 'q1',
     responseText: 'Acara dimulai pukul delapan di aula.',
     sentiment: 'neutral',
     confidence: 0.4,
@@ -162,5 +165,76 @@ describe('evidence-first wiring', () => {
     const readable = shown.filter((node) => node.className.includes('sr-only'))
     expect(hidden).toHaveLength(1)
     expect(readable).toHaveLength(1)
+  })
+})
+
+/**
+ * Two questions. r1 and r3 answer the first, r2 the second — and r2 shares its
+ * sentiment with nothing in the first, so a tile that leaked across questions
+ * would show it.
+ */
+const QUESTIONS = [
+  { id: 'q1', text: 'Apa yang perlu diperbaiki?' },
+  { id: 'q2', text: 'Apa yang paling berkesan?' },
+]
+const TWO_QUESTION_ROWS: ExplorerRow[] = [
+  { ...ROWS[0]!, questionId: 'q1' },
+  { ...ROWS[1]!, questionId: 'q2' },
+  { ...ROWS[2]!, questionId: 'q1', sentiment: 'positive' },
+]
+
+function TwoQuestionHarness() {
+  return (
+    <MotionProvider>
+      <ExplorerFocusProvider>
+        <ExplorerScope questionId="q1">
+          <div data-testid="tile-q1-positive">
+            <StatTile
+              label="Positif"
+              value={0.5}
+              format="percent"
+              detail="1 aspirasi"
+              focus={{ sentiments: ['positive'] }}
+            />
+          </div>
+        </ExplorerScope>
+        <ResponseExplorer rows={TWO_QUESTION_ROWS} topics={[]} questions={QUESTIONS} />
+      </ExplorerFocusProvider>
+    </MotionProvider>
+  )
+}
+
+describe('evidence-first wiring across questions', () => {
+  it('opens only the answers to the question a tile belongs to', () => {
+    render(<TwoQuestionHarness />)
+    expect(visibleCount()).toContain('3 dari 3')
+
+    fireEvent.click(within(screen.getByTestId('tile-q1-positive')).getByRole('button'))
+
+    // Two answers are positive; only one of them answers the first question.
+    expect(visibleCount()).toContain('1 dari 3')
+    expect(screen.getByText(/dimulai pukul delapan/)).toBeTruthy()
+    expect(screen.queryByText(/Acaranya seru/)).toBeNull()
+    expect(
+      (screen.getByRole('combobox', { name: 'Pertanyaan' }) as HTMLSelectElement).value,
+    ).toBe('q1')
+  })
+
+  it('lets the reader pick a question, and go back to all of them', () => {
+    render(<TwoQuestionHarness />)
+    const picker = screen.getByRole('combobox', { name: 'Pertanyaan' })
+
+    fireEvent.change(picker, { target: { value: 'q2' } })
+    expect(visibleCount()).toContain('1 dari 3')
+    expect(screen.getByText(/Acaranya seru/)).toBeTruthy()
+
+    fireEvent.change(picker, { target: { value: '' } })
+    expect(visibleCount()).toContain('3 dari 3')
+  })
+
+  it('offers no question picker when there is one question', () => {
+    render(<Harness />)
+
+    expect(screen.queryByRole('combobox', { name: 'Pertanyaan' })).toBeNull()
   })
 })

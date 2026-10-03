@@ -52,7 +52,7 @@ describe('extractResponses', () => {
     const parsed = parseCsv(CSV)
     if (!parsed.ok) throw new Error('fixture failed to parse')
 
-    const extracted = extractResponses(parsed.value, 'Aspirasi')
+    const extracted = extractResponses(parsed.value, ['Aspirasi'])
     expect(extracted.ok).toBe(true)
     if (!extracted.ok) return
     expect(extracted.value.responses).toHaveLength(2)
@@ -68,7 +68,7 @@ describe('extractResponses', () => {
     )
     if (!parsed.ok) throw new Error('fixture failed to parse')
 
-    const extracted = extractResponses(parsed.value, 'Aspirasi')
+    const extracted = extractResponses(parsed.value, ['Aspirasi'])
     expect(extracted.ok).toBe(true)
     if (!extracted.ok) return
     expect(extracted.value.responses.map((r) => r.text)).toEqual([
@@ -85,7 +85,7 @@ describe('extractResponses', () => {
     const parsed = parseCsv(CSV)
     if (!parsed.ok) throw new Error('fixture failed to parse')
 
-    const extracted = extractResponses(parsed.value, 'Aspirasi', ['Kelas'])
+    const extracted = extractResponses(parsed.value, ['Aspirasi'], ['Kelas'])
     expect(extracted.ok).toBe(true)
     if (!extracted.ok) return
     // Kelas was asked for; Timestamp was not, so it does not come along.
@@ -98,7 +98,7 @@ describe('extractResponses', () => {
     const parsed = parseCsv(CSV)
     if (!parsed.ok) throw new Error('fixture failed to parse')
 
-    const extracted = extractResponses(parsed.value, 'Aspirasi', ['Nama'])
+    const extracted = extractResponses(parsed.value, ['Aspirasi'], ['Nama'])
     expect(extracted.ok).toBe(true)
     if (!extracted.ok) return
     // A stale column name must not become an empty key on every row.
@@ -109,7 +109,7 @@ describe('extractResponses', () => {
     const parsed = parseCsv(CSV)
     if (!parsed.ok) throw new Error('fixture failed to parse')
 
-    const extracted = extractResponses(parsed.value, 'Aspirasi', ['Aspirasi', 'Kelas'])
+    const extracted = extractResponses(parsed.value, ['Aspirasi'], ['Aspirasi', 'Kelas'])
     expect(extracted.ok).toBe(true)
     if (!extracted.ok) return
     expect(extracted.value.responses[0]?.respondentMeta).toEqual({
@@ -117,11 +117,87 @@ describe('extractResponses', () => {
     })
   })
 
+  it('stores one response per respondent per question they answered', () => {
+    const parsed = parseCsv(
+      [
+        'Kelas,Kritik,Saran',
+        '12,Konsumsi telat,Tambah vendor',
+        '11,,Mulai tepat waktu',
+        '10,-,',
+        '10,,',
+      ].join('\n'),
+    )
+    if (!parsed.ok) throw new Error('fixture failed to parse')
+
+    const extracted = extractResponses(parsed.value, ['Saran', 'Kritik'])
+    expect(extracted.ok).toBe(true)
+    if (!extracted.ok) return
+
+    // Sheet order, whatever order the request listed them in.
+    expect(extracted.value.columns).toEqual(['Kritik', 'Saran'])
+    expect(
+      extracted.value.responses.map((r) => [r.respondentIndex, r.column, r.text]),
+    ).toEqual([
+      [0, 'Kritik', 'Konsumsi telat'],
+      [0, 'Saran', 'Tambah vendor'],
+      [1, 'Saran', 'Mulai tepat waktu'],
+      [2, 'Kritik', '-'],
+    ])
+    // The last row answered nothing: not a respondent, and its two blank cells
+    // are counted with the two others.
+    expect(extracted.value.respondentCount).toBe(3)
+    expect(extracted.value.skippedEmpty).toBe(4)
+  })
+
+  it('leaves out a chosen column nobody answered', () => {
+    const parsed = parseCsv('Kritik,Catatan\nKonsumsi telat,\nKursi kurang,\n')
+    if (!parsed.ok) throw new Error('fixture failed to parse')
+
+    const extracted = extractResponses(parsed.value, ['Kritik', 'Catatan'])
+    expect(extracted.ok).toBe(true)
+    if (!extracted.ok) return
+    // An empty question would be a report section with nothing in it.
+    expect(extracted.value.columns).toEqual(['Kritik'])
+  })
+
+  it('keeps a kept column on every answer of the respondent, never a question', () => {
+    const parsed = parseCsv('Kelas,Kritik,Saran\n12,Konsumsi telat,Tambah vendor\n')
+    if (!parsed.ok) throw new Error('fixture failed to parse')
+
+    const extracted = extractResponses(
+      parsed.value,
+      ['Kritik', 'Saran'],
+      ['Kelas', 'Saran'],
+    )
+    expect(extracted.ok).toBe(true)
+    if (!extracted.ok) return
+    expect(extracted.value.responses.map((r) => r.respondentMeta)).toEqual([
+      { Kelas: '12' },
+      { Kelas: '12' },
+    ])
+  })
+
+  it('refuses more questions than a report can carry', () => {
+    const headers = Array.from({ length: 11 }, (_, i) => `P${i + 1}`)
+    const parsed = parseCsv(`${headers.join(',')}\n${headers.map(() => 'a').join(',')}\n`)
+    if (!parsed.ok) throw new Error('fixture failed to parse')
+
+    expect(extractResponses(parsed.value, headers).ok).toBe(false)
+    expect(extractResponses(parsed.value, headers.slice(0, 10)).ok).toBe(true)
+  })
+
+  it('refuses an upload that names no column at all', () => {
+    const parsed = parseCsv(CSV)
+    if (!parsed.ok) throw new Error('fixture failed to parse')
+
+    expect(extractResponses(parsed.value, []).ok).toBe(false)
+  })
+
   it('fails when the text column is missing', () => {
     const parsed = parseCsv(CSV)
     if (!parsed.ok) throw new Error('fixture failed to parse')
 
-    const extracted = extractResponses(parsed.value, 'Tidak Ada')
+    const extracted = extractResponses(parsed.value, ['Tidak Ada'])
     expect(extracted.ok).toBe(false)
   })
 })

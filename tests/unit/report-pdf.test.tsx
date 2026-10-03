@@ -8,7 +8,11 @@ import { inflateSync } from 'node:zlib'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { describe, expect, it } from 'vitest'
 import { ReportPdf, drawableReport } from '@/components/reports/pdf/report-pdf'
-import { reportPdfPayload, type ReportDocumentData } from '@/modules/reporting'
+import {
+  reportPdfPayload,
+  type ReportDocumentData,
+  type ReportDocumentSection,
+} from '@/modules/reporting'
 
 /** The unit test has no server to fetch /fonts from; it reads the same files. */
 const FONTS = path.resolve('public/fonts')
@@ -19,6 +23,31 @@ const MARGIN = 62.36
 
 function term(name: string, count: number) {
   return { term: name, count, share: 0 }
+}
+
+const SENTIMENT = {
+  total: 128,
+  counts: { positive: 61, neutral: 30, negative: 37 },
+  shares: { positive: 61 / 128, neutral: 30 / 128, negative: 37 / 128 },
+  dominant: 'positive' as const,
+}
+
+function section(overrides: Partial<ReportDocumentSection> = {}): ReportDocumentSection {
+  return {
+    questionText: 'Kritik dan saran',
+    sentiment: SENTIMENT,
+    noContent: 100,
+    topics: Array.from({ length: 10 }, (_, i) => term(`topik ${i}`, 40 - i * 3)),
+    keywords: Array.from({ length: 12 }, (_, i) => term(`kata ${i}`, 34 - i * 2)),
+    topResponsesByTopic: Array.from({ length: 5 }, (_, i) => ({
+      topic: `topik ${i}`,
+      responses: Array.from({ length: 3 }, () => ({
+        text: 'Konsumsinya datang jam dua, padahal acaranya mulai jam sebelas 😭',
+        sentiment: 'negative' as const,
+      })),
+    })),
+    ...overrides,
+  }
 }
 
 function fixture(overrides: Partial<ReportDocumentData> = {}): ReportDocumentData {
@@ -35,22 +64,9 @@ function fixture(overrides: Partial<ReportDocumentData> = {}): ReportDocumentDat
         evidenceResponseIds: ['r1'],
       },
     ],
-    sentiment: {
-      total: 128,
-      counts: { positive: 61, neutral: 30, negative: 37 },
-      shares: { positive: 61 / 128, neutral: 30 / 128, negative: 37 / 128 },
-      dominant: 'positive',
-    },
+    sentiment: SENTIMENT,
     noContent: 100,
-    topics: Array.from({ length: 10 }, (_, i) => term(`topik ${i}`, 40 - i * 3)),
-    keywords: Array.from({ length: 12 }, (_, i) => term(`kata ${i}`, 34 - i * 2)),
-    topResponsesByTopic: Array.from({ length: 5 }, (_, i) => ({
-      topic: `topik ${i}`,
-      responses: Array.from({ length: 3 }, () => ({
-        text: 'Konsumsinya datang jam dua, padahal acaranya mulai jam sebelas 😭',
-        sentiment: 'negative' as const,
-      })),
-    })),
+    sections: [section()],
     provenance: {
       modelId: 'gpt-4o-mini',
       promptVersion: 'analysis.v2',
@@ -153,7 +169,7 @@ describe('ReportPdf', () => {
     const { report } = await render(fixture())
 
     expect(report.insights[0]?.quotes).toEqual(['Konsumsi telat dua jam'])
-    expect(report.view.quoted[0]?.responses[0]?.text).toBe(
+    expect(report.view.sections[0]?.quoted[0]?.responses[0]?.text).toBe(
       'Konsumsinya datang jam dua, padahal acaranya mulai jam sebelas',
     )
     // What the report itself writes — "%", "·", line breaks — is untouched.
@@ -174,10 +190,57 @@ describe('ReportPdf', () => {
           includeTopicTail: true,
           includeProvenance: false,
         },
-        topicTail: Array.from({ length: 23 }, (_, i) => term(`ekor ${i}`, 12 - (i >> 1))),
+        sections: [
+          section({
+            noContent: null,
+            topicTail: Array.from({ length: 23 }, (_, i) =>
+              term(`ekor ${i}`, 12 - (i >> 1)),
+            ),
+          }),
+        ],
       }),
     )
 
     expect(bytes.byteLength).toBeGreaterThan(5_000)
+  }, 30_000)
+
+  it('draws a section per question, and more pages for more questions', async () => {
+    const one = await render(fixture())
+    const three = await render(
+      fixture({
+        sections: [
+          section(),
+          section({ questionText: 'Apa yang paling berkesan dari acara ini?' }),
+          // Every answer was "tidak ada": the question keeps its place.
+          section({
+            questionText: 'Ada usul lain?',
+            sentiment: {
+              total: 0,
+              counts: { positive: 0, neutral: 0, negative: 0 },
+              shares: { positive: 0, neutral: 0, negative: 0 },
+              dominant: null,
+            },
+            noContent: 40,
+            topics: [],
+            keywords: [],
+            topResponsesByTopic: [],
+          }),
+        ],
+      }),
+    )
+
+    expect(three.report.view.sections.map((s) => s.title)).toEqual([
+      'Kritik dan saran',
+      'Apa yang paling berkesan dari acara ini?',
+      'Ada usul lain?',
+    ])
+    const pages = pageStreams(three.bytes, three.text)
+    expect(pages.length).toBeGreaterThan(pageStreams(one.bytes, one.text).length)
+    // Still on the paper on every page, with three questions laid out.
+    for (const page of pages) {
+      const tops = textTops(page)
+      expect(Math.min(...tops)).toBeGreaterThan(MARGIN)
+      expect(Math.max(...tops)).toBeLessThan(PAGE_HEIGHT)
+    }
   }, 30_000)
 })
