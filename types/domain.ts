@@ -156,6 +156,11 @@ export type AnalysisJob = {
   processedCount: number
   totalCount: number
   failedCount: number
+  /**
+   * Responses that said nothing ("tidak ada", "-"): no result row, and out of
+   * every sentiment percentage. 0 for jobs from before it was counted.
+   */
+  noContentCount: number
   inputTokens: number
   outputTokens: number
   /** Estimated spend in millionths of IDR; integer to avoid float drift. */

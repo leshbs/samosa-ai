@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { LinkPending } from '@/components/layout/link-pending'
 import { cn } from '@/lib/utils'
 
 export type SidebarCounts = { datasets: number | null; reports: number | null }
@@ -110,6 +111,9 @@ export function SidebarNav({
                   )}
                 />
                 <span className="flex-1 truncate">{label}</span>
+                {/* The marker shows on the pressed row before the next page's
+                    skeleton has been fetched. */}
+                <LinkPending className="absolute inset-y-2.5 left-0 w-[3px] rounded-full bg-ember-500/60" />
                 {value !== null && value !== undefined ? (
                   <span className="rounded-full bg-white/[0.08] px-2 py-0.5 font-mono text-micro text-white/70">
                     {value}

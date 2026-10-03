@@ -690,6 +690,40 @@ try {
     await admin.from('datasets').update({ archived_at: null }).eq('id', a.datasetId)
   }
 
+  // ── Non-answers (20261004000100) ─────────────────────────────────────
+  const counted = await admin
+    .from('analysis_jobs')
+    .update({ no_content_count: 7 })
+    .eq('id', a.jobId)
+    .select('no_content_count')
+  if (counted.error) {
+    skip(
+      'the non-answer count is read-only from the browser',
+      'analysis_jobs.no_content_count does not exist — apply 20261004000100_no_content_count.sql',
+    )
+  } else {
+    const readable = await asA
+      .from('analysis_jobs')
+      .select('no_content_count')
+      .eq('id', a.jobId)
+      .single()
+    check(
+      'user A can read the non-answer count on their report',
+      readable.data?.no_content_count === 7,
+      readable.error?.message ?? JSON.stringify(readable.data),
+    )
+    const rewrite = await asA
+      .from('analysis_jobs')
+      .update({ no_content_count: 0 })
+      .eq('id', a.jobId)
+      .select('id')
+    check(
+      'user A cannot rewrite the non-answer count',
+      (rewrite.data ?? []).length === 0,
+      rewrite.error ? rewrite.error.message : 'no rows updated',
+    )
+  }
+
   // ── Handing over moves the bill (20261002000300) ─────────────────────
   // Last, because it changes who owns org A.
   await admin

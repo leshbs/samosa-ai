@@ -5,6 +5,7 @@ import { notFound, redirect } from 'next/navigation'
 import { AnalyzeButton } from '@/components/analysis/analyze-button'
 import { DeleteDatasetButton } from '@/components/datasets/delete-dataset-button'
 import { InlineError } from '@/components/layout/inline-error'
+import { LinkPending } from '@/components/layout/link-pending'
 import { PageHeader } from '@/components/layout/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -220,8 +221,12 @@ export default async function DatasetDetailPage({
                 <div className="flex gap-2">
                   {responses.value.page > 1 ? (
                     <Button asChild variant="outline" size="sm">
-                      <Link href={`/datasets/${id}?page=${responses.value.page - 1}`}>
+                      <Link
+                        href={`/datasets/${id}?page=${responses.value.page - 1}`}
+                        className="relative"
+                      >
                         Sebelumnya
+                        <LinkPending className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-primary" />
                       </Link>
                     </Button>
                   ) : (
@@ -231,8 +236,12 @@ export default async function DatasetDetailPage({
                   )}
                   {responses.value.page < responses.value.pageCount ? (
                     <Button asChild variant="outline" size="sm">
-                      <Link href={`/datasets/${id}?page=${responses.value.page + 1}`}>
+                      <Link
+                        href={`/datasets/${id}?page=${responses.value.page + 1}`}
+                        className="relative"
+                      >
                         Berikutnya
+                        <LinkPending className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-primary" />
                       </Link>
                     </Button>
                   ) : (
