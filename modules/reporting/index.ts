@@ -41,11 +41,13 @@ export type { ExportableResponse } from './exporters/csv-exporter'
 export {
   printableReport,
   reportFileStem,
+  reportPdfPayload,
   truncateQuote,
 } from './exporters/report-document'
 export type {
   PrintableReport,
   ReportDocumentData,
+  ReportPdfPayload,
   ReportProvenance,
 } from './exporters/report-document'
 export { exportDatasetToCsv } from './exporters/csv-exporter'

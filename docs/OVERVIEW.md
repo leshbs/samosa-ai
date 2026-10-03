@@ -54,7 +54,7 @@ samosa/
 | Hosting       | Vercel                          | CI/CD dari GitHub, edge                                                |
 | Monitoring    | Log terstruktur + `requestId`   | Korelasi edge ke log line. Sentry belum dipasang, lihat `DEBT.md`      |
 | Rate limiting | Postgres (`consume_rate_limit`) | Tanpa vendor kedua; penghitung in-process tidak berguna di serverless  |
-| PDF export    | Cetak browser (`/print`)        | Server tidak membuat PDF: nol timeout, nol biaya (ADR-0013)            |
+| PDF export    | `@react-pdf/renderer`, browser  | Digambar di browser pembaca; cetak (`/print`) jadi fallback (ADR-0014) |
 | Testing       | Vitest + Playwright             | Unit + E2E                                                             |
 | Package mgr   | pnpm                            | Fast, disk-efficient                                                   |
 
@@ -184,7 +184,7 @@ samosa/
 │   │   ├── datasets/
 │   │   ├── analysis/[id]/
 │   │   └── reports/[id]/
-│   ├── (print)/reports/[id]/print/  # Laporan siap cetak; browser membuat PDF-nya (ADR-0013)
+│   ├── (print)/reports/[id]/print/  # Laporan siap cetak; fallback "Unduh PDF" (ADR-0013, 0014)
 │   └── api/                         # Route Handlers — thin controllers
 │       ├── _lib/respond.ts          # success() / failure() helpers
 │       ├── datasets/route.ts
@@ -304,7 +304,9 @@ User uploads CSV
          menulis ringkasan eksekutif + insight ke tabel reports
   → Ketika done, client fetch /api/reports/[id]
   → reporting.buildReport() → aggregated view untuk dashboard
-  → Export: GET /api/reports/[id]/csv · PDF: /reports/[id]/print (cetak browser)
+  → Export: GET /api/reports/[id]/csv
+  → PDF: GET /api/reports/[id]/document (JSON) → browser menggambar file-nya
+         (ADR-0014); kalau gagal, /reports/[id]/print (cetak browser)
 ```
 
 ### Data model (skema utama)
@@ -520,7 +522,7 @@ Audit penuh beserta buktinya ada di **[`docs/security-audit.md`](security-audit.
 - ✅ **Sanitize input sebelum ke LLM** — validasi panjang, strip control chars, defang delimiter prompt, dan flag frasa prompt-injection (`modules/analysis/postprocess/sanitize.ts`).
 - ✅ **Sanitasi unggahan file** — magic bytes, whitelist ekstensi dan MIME, batas ukuran dan jumlah baris (`modules/ingestion/validators/file-signature.ts`). `source` datang dari body request, jadi byte-nya satu-satunya keterangan jujur soal isi file.
 - ✅ **CSRF** — pengecekan `Origin` untuk setiap metode tulis di middleware; `/api/webhooks/*` dikecualikan karena memakai shared secret.
-- ✅ **Content Security Policy** — nonce per request, `strict-dynamic`, plus header konstan di `next.config.ts`. Nol pelanggaran di enam route, diperiksa di browser sungguhan.
+- ✅ **Content Security Policy** — nonce per request, `strict-dynamic`, `wasm-unsafe-eval` untuk mesin layout PDF (ADR-0014), plus header konstan di `next.config.ts`. Nol pelanggaran di enam route, diperiksa di browser sungguhan.
 - ✅ **Auth** — email wajib diverifikasi; tautan email ditebus di server lewat `token_hash` (ADR-0009); reset password mengeluarkan sesi di perangkat lain; form lupa-password tidak membocorkan email mana yang terdaftar; setiap `?next=` lewat `safeNextPath()` (menutup open redirect `//` dan `/\`). Diverifikasi end-to-end di project hosted dengan akun sekali pakai. Pengiriman email sungguhan menunggu SMTP — lihat `DEBT.md`.
 - ✅ **Keanggotaan dan kepemilikan** — admin tidak bisa menaikkan dirinya jadi pemilik, menyentuh baris pemilik, atau menambah anggota langsung; kepemilikan hanya berpindah lewat fungsi `security definer` dalam satu transaksi. Undangan menyimpan hash token, bukan tokennya. Diverifikasi dengan `pnpm db:check` (110 cek di PGlite, termasuk `accounts` yang tidak bisa ditulis dari browser); `scripts/check-rls.mjs` mengulang cek lintas-tenant-nya terhadap project hosted setelah migrasi diterapkan (ADR-0010).
 - ✅ **Korelasi log** — satu `requestId` dari edge sampai ke log line, dikembalikan sebagai header `x-request-id`.

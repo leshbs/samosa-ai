@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Download, FileText } from 'lucide-react'
+import { Download, Printer } from 'lucide-react'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -9,6 +9,7 @@ import {
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
+import { DownloadPdfButton } from '@/components/reports/download-pdf-button'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import type { JobStatus } from '@/types/domain'
 
@@ -100,14 +101,14 @@ export function ReportHeader({
                   CSV
                 </a>
               </Button>
-              {/* The print page, which opens the print dialog on arrival: the
-                  browser makes the PDF (pilot 01, §2.2). */}
-              <Button asChild size="sm">
-                <Link href={`/reports/${jobId}/print?auto=1`}>
-                  <FileText aria-hidden />
-                  Unduh PDF
+              {/* The print page: for paper, and what "Unduh PDF" falls back to. */}
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/reports/${jobId}/print`}>
+                  <Printer aria-hidden />
+                  Cetak
                 </Link>
               </Button>
+              <DownloadPdfButton jobId={jobId} />
             </div>
           ) : null}
         </div>
