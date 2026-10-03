@@ -1,4 +1,10 @@
-import { formatIdr, getJob, listJobResults, separatesNoContent } from '@/modules/analysis'
+import {
+  formatIdr,
+  getJob,
+  listJobResults,
+  questionNoContent,
+  separatesNoContent,
+} from '@/modules/analysis'
 import {
   getOrganizationSettings,
   getPeople,
@@ -6,14 +12,16 @@ import {
   type LogoImage,
   type SessionUser,
 } from '@/modules/auth'
-import { getDataset } from '@/modules/ingestion'
+import { getDataset, listQuestions } from '@/modules/ingestion'
 import {
   aggregateKeywords,
   aggregateTopics,
   aggregateSentiment,
   getStoredSummary,
+  groupByQuestion,
   topResponsesByTopic,
   type ReportDocumentData,
+  type ReportQuestion,
 } from '@/modules/reporting'
 import { ERROR_CODES, appError, err, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
@@ -34,6 +42,8 @@ const ALL_TOPICS = 10_000
 
 export type ReportExportBundle = {
   rows: AnalysisResultRow[]
+  /** The dataset's questions in sheet order, for naming a row's question. */
+  questions: ReportQuestion[]
   document: ReportDocumentData
   /** Retention archived it: printable, but no longer reachable in the app. */
   archived: boolean
@@ -134,19 +144,43 @@ export async function loadReportExport(
     )
   }
 
-  const [dataset, summary, people] = await Promise.all([
+  const [dataset, summary, people, storedQuestions] = await Promise.all([
     getDataset(organizationId, job.value.datasetId, options),
     getStoredSummary(organizationId, jobId),
     getPeople([job.value.createdBy]),
+    listQuestions(organizationId, job.value.datasetId),
   ])
 
   const rows = results.value
-  const allTopics = aggregateTopics(rows, ALL_TOPICS)
-  const topics = allTopics.slice(0, TOPICS_IN_EXPORT)
   const runBy = job.value.createdBy ? personLine(people.get(job.value.createdBy)) : null
+
+  const questions = (storedQuestions.ok ? storedQuestions.value : []).map((question) => ({
+    id: question.id,
+    text: question.questionText,
+  }))
+  // Aggregated per question and never across them: one topic list over two
+  // questions describes neither (pilot 01, §4.4).
+  const grouped = groupByQuestion(rows, questions)
+  const sections = grouped.map((section) => {
+    const allTopics = aggregateTopics(section.rows, ALL_TOPICS)
+    const topics = allTopics.slice(0, TOPICS_IN_EXPORT)
+    return {
+      questionText: section.question.text,
+      sentiment: aggregateSentiment(section.rows),
+      noContent: questionNoContent(job.value, section.question.id, grouped.length),
+      topics,
+      keywords: aggregateKeywords(section.rows, KEYWORDS_IN_EXPORT),
+      topResponsesByTopic: topResponsesByTopic(
+        section.rows,
+        topics.slice(0, TOPICS_WITH_QUOTES),
+      ),
+      topicTail: allTopics.slice(TOPICS_IN_EXPORT),
+    }
+  })
 
   return ok({
     rows,
+    questions: grouped.map((section) => section.question),
     archived: job.value.archivedAt !== null,
     document: {
       organizationName: context.organizationName,
@@ -159,13 +193,10 @@ export async function loadReportExport(
       noContent: separatesNoContent(job.value.promptVersion)
         ? job.value.noContentCount
         : null,
-      topics,
-      keywords: aggregateKeywords(rows, KEYWORDS_IN_EXPORT),
-      topResponsesByTopic: topResponsesByTopic(rows, topics.slice(0, TOPICS_WITH_QUOTES)),
+      sections,
       logoSrc: logoDataUrl(context.logo),
       preparedBy: context.preparedBy,
       preferences: context.preferences,
-      topicTail: allTopics.slice(TOPICS_IN_EXPORT),
       provenance: {
         modelId: job.value.modelId,
         promptVersion: job.value.promptVersion,

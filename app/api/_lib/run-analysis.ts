@@ -19,7 +19,15 @@ export async function runAnalysisJob(jobId: string) {
       if (!summary.ok) {
         // Charts and the explorer render from the results either way; the
         // report page offers a Regenerate button for exactly this case.
-        logger.warn('reporting.summary.failed', { jobId, code: summary.error.code })
+        // The reason too: "UPSTREAM" alone does not say whether the provider
+        // was down or the model's reply failed the schema, and only one of
+        // those is worth pressing Regenerate for.
+        logger.warn('reporting.summary.failed', {
+          jobId,
+          code: summary.error.code,
+          reason: summary.error.message,
+          ...summary.error.details,
+        })
       }
     },
   })

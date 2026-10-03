@@ -176,6 +176,16 @@ alter table responses
 
 **Migrasi dari keadaan sekarang:** tiap baris `responses` yang ada menjadi satu (responden, pertanyaan tunggal). Backfill langsung — buat satu `dataset_questions` per dataset lama dengan `analysis_mode = 'evaluative'`.
 
+**Koreksi saat dikerjakan** (ADR-0015, migrasi `20261005000100`):
+
+- `dataset_questions` juga punya `organization_id`: setiap tabel tenant membawanya, dan policy RLS bersandar padanya.
+- Kolom `segments` tidak dibuat. `responses.respondent_meta` sudah ada dan sudah memuat kolom yang disimpan; segmen masuk ke sana.
+- `question_id` dan `respondent_index` dibuat `NOT NULL`, dengan trigger yang mengisi keduanya untuk baris yang tidak menyebutnya. Satu project Supabase melayani dev dan produksi dan migrasi ditempel sebelum merge, jadi kode yang sedang live tetap menyisipkan baris tanpa pertanyaan selama jeda itu.
+- `respondent_index` dataset lama adalah urutan tersimpan, bukan baris sheet asli: baris kosong dulu dibuang saat unggah dan semua baris satu dataset punya timestamp yang sama.
+- "`no_content` per pertanyaan" butuh tempat: `analysis_jobs.question_counts`.
+- **Ditemukan saat memetakan ke kode:** bacaan dibatasi. Diukur di project hosted, select tanpa halaman berhenti di 1.000 baris dan filter daftar id gagal di sekitar 400 id. Job di dataset lebih dari 1.000 jawaban hanya menganalisis 1.000 pertama; laporan dengan lebih dari ±300 hasil menampilkan teks kosong. Tiga pertanyaan melipatgandakan jumlah baris, jadi semua bacaan satu dataset sekarang berhalaman.
+- Dikerjakan dua putaran. Putaran 1 (ini): skema, unggah beberapa kolom, laporan per pertanyaan — semua pertanyaan masih `evaluative` di `analysis.v2`. Putaran 2: deteksi mode, prompt per mode (`analysis.v3`), ringkasan per pertanyaan (`summary.v3`).
+
 ### 4.4 Dampak ke prompt dan laporan
 
 - **Prompt** menerima `question_text` sebagai konteks. Ini saja kemungkinan besar sudah meningkatkan kualitas — "Apa yang perlu diperbaiki?" dan "Apa yang paling berkesan?" menetapkan harapan yang sepenuhnya berbeda terhadap jawaban yang sama.

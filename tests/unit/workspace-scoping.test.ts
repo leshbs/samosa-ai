@@ -65,6 +65,7 @@ const QUERIES: Array<[name: string, run: () => Promise<unknown>]> = [
   ['listDatasets', () => datasets.listDatasets(ORG)],
   ['countDatasets', () => datasets.countDatasets(ORG)],
   ['getDataset', () => datasets.getDataset(ORG, 'dataset-1')],
+  ['listQuestions', () => datasets.listQuestions(ORG, 'dataset-1')],
   ['listResponses', () => datasets.listResponses(ORG, 'dataset-1')],
   ['listAllResponses', () => datasets.listAllResponses(ORG, 'dataset-1')],
   ['deleteDataset', () => datasets.deleteDataset(ORG, 'dataset-1')],

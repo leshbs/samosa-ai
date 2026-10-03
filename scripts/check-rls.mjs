@@ -724,6 +724,106 @@ try {
     )
   }
 
+  // ── Questions (20261005000100) ───────────────────────────────────────
+  const ownQuestions = await asA
+    .from('dataset_questions')
+    .select('id, dataset_id, question_text, analysis_mode')
+  if (ownQuestions.error) {
+    skip(
+      "a dataset's questions are readable by its workspace only",
+      'dataset_questions does not exist — apply 20261005000100_dataset_questions.sql',
+    )
+  } else {
+    // The probe's response was stored the way the code before this migration
+    // stores one: naming no question and no respondent.
+    const { data: seeded } = await admin
+      .from('responses')
+      .select('question_id, respondent_index')
+      .eq('id', a.responseId)
+      .single()
+    check(
+      'a response stored without a question is given the dataset default',
+      Boolean(seeded?.question_id) && seeded?.respondent_index === 0,
+      JSON.stringify(seeded),
+    )
+    check(
+      'user A can read the questions of their own dataset',
+      (ownQuestions.data ?? []).some(
+        (question) =>
+          question.dataset_id === a.datasetId && question.analysis_mode === 'evaluative',
+      ),
+      `${(ownQuestions.data ?? []).length} rows`,
+    )
+    check(
+      "user A cannot read another organization's questions",
+      (ownQuestions.data ?? []).every((question) => question.dataset_id !== b.datasetId),
+      `${(ownQuestions.data ?? []).length} rows`,
+    )
+
+    const reworded = await asA
+      .from('dataset_questions')
+      .update({ question_text: 'diubah dari browser' })
+      .eq('dataset_id', a.datasetId)
+      .select('id')
+    check(
+      'user A cannot rewrite a question from the browser',
+      (reworded.data ?? []).length === 0,
+      reworded.error ? reworded.error.message : 'no rows updated',
+    )
+    const added = await asA
+      .from('dataset_questions')
+      .insert({
+        dataset_id: a.datasetId,
+        organization_id: a.orgId,
+        column_name: 'Sisipan',
+        question_text: 'Sisipan',
+        position: 9,
+      })
+      .select('id')
+    check(
+      'or add one',
+      Boolean(added.error) || (added.data ?? []).length === 0,
+      added.error ? added.error.message : `${(added.data ?? []).length} rows`,
+    )
+
+    const recounted = await asA
+      .from('analysis_jobs')
+      .update({ question_counts: { probe: { analyzed: 1, no_content: 0, failed: 0 } } })
+      .eq('id', a.jobId)
+      .select('id')
+    check(
+      'user A cannot rewrite the per-question counts',
+      (recounted.data ?? []).length === 0,
+      recounted.error ? recounted.error.message : 'no rows updated',
+    )
+
+    // The read the report makes: results with their response embedded.
+    const embedded = await asA
+      .from('analysis_results')
+      .select('response_id, responses (text, question_id, respondent_index)')
+      .eq('job_id', a.jobId)
+      .order('id', { ascending: true })
+      .range(0, 999)
+    const joined = embedded.data?.[0]?.responses
+    const response = Array.isArray(joined) ? joined[0] : joined
+    check(
+      'the report reads each result with its text and its question in one request',
+      !embedded.error &&
+        response?.text === `rahasia organisasi ${a.label}` &&
+        response?.question_id === seeded?.question_id,
+      embedded.error ? embedded.error.message : JSON.stringify(response),
+    )
+    const foreign = await asA
+      .from('analysis_results')
+      .select('response_id, responses (text)')
+      .eq('job_id', b.jobId)
+    check(
+      "and never another organization's",
+      (foreign.data ?? []).length === 0,
+      foreign.error ? foreign.error.message : `${(foreign.data ?? []).length} rows`,
+    )
+  }
+
   // ── Handing over moves the bill (20261002000300) ─────────────────────
   // Last, because it changes who owns org A.
   await admin
