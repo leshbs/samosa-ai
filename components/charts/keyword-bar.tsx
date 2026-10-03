@@ -30,7 +30,28 @@ type ChartClickState = { activeLabel?: string | number }
  * their own count would re-encode the length people already see and spend the
  * identity channel on nothing.
  */
-export function KeywordBar({ keywords }: { keywords: KeywordCount[] }) {
+export function KeywordBar({
+  keywords,
+  focusAs = 'query',
+  seriesName = 'Aspirasi',
+  otherTopics = [],
+  otherLabel,
+}: {
+  keywords: KeywordCount[]
+  /**
+   * What a click on a bar does to the explorer. `query` searches for the term;
+   * `topics` filters to it. The same bars draw a question's topics, choices or
+   * scale values when no sentiment splits them (ADR-0016), and those are a
+   * filter dimension where a keyword is not.
+   */
+  focusAs?: 'query' | 'topics'
+  /** What one counted row is, for the tooltip. */
+  seriesName?: string
+  /** Members of the "Lainnya" bar, so clicking it filters to all of them. */
+  otherTopics?: readonly string[]
+  /** That bar's label, passed in for the reason `TopicBar` gives. */
+  otherLabel?: string
+}) {
   const explorer = useExplorerFocus()
 
   /**
@@ -43,7 +64,16 @@ export function KeywordBar({ keywords }: { keywords: KeywordCount[] }) {
     if (!explorer) return
     const label = state.activeLabel
     if (typeof label !== 'string' || label.length === 0) return
-    explorer.focusOn({ query: label })
+
+    if (focusAs === 'query') {
+      explorer.focusOn({ query: label })
+      return
+    }
+    if (otherLabel && label === otherLabel) {
+      if (otherTopics.length > 0) explorer.focusOn({ topics: [...otherTopics] })
+      return
+    }
+    explorer.focusOn({ topics: [label] })
   }
 
   return (
@@ -77,7 +107,7 @@ export function KeywordBar({ keywords }: { keywords: KeywordCount[] }) {
         <Bar
           barSize={MARK.barSize}
           dataKey="count"
-          name="Aspirasi"
+          name={seriesName}
           fill={CHART_COLORS.series1}
           radius={[0, MARK.radius, MARK.radius, 0]}
           isAnimationActive={false}

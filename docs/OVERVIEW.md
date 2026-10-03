@@ -204,13 +204,18 @@ samosa/
 │   ├── analysis/                    # ← The core AI pipeline
 │   │   ├── services/
 │   │   │   ├── orchestrator.ts
-│   │   │   └── job-runner.ts
+│   │   │   ├── job-runner.ts
+│   │   │   ├── mode-detection.ts    # Tebakan mode tiap kolom (ADR-0016)
+│   │   │   └── scale.ts             # Jawaban angka dibaca tanpa model
 │   │   ├── adapters/                # LLM abstraction layer
 │   │   │   ├── openai.ts
 │   │   │   ├── local.ts             # Lexicon baseline; future: IndoBERT
 │   │   │   └── types.ts
 │   │   ├── prompts/                 # Versioned prompt templates
-│   │   │   ├── analysis.v2.ts       # Default: + label no_content (pilot 01)
+│   │   │   ├── analysis.v3.ts       # Default: satu prompt per mode (ADR-0016)
+│   │   │   ├── analysis.v2.ts       # + label no_content (pilot 01)
+│   │   │   ├── modes.v1.ts          # Tebakan mode dari judul kolom
+│   │   │   ├── summary.v3.ts        # Default: per pertanyaan, menyebut asal
 │   │   │   ├── sentiment.v1.ts
 │   │   │   ├── topic.v1.ts
 │   │   │   └── summary.v1.ts
@@ -287,9 +292,15 @@ Aturan 1, 2, dan 4 **dipaksakan ESLint** (`no-restricted-imports` di `.eslintrc.
 ### Data flow (contoh: upload → analysis → report)
 
 ```
-User uploads CSV
-  → POST /api/datasets                     (Zod validate; `textColumns` satu
-                                            entri per pertanyaan)
+User picks a CSV
+  → POST /api/datasets/preview             (tidak menyimpan apa pun)
+  → ingestion.previewDataset()             → judul kolom + profil tiap kolom
+  → analysis.detectModes()                 → tebakan mode per kolom, dari judul
+                                             dan profil saja — tanpa isi sel
+                                             (ADR-0016); gagal = aturan lokal
+User confirms the columns
+  → POST /api/datasets                     (Zod validate; `columnModes`: tiap
+                                            kolom dengan mode dan tebakannya)
   → ingestion.uploadDataset()
   → save to Supabase Storage + insert DB row: dataset, pertanyaannya, lalu
     satu respons per (responden, pertanyaan yang dijawab) — ADR-0015
@@ -300,8 +311,11 @@ User uploads CSV
        - load responses dari DB, berhalaman (satu select berhenti di 1.000 baris)
        - batch responses (30 per batch, konkurensi 4); satu batch tidak pernah
          mencampur pertanyaan
-       - openai adapter untuk sentiment/topic/keyword/summary
-       - save ke analysis_results table
+       - tiap batch dikirim dengan prompt mode pertanyaannya dan teks
+         pertanyaannya (analysis.v3): evaluative, thematic, categorical.
+         Jawaban `scale` dibaca tanpa model
+       - balasan yang melanggar format diminta sekali lagi
+       - save ke analysis_results table; sentimen kosong kecuali `evaluative`
   → Client polls /api/analysis/[id]/status atau subscribe Supabase realtime
        - sebelum job jadi terminal: reporting.generateReportSummary()
          menulis ringkasan eksekutif + insight ke tabel reports
@@ -324,15 +338,18 @@ users              — anggota organisasi (via organization_members)
 datasets           — metadata upload (nama, source, size, uploader_id)
   ↓
 dataset_questions  — pertanyaan terbuka sebuah dataset: satu kolom sheet
-                     (column_name, question_text, analysis_mode, position) — ADR-0015
+                     (column_name, question_text, analysis_mode, detected_mode,
+                     position) — ADR-0015, ADR-0016
   ↓
 responses          — satu jawaban: satu responden atas satu pertanyaan
                      (dataset_id, question_id, respondent_index, text, respondent_meta)
   ↓
 analysis_jobs      — job tracking (dataset_id, status, prompt_version,
-                     question_counts: hitungan per pertanyaan)
+                     question_counts: hitungan dan mode per pertanyaan)
   ↓
-analysis_results   — per-response hasil (response_id, sentiment, topics[], keywords[])
+analysis_results   — per-response hasil (response_id, sentiment, topics[], keywords[]);
+                     sentiment kosong kecuali pertanyaannya `evaluative`, dan
+                     topics memuat pilihan atau nilai untuk `categorical`/`scale`
   ↓
 reports            — aggregated view (job_id, summary, insights, exported_at)
 

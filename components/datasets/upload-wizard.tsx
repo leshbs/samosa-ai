@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, FileSpreadsheet, ShieldCheck, UploadCloud } from 'lucide-react'
+import { Check, FileSpreadsheet, ShieldCheck, Sparkles, UploadCloud } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
@@ -26,15 +26,44 @@ import {
 import { cn } from '@/lib/utils'
 import { requestJson } from '@/modules/shared'
 import type { DatasetPreview } from '@/modules/ingestion'
-import type { DatasetSource } from '@/types/domain'
+import {
+  MODE_LABELS,
+  MODE_OUTPUTS,
+  QUESTION_MODES,
+  isQuestionMode,
+  type AnalysisMode,
+  type DatasetSource,
+} from '@/types/domain'
 
 /**
  * Off until reports can break results down by a column (Phase C.6). Pilot 01:
  * the tester ticked a column and asked what it did — nothing in the report
- * used it, and a choice that changes nothing is worse than no choice. The API
- * still accepts `keepColumns`; only the offer is withdrawn.
+ * used it, and a choice that changes nothing is worse than no choice. When it
+ * is on, the mode list offers "Data responden" and those columns are stored
+ * beside the answers; the API already accepts them as `keepColumns`.
  */
-const OFFER_KEPT_COLUMNS = false
+const OFFER_SEGMENTS = false
+
+/** What a column can be set to: a question of one of four kinds, or left out. */
+const SELECTABLE_MODES: readonly AnalysisMode[] = [
+  ...QUESTION_MODES,
+  ...(OFFER_SEGMENTS ? (['segment'] as const) : []),
+  'ignore',
+]
+
+/**
+ * What the wizard gets back from the preview: the sheet's headers, a few rows,
+ * and a guess at what each column holds (ADR-0016).
+ */
+type Preview = Omit<DatasetPreview, 'profiles'> & {
+  modes: Array<{ column: string; mode: AnalysisMode; source: 'model' | 'rule' }>
+  modeDetection: { promptVersion: string | null; modelId: string | null }
+}
+
+/** A guess the wizard cannot offer is shown as the nearest thing it can. */
+function selectable(mode: AnalysisMode): AnalysisMode {
+  return SELECTABLE_MODES.includes(mode) ? mode : 'ignore'
+}
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
@@ -51,7 +80,7 @@ const ACCEPTED = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
 }
 
-const STEPS = ['Pilih file', 'Pilih kolom', 'Konfirmasi'] as const
+const STEPS = ['Pilih file', 'Periksa kolom', 'Konfirmasi'] as const
 
 /** Browsers disagree on the MIME type for CSV, so trust the extension. */
 function sourceOf(file: File): DatasetSource {
@@ -141,20 +170,19 @@ export function UploadWizard() {
   const router = useRouter()
   const [step, setStep] = useState<Step>(1)
   const [file, setFile] = useState<File | null>(null)
-  const [preview, setPreview] = useState<DatasetPreview | null>(null)
+  const [preview, setPreview] = useState<Preview | null>(null)
   /**
-   * The open questions: every ticked column becomes a question of the dataset
-   * and a section of its report. One is the common case; a survey with "kritik"
-   * and "saran" in separate columns is why it is not the only one (pilot 01).
+   * What each column is read as. Every column given a question mode becomes a
+   * question of the dataset and a section of its report; a column set to
+   * "Tidak dipakai" is not stored at all. It starts as the system's guess and
+   * is the uploader's to overrule: a guess to correct, not a taxonomy to learn
+   * (pilot 01, §4.2).
+   *
+   * The safe state is the default state: a Google Forms export puts names,
+   * classes and email addresses beside the answers, and those are guessed as
+   * "Tidak dipakai" rather than left for someone to remember to switch off.
    */
-  const [textColumns, setTextColumns] = useState<string[]>([])
-  /**
-   * Starts empty and stays empty unless the uploader ticks something. A Google
-   * Forms export puts names, classes and email addresses in the columns next to
-   * the aspiration, and none of them are needed to analyse it — so the safe
-   * state is the default state, not a checkbox someone has to remember to clear.
-   */
-  const [keepColumns, setKeepColumns] = useState<string[]>([])
+  const [modes, setModes] = useState<Record<string, AnalysisMode>>({})
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
@@ -171,7 +199,7 @@ export function UploadWizard() {
     body.append('file', picked)
     body.append('source', sourceOf(picked))
 
-    const previewed = await requestJson<DatasetPreview>('/api/datasets/preview', {
+    const previewed = await requestJson<Preview>('/api/datasets/preview', {
       method: 'POST',
       body,
     })
@@ -183,11 +211,26 @@ export function UploadWizard() {
       return
     }
 
+    const guessed = new Map(
+      previewed.value.modes.map((guess) => [guess.column, selectable(guess.mode)]),
+    )
+    const initial: Record<string, AnalysisMode> = {}
+    let questionCount = 0
+    for (const column of previewed.value.columns) {
+      const mode = guessed.get(column) ?? 'ignore'
+      // Past the limit a guessed question is left out rather than refused later.
+      const fits = !isQuestionMode(mode) || questionCount < MAX_QUESTIONS
+      initial[column] = fits ? mode : 'ignore'
+      if (fits && isQuestionMode(mode)) questionCount += 1
+    }
+    // A sheet where nothing was guessed to be a question still needs one to
+    // start from, or the step opens on a disabled "Lanjut" with no hint why.
+    const fallback = previewed.value.suggestedColumn ?? previewed.value.columns[0]
+    if (questionCount === 0 && fallback) initial[fallback] = 'evaluative'
+
     setFile(picked)
     setPreview(previewed.value)
-    const suggested = previewed.value.suggestedColumn ?? previewed.value.columns[0]
-    setTextColumns(suggested ? [suggested] : [])
-    setKeepColumns([])
+    setModes(initial)
     setName(defaultName(picked))
     setStep(2)
   }, [])
@@ -200,16 +243,19 @@ export function UploadWizard() {
     multiple: false,
   })
 
-  // Sheet order, whatever order they were ticked in: it is the order the
-  // questions appear in the report.
+  const modeOf = (column: string): AnalysisMode => modes[column] ?? 'ignore'
+  const guessOf = (column: string) =>
+    preview?.modes.find((guess) => guess.column === column) ?? null
+  // Sheet order: it is the order the questions appear in the report.
   const questions = preview
-    ? preview.columns.filter((column) => textColumns.includes(column))
+    ? preview.columns.filter((column) => isQuestionMode(modeOf(column)))
     : []
-  /** Never includes a question column, even if it was ticked before being chosen. */
-  const keptColumns = keepColumns.filter((column) => !questions.includes(column))
-  const otherColumns = preview
-    ? preview.columns.filter((column) => !questions.includes(column))
+  const keptColumns = preview
+    ? preview.columns.filter((column) => modeOf(column) === 'segment')
     : []
+  const unusedCount = preview
+    ? preview.columns.length - questions.length - keptColumns.length
+    : 0
   const atLimit = questions.length >= MAX_QUESTIONS
 
   async function submit() {
@@ -223,10 +269,20 @@ export function UploadWizard() {
     body.append('file', file)
     body.append('name', name.trim())
     body.append('source', sourceOf(file))
-    // One entry per question, as with the kept columns below.
-    for (const column of questions) {
-      body.append('textColumns', column)
-    }
+    // Every column with what it was set to and what was guessed for it. The
+    // guess is sent back as it was received: it is kept so the guesses can be
+    // scored later, never to decide anything.
+    body.append(
+      'columnModes',
+      JSON.stringify(
+        (preview?.columns ?? []).map((column) => ({
+          column,
+          mode: modeOf(column),
+          detectedMode: guessOf(column)?.mode ?? null,
+        })),
+      ),
+    )
+    if (preview) body.append('modeDetection', JSON.stringify(preview.modeDetection))
     // One entry per kept column; none appended means none stored.
     for (const column of keptColumns) {
       body.append('keepColumns', column)
@@ -255,8 +311,7 @@ export function UploadWizard() {
     setStep(1)
     setFile(null)
     setPreview(null)
-    setTextColumns([])
-    setKeepColumns([])
+    setModes({})
     setError(null)
   }
 
@@ -346,7 +401,9 @@ export function UploadWizard() {
               <input {...getInputProps()} aria-label="Pilih file CSV atau Excel" />
               <UploadCloud className="size-8 text-muted-foreground" aria-hidden />
               <p className="font-medium">
-                {busy ? 'Membaca file…' : 'Tarik file ke sini atau klik untuk memilih'}
+                {busy
+                  ? 'Membaca file dan menebak jenis tiap kolom…'
+                  : 'Tarik file ke sini atau klik untuk memilih'}
               </p>
               <p className="text-sm text-muted-foreground">
                 CSV atau Excel, maksimal 10 MB
@@ -358,150 +415,128 @@ export function UploadWizard() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">
-                  Kolom mana yang berisi aspirasi?
+                  Kolom mana yang dianalisis, dan sebagai apa?
                 </CardTitle>
                 <p className="text-sm text-muted-foreground">
                   {file?.name} · {preview.totalRows} baris
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Pilih satu atau lebih. Setiap kolom menjadi satu pertanyaan di laporan,
-                  dengan judul kolomnya sebagai judul bagian. Semua kolom dianalisis
-                  sebagai aspirasi (sentimen dan topik), jadi kolom yang isinya pilihan
-                  atau angka belum cocok dipilih.
+                  SAMOSA sudah menebak jenis tiap kolom dari judul dan bentuk isinya.
+                  Periksa tebakannya dan ubah yang keliru. Tiap kolom yang dianalisis
+                  menjadi satu pertanyaan di laporan, dengan judul kolomnya sebagai judul
+                  bagian.
                 </p>
               </CardHeader>
               <CardContent className="space-y-6">
-                <fieldset className="grid gap-2 sm:grid-cols-2">
-                  <legend className="sr-only">Kolom yang berisi aspirasi</legend>
-                  {preview.columns.map((column) => {
-                    const checked = questions.includes(column)
+                <ul className="space-y-2">
+                  {preview.columns.map((column, index) => {
+                    const mode = modeOf(column)
+                    const guess = guessOf(column)
+                    const used = isQuestionMode(mode)
+                    const guessed = guess ? selectable(guess.mode) : null
+                    const selectId = `column-mode-${index}`
+
                     return (
-                      <label
+                      <li
                         key={column}
                         className={cn(
-                          'flex items-start gap-3 rounded-control border p-3 text-sm transition-colors',
-                          checked ? 'border-primary bg-secondary/40' : 'hover:bg-accent',
-                          !checked && atLimit
-                            ? 'cursor-not-allowed opacity-60'
-                            : 'cursor-pointer',
+                          'grid gap-x-4 gap-y-2 rounded-control border p-3 text-sm sm:grid-cols-[minmax(0,1fr)_14rem]',
+                          used ? 'border-primary bg-secondary/40' : 'bg-card',
                         )}
                       >
-                        <input
-                          type="checkbox"
-                          name="textColumns"
-                          value={column}
-                          checked={checked}
-                          disabled={!checked && atLimit}
-                          onChange={(event) =>
-                            setTextColumns((current) =>
-                              event.target.checked
-                                ? [...current, column]
-                                : current.filter((picked) => picked !== column),
-                            )
-                          }
-                          className="mt-1 accent-[hsl(var(--primary))]"
-                        />
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium">{column}</span>
-                          <span className="block truncate text-muted-foreground">
+                        <div className="min-w-0">
+                          <label
+                            htmlFor={selectId}
+                            className="block truncate font-medium"
+                          >
+                            {column}
+                          </label>
+                          <p className="truncate text-muted-foreground">
                             {preview.sampleRows[0]?.[column] || '—'}
-                          </span>
-                        </span>
-                      </label>
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <select
+                            id={selectId}
+                            value={mode}
+                            onChange={(event) =>
+                              setModes((current) => ({
+                                ...current,
+                                [column]: event.target.value as AnalysisMode,
+                              }))
+                            }
+                            className="h-9 w-full rounded-control border bg-background px-2 text-sm text-foreground"
+                          >
+                            {SELECTABLE_MODES.map((option) => (
+                              <option
+                                key={option}
+                                value={option}
+                                // Past the limit a column can still be switched
+                                // between kinds, but not newly added.
+                                disabled={!used && atLimit && isQuestionMode(option)}
+                              >
+                                {MODE_LABELS[option]}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-xs text-muted-foreground">
+                            {isQuestionMode(mode)
+                              ? `Laporan: ${MODE_OUTPUTS[mode]}.`
+                              : mode === 'segment'
+                                ? 'Disimpan bersama jawabannya.'
+                                : 'Tidak disimpan.'}
+                          </p>
+                          {guessed === null ? null : guessed === mode ? (
+                            <Badge variant="muted" className="gap-1">
+                              <Sparkles aria-hidden className="size-3" />
+                              Tebakan
+                            </Badge>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setModes((current) => ({ ...current, [column]: guessed }))
+                              }
+                              disabled={!used && atLimit && isQuestionMode(guessed)}
+                              className="text-xs text-primary underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
+                            >
+                              Kembali ke tebakan: {MODE_LABELS[guessed]}
+                            </button>
+                          )}
+                        </div>
+                      </li>
                     )
                   })}
-                </fieldset>
+                </ul>
 
                 <p aria-live="polite" className="text-sm text-muted-foreground">
                   {questions.length === 0
-                    ? 'Belum ada kolom yang dipilih.'
+                    ? 'Belum ada kolom yang dianalisis. Ubah jenis paling tidak satu kolom.'
                     : questions.length === 1
-                      ? '1 pertanyaan dipilih.'
-                      : `${questions.length} pertanyaan dipilih; laporannya punya satu bagian untuk masing-masing.`}
+                      ? '1 pertanyaan dianalisis.'
+                      : `${questions.length} pertanyaan dianalisis; laporannya punya satu bagian untuk masing-masing.`}
                   {atLimit
                     ? ` Paling banyak ${MAX_QUESTIONS} pertanyaan per dataset.`
                     : ''}
                 </p>
 
-                {otherColumns.length > 0 ? (
-                  <div className="space-y-3 rounded-card border border-dashed p-4">
-                    <div className="flex items-start gap-3">
-                      <ShieldCheck
-                        aria-hidden
-                        className="mt-0.5 size-4 shrink-0 text-primary"
-                      />
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium">Kolom lain tidak disimpan</p>
-                        <p className="text-sm text-muted-foreground">
-                          Kolom selain aspirasi dibuang sebelum disimpan. Analisis tidak
-                          memerlukannya, dan kolom seperti nama atau email adalah data
-                          pribadi yang tidak perlu ikut.
-                          {OFFER_KEPT_COLUMNS
-                            ? ' Centang hanya kalau kamu benar-benar membutuhkannya di laporan.'
-                            : null}
-                        </p>
-                      </div>
-                    </div>
-
-                    {OFFER_KEPT_COLUMNS ? (
-                      <>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {otherColumns.map((column) => (
-                            <label
-                              key={column}
-                              className={cn(
-                                'flex cursor-pointer items-start gap-3 rounded-control border p-2 text-sm transition-colors',
-                                keepColumns.includes(column)
-                                  ? 'border-notice/50 bg-notice-surface'
-                                  : 'hover:bg-accent',
-                              )}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={keepColumns.includes(column)}
-                                onChange={(event) =>
-                                  setKeepColumns((current) =>
-                                    event.target.checked
-                                      ? [...current, column]
-                                      : current.filter((kept) => kept !== column),
-                                  )
-                                }
-                                className="mt-1 accent-[hsl(var(--primary))]"
-                              />
-                              <span className="min-w-0">
-                                <span className="block truncate font-medium">
-                                  {column}
-                                </span>
-                                <span className="block truncate text-muted-foreground">
-                                  {preview.sampleRows[0]?.[column] || '—'}
-                                </span>
-                              </span>
-                            </label>
-                          ))}
-                        </div>
-
-                        <p aria-live="polite" className="text-sm">
-                          {keptColumns.length === 0 ? (
-                            <span className="text-muted-foreground">
-                              Tidak ada kolom tambahan yang disimpan.
-                            </span>
-                          ) : (
-                            <span className="flex flex-wrap items-center gap-1.5">
-                              <span className="text-muted-foreground">
-                                Akan disimpan:
-                              </span>
-                              {keptColumns.map((column) => (
-                                <Badge key={column} variant="notice">
-                                  {column}
-                                </Badge>
-                              ))}
-                            </span>
-                          )}
-                        </p>
-                      </>
-                    ) : null}
+                <div className="flex items-start gap-3 rounded-card border border-dashed p-4">
+                  <ShieldCheck
+                    aria-hidden
+                    className="mt-0.5 size-4 shrink-0 text-primary"
+                  />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">
+                      Kolom yang tidak dipakai tidak disimpan
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Kolom seperti nama atau email dibuang sebelum disimpan; analisis
+                      tidak memerlukannya. Untuk menebak jenis kolom, hanya judul kolom
+                      dan bentuk isinya yang dikirim ke AI: berapa yang terisi dan
+                      seberapa panjang, bukan isi selnya.
+                    </p>
                   </div>
-                ) : null}
+                </div>
 
                 <div className="overflow-x-auto">
                   <Table>
@@ -582,15 +617,32 @@ export function UploadWizard() {
                     <p className="text-muted-foreground">
                       {preview.totalRows} baris ·{' '}
                       {questions.length === 1
-                        ? 'kolom teks: '
-                        : `${questions.length} pertanyaan: `}
-                      <strong className="text-foreground">{questions.join(' · ')}</strong>
+                        ? '1 pertanyaan dianalisis'
+                        : `${questions.length} pertanyaan dianalisis`}
                     </p>
+                    <ul className="space-y-0.5">
+                      {questions.map((column) => (
+                        <li
+                          key={column}
+                          className="flex flex-wrap items-baseline gap-x-2"
+                        >
+                          <strong className="font-medium text-foreground">
+                            {column}
+                          </strong>
+                          <span className="text-muted-foreground">
+                            {MODE_LABELS[modeOf(column)]}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
                     {/* Stated on the last screen before it is irreversible. */}
                     <p className="text-muted-foreground">
-                      {keptColumns.length === 0
-                        ? 'Kolom lain tidak disimpan.'
-                        : `Kolom lain yang ikut disimpan: ${keptColumns.join(', ')}.`}
+                      {keptColumns.length > 0
+                        ? `Ikut disimpan sebagai data responden: ${keptColumns.join(', ')}. `
+                        : ''}
+                      {unusedCount === 0
+                        ? 'Tidak ada kolom lain di file ini.'
+                        : `${unusedCount} kolom lain tidak disimpan.`}
                     </p>
                   </div>
                 </div>
@@ -607,7 +659,7 @@ export function UploadWizard() {
                     {progress === 100 ? (
                       <p className="text-xs text-muted-foreground">
                         File sudah terkirim. Server sedang memisahkan kolom dan menyimpan
-                        aspirasinya — ini bagian yang tidak punya persentase.
+                        jawabannya — ini bagian yang tidak punya persentase.
                       </p>
                     ) : null}
                   </div>

@@ -822,6 +822,92 @@ try {
       (foreign.data ?? []).length === 0,
       foreign.error ? foreign.error.message : `${(foreign.data ?? []).length} rows`,
     )
+
+    // ── A result without a sentiment (20261006000100) ──────────────────
+    // An answer to a question that asks for a choice: the job stores what was
+    // chosen and no sentiment at all.
+    const choice = await admin
+      .from('responses')
+      .insert({
+        dataset_id: a.datasetId,
+        organization_id: a.orgId,
+        question_id: seeded?.question_id,
+        respondent_index: 1,
+        text: 'outbound',
+      })
+      .select('id')
+      .single()
+    const unjudged = choice.error
+      ? { error: choice.error }
+      : await admin
+          .from('analysis_results')
+          .insert({
+            organization_id: a.orgId,
+            job_id: a.jobId,
+            response_id: choice.data.id,
+            sentiment: null,
+            sentiment_confidence: null,
+            topics: ['outbound'],
+            prompt_version: 'analysis.v3',
+            model_id: 'probe',
+          })
+          .select('id')
+          .single()
+    check(
+      'a result can be stored without a sentiment',
+      !unjudged.error,
+      unjudged.error
+        ? `${unjudged.error.message} — apply 20261006000100_sentiment_optional.sql`
+        : 'stored',
+    )
+
+    if (!unjudged.error) {
+      const read = await asA
+        .from('analysis_results')
+        .select('sentiment, sentiment_confidence, topics, responses (text)')
+        .eq('id', unjudged.data.id)
+      const row = read.data?.[0]
+      check(
+        'user A reads it with no sentiment, not a made-up one',
+        !read.error && row?.sentiment === null && row?.sentiment_confidence === null,
+        read.error ? read.error.message : JSON.stringify(row),
+      )
+
+      const half = await admin
+        .from('analysis_results')
+        .update({ sentiment: 'positive' })
+        .eq('id', unjudged.data.id)
+        .select('id')
+      check(
+        'a sentiment cannot be stored without its confidence',
+        Boolean(half.error),
+        half.error ? half.error.message : 'accepted',
+      )
+
+      const judged = await asA
+        .from('analysis_results')
+        .update({ sentiment: 'positive', sentiment_confidence: 1 })
+        .eq('id', unjudged.data.id)
+        .select('id')
+      check(
+        'user A cannot give it a sentiment from the browser',
+        (judged.data ?? []).length === 0,
+        judged.error ? judged.error.message : 'no rows updated',
+      )
+
+      // The home page counts one sentiment per job without fetching rows; a
+      // result with none must be in no such count.
+      const counted = await asA
+        .from('analysis_results')
+        .select('id', { count: 'exact', head: true })
+        .eq('job_id', a.jobId)
+        .in('sentiment', ['positive', 'neutral', 'negative'])
+      check(
+        'and it is in no sentiment count',
+        counted.count === 1,
+        counted.error ? counted.error.message : `${counted.count} counted`,
+      )
+    }
   }
 
   // ── Handing over moves the bill (20261002000300) ─────────────────────

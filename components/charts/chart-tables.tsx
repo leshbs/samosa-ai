@@ -43,14 +43,23 @@ export function SentimentTable({ data }: { data: SentimentDistribution }) {
 }
 
 /** The table twin of `KeywordBar` — and of any other ranked-term chart. */
-export function TermTable({ terms, header }: { terms: CountedTerm[]; header: string }) {
+export function TermTable({
+  terms,
+  header,
+  countHeader = 'Aspirasi',
+}: {
+  terms: CountedTerm[]
+  header: string
+  /** What one counted row is called. */
+  countHeader?: string
+}) {
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead className="w-10 text-right">#</TableHead>
           <TableHead>{header}</TableHead>
-          <TableHead className="text-right">Aspirasi</TableHead>
+          <TableHead className="text-right">{countHeader}</TableHead>
           <TableHead className="text-right">Porsi</TableHead>
         </TableRow>
       </TableHeader>

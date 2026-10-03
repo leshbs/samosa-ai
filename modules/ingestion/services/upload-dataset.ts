@@ -7,15 +7,41 @@ import { extractResponses, validateUploadSize } from '../validators/dataset-vali
 import { validateFileSignature, validateUploadFile } from '../validators/file-signature'
 import { ERROR_CODES, appError, err, logger, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
-import type { DatasetSource } from '@/types/domain'
+import {
+  isQuestionMode,
+  type AnalysisMode,
+  type DatasetSource,
+  type QuestionMode,
+} from '@/types/domain'
+
+/** What the wizard decided about one column of the sheet. */
+export type ColumnModeChoice = {
+  column: string
+  /** What the uploader settled on. */
+  mode: AnalysisMode
+  /** What the system guessed before that; null when it made no guess. */
+  detectedMode: AnalysisMode | null
+}
 
 export type UploadDatasetInput = {
   organizationId: string
   uploaderId: string
   name: string
   source: DatasetSource
-  /** The open questions: each column becomes a question of the dataset. */
-  textColumns: readonly string[]
+  /**
+   * The open questions: each column becomes a question of the dataset, read as
+   * `evaluative`. The form this took before modes; `columnModes` replaces it.
+   */
+  textColumns?: readonly string[]
+  /**
+   * Every column the wizard showed, with its mode. The columns given one of
+   * the four question modes become the dataset's questions; the rest are not
+   * stored. Kept whole in the dataset's metadata, so how often a guess was
+   * overruled can be counted later (pilot 01, §4.2).
+   */
+  columnModes?: readonly ColumnModeChoice[]
+  /** Which prompt made the guesses; null when they came from the rules. */
+  modeDetection?: { promptVersion: string | null; modelId: string | null }
   /** Columns stored beside the text. Empty — the default — stores none. */
   keepColumns?: readonly string[]
   file: File
@@ -52,11 +78,25 @@ export async function uploadDataset(
       : parseCsv(new TextDecoder('utf-8').decode(buffer))
   if (!parsed.ok) return parsed
 
-  const extracted = extractResponses(
-    parsed.value,
-    input.textColumns,
-    input.keepColumns ?? [],
-  )
+  const choices = input.columnModes ?? []
+  const chosen = new Map(choices.map((choice) => [choice.column, choice]))
+  /** A column named only by `textColumns` is what every column once was. */
+  const modeOf = (column: string): QuestionMode => {
+    const mode = chosen.get(column)?.mode
+    return isQuestionMode(mode) ? mode : 'evaluative'
+  }
+  const textColumns =
+    choices.length > 0
+      ? choices.filter((choice) => isQuestionMode(choice.mode)).map((c) => c.column)
+      : (input.textColumns ?? [])
+
+  if (textColumns.length === 0) {
+    return err(
+      appError(ERROR_CODES.VALIDATION, 'Pilih paling tidak satu kolom untuk dianalisis'),
+    )
+  }
+
+  const extracted = extractResponses(parsed.value, textColumns, input.keepColumns ?? [])
   if (!extracted.ok) return extracted
   const { columns } = extracted.value
 
@@ -91,6 +131,23 @@ export async function uploadDataset(
         // And which columns were deliberately kept, so "what personal data does
         // this dataset hold" is answerable without opening the rows.
         kept_columns: [...(input.keepColumns ?? [])],
+        // Every column the wizard showed, what the system guessed and what the
+        // uploader chose — including the columns that were not kept, which is
+        // the half of "was the guess right" the questions table cannot hold.
+        // Headers only, never a cell.
+        ...(choices.length > 0
+          ? {
+              column_modes: choices.map((choice) => ({
+                column: choice.column.slice(0, 200),
+                detected: choice.detectedMode,
+                chosen: choice.mode,
+              })),
+              mode_detection: {
+                prompt_version: input.modeDetection?.promptVersion ?? null,
+                model_id: input.modeDetection?.modelId ?? null,
+              },
+            }
+          : {}),
       },
     })
     .select('id')
@@ -120,6 +177,8 @@ export async function uploadDataset(
         organization_id: input.organizationId,
         column_name: column.slice(0, 200),
         question_text: column.slice(0, 500),
+        analysis_mode: modeOf(column),
+        detected_mode: chosen.get(column)?.detectedMode ?? null,
         position,
       })),
     )

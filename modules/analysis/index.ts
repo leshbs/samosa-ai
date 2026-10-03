@@ -47,11 +47,18 @@ export {
 } from './postprocess/normalize'
 export { sanitizeResponseText } from './postprocess/sanitize'
 export {
+  DEFAULT_MODE_VERSION,
   DEFAULT_PROMPT_VERSION,
   DEFAULT_SUMMARY_VERSION,
   separatesNoContent,
 } from './prompts'
-export type { SummaryPromptInput, NormalizedSummary } from './prompts'
+export type {
+  ColumnDescription,
+  ColumnKind,
+  NormalizedSummary,
+  QuestionDigest,
+  SummaryPromptInput,
+} from './prompts'
 /** Exported so the reporting module can compose a summary call without owning an SDK. */
 export { createOpenAiAdapter } from './adapters/openai'
 export { createLocalAdapter } from './adapters/local'
@@ -61,4 +68,13 @@ export type {
   SummaryInput,
   SummaryOutput,
 } from './adapters/types'
-export { questionNoContent } from './services/question-counts'
+export {
+  evaluatedCount,
+  questionMode,
+  questionNoContent,
+  readQuestionCounts,
+} from './services/question-counts'
+export { detectModes, DETECTION_TIMEOUT_MS } from './services/mode-detection'
+export type { ModeDetection, ModeGuess } from './services/mode-detection'
+export { guessModeByRule } from './services/mode-rules'
+export { scaleValue } from './services/scale'

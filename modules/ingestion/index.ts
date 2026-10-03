@@ -24,6 +24,9 @@ export {
 export type { RetentionDataset } from './services/dataset-retention'
 export { previewDataset, PREVIEW_ROW_COUNT } from './services/preview-dataset'
 export type { DatasetPreview } from './services/preview-dataset'
+export { profileColumns } from './services/column-profile'
+export type { ColumnProfile } from './services/column-profile'
+export type { ColumnModeChoice } from './services/upload-dataset'
 export {
   extractResponses,
   validateUploadSize,

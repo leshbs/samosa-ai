@@ -5,14 +5,15 @@ export const DEFAULT_QUOTES_PER_TOPIC = 3
 
 export type QuotableRecord = {
   responseText: string
-  sentiment: Sentiment
-  confidence: number
+  /** Null where the question was not read for sentiment. */
+  sentiment: Sentiment | null
+  confidence: number | null
   topics: readonly string[]
 }
 
 export type TopicQuotes = {
   topic: string
-  responses: Array<{ text: string; sentiment: Sentiment }>
+  responses: Array<{ text: string; sentiment: Sentiment | null }>
 }
 
 /**
@@ -37,7 +38,8 @@ export function topResponsesByTopic(
           record.responseText.trim().length > 0 &&
           record.topics.some((topic) => normalizeTerm(topic) === term),
       )
-      .sort((a, b) => b.confidence - a.confidence)
+      // Without a confidence to rank by, sheet order stands.
+      .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))
 
     const picked: QuotableRecord[] = []
     const take = (record: QuotableRecord | undefined) => {

@@ -3,10 +3,15 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { readAll } from '@/lib/supabase/read-all'
 import { createOpenAiAdapter } from '../adapters/openai'
-import { DEFAULT_PROMPT_VERSION } from '../prompts'
+import { DEFAULT_PROMPT_VERSION, effectiveMode } from '../prompts'
 import { ERROR_CODES, appError, err, logger, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
-import type { AnalysisJob, QuestionCounts } from '@/types/domain'
+import {
+  isQuestionMode,
+  type AnalysisJob,
+  type QuestionCounts,
+  type QuestionMode,
+} from '@/types/domain'
 import { analyzeResponses } from './orchestrator'
 import { toStoredQuestionCounts } from './question-counts'
 
@@ -175,9 +180,40 @@ export async function runJob(
     return err(appError(ERROR_CODES.INTERNAL, 'Aspirasi di dataset tidak bisa dimuat'))
   }
 
+  // What each question asked and how it is read. A dataset has ten questions
+  // at most, so this one is not paged.
+  const { data: questionRows, error: questionsError } = await supabase
+    .from('dataset_questions')
+    .select('id, question_text, analysis_mode')
+    .eq('dataset_id', job.dataset_id)
+
+  if (questionsError) {
+    await failJob(jobId, 'Pertanyaan dataset tidak bisa dimuat')
+    return err(appError(ERROR_CODES.INTERNAL, 'Pertanyaan dataset tidak bisa dimuat'))
+  }
+
+  const promptVersion = String(job.prompt_version)
+  /**
+   * The mode this job reads each question with: the one stored on the
+   * question, unless the prompt version predates modes. Then everything is
+   * `evaluative`, which is what makes re-running a dataset on analysis.v2 a
+   * comparison rather than an error. A `segment` or `ignore` mode cannot be on
+   * a question that has answers; if one ever is, it is read as `evaluative`
+   * rather than dropped.
+   */
+  const questions: Record<string, { text: string; mode: QuestionMode }> = {}
+  for (const row of questionRows ?? []) {
+    const stored = isQuestionMode(row.analysis_mode) ? row.analysis_mode : 'evaluative'
+    questions[String(row.id)] = {
+      text: String(row.question_text),
+      mode: effectiveMode(promptVersion, stored),
+    }
+  }
+
   const outcome = await analyzeResponses(createOpenAiAdapter(), {
     jobId,
-    promptVersion: String(job.prompt_version),
+    promptVersion,
+    questions,
     responses: responses.map((row) => ({
       id: String(row.id),
       text: String(row.text),
@@ -206,8 +242,9 @@ export async function runJob(
     sentiment_confidence: result.confidence,
     topics: result.topics,
     keywords: result.keywords,
-    summary: result.summary,
-    prompt_version: String(job.prompt_version),
+    // Only prose is summarised; a choice or a number has nothing to shorten.
+    summary: result.summary || null,
+    prompt_version: promptVersion,
     model_id: outcome.value.modelId,
   }))
 
@@ -216,6 +253,42 @@ export async function runJob(
     await failJob(jobId, 'Hasil analisis tidak bisa disimpan')
     return err(appError(ERROR_CODES.INTERNAL, 'Hasil analisis tidak bisa disimpan'))
   }
+
+  // The same three counters the job carries, split by question: a report
+  // section says "127 dari 181" about its own question, not about the survey.
+  const questionOf = new Map(
+    responses.map((row) => [String(row.id), String(row.question_id)]),
+  )
+  const questionCounts: Record<string, QuestionCounts> = {}
+  const count = (responseId: string, field: 'analyzed' | 'noContent' | 'failed') => {
+    const questionId = questionOf.get(responseId)
+    if (!questionId) return
+    const counts = (questionCounts[questionId] ??= {
+      analyzed: 0,
+      noContent: 0,
+      failed: 0,
+      mode: questions[questionId]?.mode ?? null,
+    })
+    counts[field] += 1
+  }
+  for (const result of outcome.value.results) count(result.responseId, 'analyzed')
+  for (const id of outcome.value.noContentResponseIds) count(id, 'noContent')
+  for (const id of outcome.value.failedResponseIds) count(id, 'failed')
+
+  /**
+   * Recorded before the hook below, not with the final status. The summary is
+   * written inside that hook and needs to know how each question was read: a
+   * summary written first took every question for `evaluative`, offered the
+   * model a sentiment split of zeros for a question about numbers, and quoted
+   * "4" as evidence (found reading a real report).
+   */
+  await supabase
+    .from('analysis_jobs')
+    .update({
+      no_content_count: outcome.value.noContentResponseIds.length,
+      question_counts: toStoredQuestionCounts(questionCounts),
+    })
+    .eq('id', jobId)
 
   if (options.onResultsReady) {
     try {
@@ -226,26 +299,6 @@ export async function runJob(
       log.warn('analysis.job.after_results_failed', { cause: String(cause) })
     }
   }
-
-  // The same three counters the job carries, split by question: a report
-  // section says "127 dari 181" about its own question, not about the survey.
-  const questionOf = new Map(
-    responses.map((row) => [String(row.id), String(row.question_id)]),
-  )
-  const questionCounts: Record<string, QuestionCounts> = {}
-  const count = (responseId: string, field: keyof QuestionCounts) => {
-    const questionId = questionOf.get(responseId)
-    if (!questionId) return
-    const counts = (questionCounts[questionId] ??= {
-      analyzed: 0,
-      noContent: 0,
-      failed: 0,
-    })
-    counts[field] += 1
-  }
-  for (const result of outcome.value.results) count(result.responseId, 'analyzed')
-  for (const id of outcome.value.noContentResponseIds) count(id, 'noContent')
-  for (const id of outcome.value.failedResponseIds) count(id, 'failed')
 
   // Some batches failed but we kept what landed: saying "succeeded" would
   // overstate the result, and "failed" would throw away usable analysis.

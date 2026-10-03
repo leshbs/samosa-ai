@@ -115,9 +115,17 @@ export type OrganizationMember = {
 }
 
 /**
- * How a question's answers are analysed (pilot 01, §4.1). Only `evaluative`
- * is in use: the others arrive with mode detection, and are named here so the
- * column and the type agree from the first migration.
+ * What a column of a survey holds, and so how its answers are read (pilot 01,
+ * §4.1, ADR-0016):
+ *
+ * - `evaluative`: a judgement, a complaint, a suggestion. Sentiment, topics,
+ *   keywords, quotes.
+ * - `thematic`: a reflection or a hope. Topics, keywords, quotes; no sentiment.
+ * - `categorical`: a choice from a small set, even when typed freely. A count
+ *   per choice; no sentiment.
+ * - `scale`: a number. Its distribution, mean and most common value.
+ * - `segment`: an attribute of the respondent (class, division). Not analysed.
+ * - `ignore`: a timestamp, an email, an administrative column. Not stored.
  */
 export const ANALYSIS_MODES = [
   'evaluative',
@@ -129,6 +137,41 @@ export const ANALYSIS_MODES = [
 ] as const
 export const analysisModeSchema = z.enum(ANALYSIS_MODES)
 export type AnalysisMode = z.infer<typeof analysisModeSchema>
+
+/**
+ * The modes a question of a dataset can have: the four whose answers are
+ * stored and read. A `segment` or `ignore` column never becomes a question.
+ */
+export const QUESTION_MODES = [
+  'evaluative',
+  'thematic',
+  'categorical',
+  'scale',
+] as const satisfies readonly AnalysisMode[]
+export const questionModeSchema = z.enum(QUESTION_MODES)
+export type QuestionMode = z.infer<typeof questionModeSchema>
+
+export function isQuestionMode(value: unknown): value is QuestionMode {
+  return (QUESTION_MODES as readonly unknown[]).includes(value)
+}
+
+/** What the UI calls each mode: the kind of answer, never the internal name. */
+export const MODE_LABELS: Record<AnalysisMode, string> = {
+  evaluative: 'Kritik & saran',
+  thematic: 'Cerita & refleksi',
+  categorical: 'Pilihan',
+  scale: 'Angka',
+  segment: 'Data responden',
+  ignore: 'Tidak dipakai',
+}
+
+/** What the report shows for a question of each mode. */
+export const MODE_OUTPUTS: Record<QuestionMode, string> = {
+  evaluative: 'sentimen, topik, dan kutipan',
+  thematic: 'topik dan kutipan, tanpa sentimen',
+  categorical: 'jumlah per pilihan',
+  scale: 'sebaran dan rata-rata',
+}
 
 /** One open question of a survey: a column of the uploaded sheet. */
 export type DatasetQuestion = {
@@ -228,6 +271,13 @@ export type QuestionCounts = {
   noContent: number
   /** Answers whose batch failed. */
   failed: number
+  /**
+   * How the job read this question. Recorded on the job, not looked up from
+   * the question, so a report keeps drawing what was analysed even if the
+   * question's mode is changed afterwards. Null on a job from before modes:
+   * it read every question as `evaluative`.
+   */
+  mode: QuestionMode | null
 }
 
 export type AnalysisResult = {
@@ -235,8 +285,13 @@ export type AnalysisResult = {
   organizationId: string
   jobId: string
   responseId: string
-  sentiment: Sentiment
-  sentimentConfidence: number
+  /** Null unless the question is `evaluative`: the others have none to find. */
+  sentiment: Sentiment | null
+  sentimentConfidence: number | null
+  /**
+   * What the question's mode counts: topics for `evaluative` and `thematic`,
+   * the choice(s) named for `categorical`, the value given for `scale`.
+   */
   topics: string[]
   keywords: string[]
   summary: string | null
@@ -257,6 +312,11 @@ export type ReportInsight = {
   detail: string
   /** Response ids backing this insight — keeps the report auditable. */
   evidenceResponseIds: string[]
+  /**
+   * The question the insight is about, from summary.v3. Null when it spans
+   * several; absent on a summary written before insights named their origin.
+   */
+  questionId?: string | null
 }
 
 export type Report = {

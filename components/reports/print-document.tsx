@@ -94,9 +94,9 @@ export function PrintDocument({
                   </p>
                 )}
 
-                {data.insights.length > 0 ? (
+                {view.insights.length > 0 ? (
                   <ul className="mt-4 space-y-3">
-                    {data.insights.map((insight) => {
+                    {view.insights.map((insight) => {
                       const cited = insight.evidenceResponseIds
                         .map((id) => quotes[id])
                         .filter((text): text is string => Boolean(text))
@@ -104,6 +104,11 @@ export function PrintDocument({
                       return (
                         <li key={insight.title} className="keep-together">
                           <p className="font-semibold">{insight.title}</p>
+                          {insight.origin ? (
+                            <p className="text-[8pt] text-muted-foreground">
+                              Dari pertanyaan: {insight.origin}
+                            </p>
+                          ) : null}
                           <p className="text-muted-foreground">{insight.detail}</p>
                           {cited.map((text, index) => (
                             <blockquote
@@ -141,7 +146,8 @@ export function PrintDocument({
                   </dl>
                   <p className="mt-2 text-[9pt] text-muted-foreground">
                     Sentimen, topik, dan kata kunci dihasilkan model bahasa dan bisa
-                    salah. Setiap angka bisa dilacak ke aspirasi aslinya di SAMOSA.
+                    salah. Setiap angka bisa dilacak ke{' '}
+                    {view.aspirations ? 'aspirasi' : 'jawaban'} aslinya di SAMOSA.
                   </p>
                 </Section>
               ) : null}
@@ -167,7 +173,9 @@ function QuestionSections({
   position: number
   count: number
 }) {
-  const total = section.sentiment.total
+  const total = section.answers
+  const evaluative = section.mode === 'evaluative'
+  const choices = section.mode === 'categorical'
 
   return (
     <>
@@ -187,23 +195,46 @@ function QuestionSections({
 
       {total === 0 ? (
         <p className="text-muted-foreground">
-          Tidak ada aspirasi untuk pertanyaan ini: jawabannya kosong, “tidak ada”, atau
-          gagal dianalisis.
+          {evaluative
+            ? 'Tidak ada aspirasi untuk pertanyaan ini: jawabannya kosong, “tidak ada”, atau gagal dianalisis.'
+            : 'Tidak ada jawaban yang bisa dipakai untuk pertanyaan ini: jawabannya kosong atau gagal dianalisis.'}
         </p>
       ) : (
         <>
-          <SentimentSection sentiment={section.sentiment} noContent={section.noContent} />
+          {/* Only a question that asks for a judgement has a sentiment to print. */}
+          {evaluative ? (
+            <SentimentSection
+              sentiment={section.sentiment}
+              noContent={section.noContent}
+            />
+          ) : null}
+
+          {section.scale ? (
+            <Section title={section.termsTitle} keepTogether>
+              {section.scaleLine ? <p className="mb-2">{section.scaleLine}</p> : null}
+              <BarList terms={section.scale.values} total={total} />
+              {section.scale.otherCount > 0 ? (
+                <p className="mt-2 text-[9pt] text-muted-foreground">
+                  {section.scale.otherCount} jawaban dengan nilai yang jarang muncul tidak
+                  digambar.
+                </p>
+              ) : null}
+            </Section>
+          ) : null}
 
           {section.topics.length > 0 ? (
-            <Section title="Topik teratas" keepTogether>
+            <Section title={section.termsTitle} keepTogether>
               <BarList terms={section.topics} total={total} />
             </Section>
           ) : null}
 
           {section.tail.length > 0 ? (
-            <Section title={`Topik lainnya (${section.tail.length})`}>
+            <Section
+              title={`${choices ? 'Pilihan' : 'Topik'} lainnya (${section.tail.length})`}
+            >
               <p className="mb-2 text-muted-foreground">
-                Topik di luar sepuluh besar, dengan jumlah aspirasi yang menyebutnya.
+                {choices ? 'Pilihan' : 'Topik'} di luar sepuluh besar, dengan jumlah{' '}
+                {evaluative ? 'aspirasi' : 'jawaban'} yang menyebutnya.
               </p>
               <ul className="columns-2 gap-6 text-[9pt]">
                 {section.tail.map((term) => (
@@ -223,7 +254,7 @@ function QuestionSections({
           ) : null}
 
           {section.quoted.length > 0 ? (
-            <Section title="Contoh aspirasi per topik">
+            <Section title={`Contoh ${evaluative ? 'aspirasi' : 'jawaban'} per topik`}>
               <div className="space-y-4">
                 {section.quoted.map((group) => (
                   <div key={group.topic} className="keep-together">
@@ -233,7 +264,10 @@ function QuestionSections({
                         key={index}
                         className="mb-1 border-l-2 pl-2 text-[9pt] text-muted-foreground"
                       >
-                        {response.text} ({SENTIMENT_LABELS[response.sentiment]})
+                        {response.text}
+                        {response.sentiment
+                          ? ` (${SENTIMENT_LABELS[response.sentiment]})`
+                          : null}
                       </blockquote>
                     ))}
                   </div>
@@ -343,7 +377,8 @@ function SentimentSection({
  * Every bar carries its own value.
  */
 function BarList({ terms, total }: { terms: CountedTerm[]; total: number }) {
-  const max = terms[0]?.count ?? 0
+  // Not the first term's: a scale's bars are in value order, not count order.
+  const max = Math.max(0, ...terms.map((term) => term.count))
 
   return (
     <ul className="space-y-1.5 text-[9pt]">
