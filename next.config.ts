@@ -23,6 +23,24 @@ const nextConfig: NextConfig = {
     dirs: ['app', 'components', 'lib', 'modules', 'tests'],
   },
   /**
+   * The PDF library runs in the browser only (ADR-0014), behind an `import()`
+   * in a click handler. The server build still follows that import, and file
+   * tracing then ships the library with every function that renders the
+   * button: measured, the report page's function was 9.5 MB with it and is
+   * 5.4 MB without. So the server build is told to skip the one file that
+   * imports the library — components/reports/pdf/report-pdf.tsx. The server
+   * never calls it, so nothing is lost. (Aliasing the package itself does not
+   * work: Next treats it as a server external before any alias is consulted.)
+   */
+  webpack(config, { isServer, webpack }) {
+    if (isServer) {
+      config.plugins.push(
+        new webpack.IgnorePlugin({ resourceRegExp: /pdf\/report-pdf$/ }),
+      )
+    }
+    return config
+  },
+  /**
    * The constant half of the security headers. The Content-Security-Policy is
    * not here — it carries a per-request nonce, so `middleware.ts` sets it.
    * These are static, and putting them here means they also cover the paths

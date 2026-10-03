@@ -78,6 +78,19 @@ export async function loadExportContext(
   }
 }
 
+/**
+ * Text of the responses the summary's insights cite, by response id. Both
+ * layouts of the report print them under the insight they support.
+ */
+export function citedQuotes(bundle: ReportExportBundle): Record<string, string> {
+  const cited = new Set(bundle.document.insights.flatMap((i) => i.evidenceResponseIds))
+  const quotes: Record<string, string> = {}
+  for (const row of bundle.rows) {
+    if (cited.has(row.responseId)) quotes[row.responseId] = row.responseText
+  }
+  return quotes
+}
+
 /** Embedded in the page rather than signed: a printout must not expire. */
 function logoDataUrl(logo: LogoImage | null): string | null {
   if (!logo) return null
@@ -107,10 +120,13 @@ export async function loadReportExport(
   options: { includeArchived?: boolean } = {},
 ): Promise<Result<ReportExportBundle, AppError>> {
   const { organizationId } = context
-  const job = await getJob(organizationId, jobId, options)
+  // Together, not one after the other: both are keyed by the same two ids and
+  // both go through RLS, and "Unduh PDF" waits on this read with a spinner.
+  const [job, results] = await Promise.all([
+    getJob(organizationId, jobId, options),
+    listJobResults(organizationId, jobId),
+  ])
   if (!job.ok) return job
-
-  const results = await listJobResults(organizationId, jobId)
   if (!results.ok) return results
   if (results.value.length === 0) {
     return err(

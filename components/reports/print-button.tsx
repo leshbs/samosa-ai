@@ -1,17 +1,18 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { FileText } from 'lucide-react'
+import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 /**
- * "Unduh PDF" on the print page. The browser's print dialog is the PDF
- * renderer now: "Simpan sebagai PDF" is in every desktop and mobile browser,
- * and the file it saves is named after the page title.
+ * "Cetak" on the print page. The browser's print dialog also saves a PDF —
+ * "Simpan sebagai PDF" is in every desktop and mobile browser, and the file is
+ * named after the page title — which is why this page is what "Unduh PDF"
+ * falls back to when the direct download fails.
  *
- * `auto` opens the dialog once the page has its fonts, for someone who came
- * from the report's "Unduh PDF" and should not have to press it twice. Fonts
- * first: printing before the webfont lands prints the fallback face.
+ * `auto` opens the dialog once the page has its fonts, for someone sent here
+ * by that fallback, who has already pressed a button once. Fonts first:
+ * printing before the webfont lands prints the fallback face.
  */
 export function PrintButton({ auto = false }: { auto?: boolean }) {
   const printed = useRef(false)
@@ -25,9 +26,9 @@ export function PrintButton({ auto = false }: { auto?: boolean }) {
   }, [auto])
 
   return (
-    <Button type="button" size="sm" onClick={() => window.print()}>
-      <FileText aria-hidden />
-      Unduh PDF
+    <Button type="button" variant="outline" size="sm" onClick={() => window.print()}>
+      <Printer aria-hidden />
+      Cetak
     </Button>
   )
 }
