@@ -104,6 +104,72 @@ describe('POST /api/datasets', () => {
     )
   })
 
+  it('takes every column with its mode and the guess that was made for it', async () => {
+    getSessionUser.mockResolvedValue(SESSION)
+    uploadDataset.mockResolvedValue({
+      ok: true,
+      value: { datasetId: 'dataset-1', responseCount: 2, skippedEmpty: 0 },
+    })
+
+    const response = await POST(
+      request({
+        file: csv(),
+        name: 'Evaluasi Pensi',
+        source: 'csv',
+        columnModes: JSON.stringify([
+          { column: 'Nama', mode: 'ignore', detectedMode: 'ignore' },
+          { column: 'Paling seru?', mode: 'categorical', detectedMode: 'thematic' },
+        ]),
+        modeDetection: JSON.stringify({
+          promptVersion: 'modes.v1',
+          modelId: 'gpt-4o-mini',
+        }),
+      }) as never,
+    )
+
+    expect(response.status).toBe(201)
+    expect(uploadDataset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        columnModes: [
+          { column: 'Nama', mode: 'ignore', detectedMode: 'ignore' },
+          { column: 'Paling seru?', mode: 'categorical', detectedMode: 'thematic' },
+        ],
+        modeDetection: { promptVersion: 'modes.v1', modelId: 'gpt-4o-mini' },
+      }),
+    )
+  })
+
+  it('refuses a mode nobody defined, and a field that is not JSON', async () => {
+    getSessionUser.mockResolvedValue(SESSION)
+
+    for (const columnModes of [
+      JSON.stringify([{ column: 'Kritik', mode: 'sentimen' }]),
+      '{bukan json',
+    ]) {
+      const response = await POST(
+        request({ file: csv(), name: 'Evaluasi', source: 'csv', columnModes }) as never,
+      )
+      expect(response.status).toBe(422)
+    }
+    expect(uploadDataset).not.toHaveBeenCalled()
+  })
+
+  it('refuses an upload whose every column is left out', async () => {
+    getSessionUser.mockResolvedValue(SESSION)
+
+    const response = await POST(
+      request({
+        file: csv(),
+        name: 'Evaluasi',
+        source: 'csv',
+        columnModes: JSON.stringify([{ column: 'Nama', mode: 'ignore' }]),
+      }) as never,
+    )
+
+    expect(response.status).toBe(422)
+    expect(uploadDataset).not.toHaveBeenCalled()
+  })
+
   it('refuses an upload that names no column', async () => {
     getSessionUser.mockResolvedValue(SESSION)
 

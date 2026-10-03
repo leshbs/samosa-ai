@@ -1,10 +1,16 @@
 import { aggregateKeywords, DEFAULT_TOP_KEYWORDS, type KeywordCount } from './keywords'
+import { aggregateScale, type ScaleSummary } from './scale'
 import { aggregateSentiment, type SentimentDistribution } from './sentiment'
 import { crossTabTopicSentimentWithOther, type TopicSentimentRow } from './cross-tab'
 import { distributeTopics, DEFAULT_TOP_TOPICS, type TopicCount } from './topics'
 import type { AnalyzedRecord } from './types'
 
 export type DashboardData = {
+  /**
+   * Every record given, with a sentiment or without: what "N jawaban" counts.
+   * `sentiment.total` is only the ones that were read for sentiment.
+   */
+  answers: number
   sentiment: SentimentDistribution
   topics: TopicCount[]
   /**
@@ -21,6 +27,8 @@ export type DashboardData = {
   topicSentimentOther: TopicSentimentRow | null
   /** Responses the model tagged with no topic at all — a blind spot worth admitting. */
   untaggedCount: number
+  /** The records read as answers to a `scale` question; meaningful only for one. */
+  scale: ScaleSummary
 }
 
 export type DashboardOptions = {
@@ -44,6 +52,8 @@ export function buildDashboardData(
   const topicSentiment = crossTabTopicSentimentWithOther(records, topTopics)
 
   return {
+    answers: records.length,
+    scale: aggregateScale(records),
     sentiment: aggregateSentiment(records),
     topics: topicDistribution.top,
     topicTail: topicDistribution.tail,

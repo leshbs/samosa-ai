@@ -35,6 +35,8 @@ const SENTIMENT = {
 function section(overrides: Partial<ReportDocumentSection> = {}): ReportDocumentSection {
   return {
     questionText: 'Kritik dan saran',
+    mode: 'evaluative',
+    answers: 128,
     sentiment: SENTIMENT,
     noContent: 100,
     topics: Array.from({ length: 10 }, (_, i) => term(`topik ${i}`, 40 - i * 3)),
@@ -64,7 +66,7 @@ function fixture(overrides: Partial<ReportDocumentData> = {}): ReportDocumentDat
         evidenceResponseIds: ['r1'],
       },
     ],
-    sentiment: SENTIMENT,
+    answers: 128,
     noContent: 100,
     sections: [section()],
     provenance: {
@@ -214,6 +216,7 @@ describe('ReportPdf', () => {
           // Every answer was "tidak ada": the question keeps its place.
           section({
             questionText: 'Ada usul lain?',
+            answers: 0,
             sentiment: {
               total: 0,
               counts: { positive: 0, neutral: 0, negative: 0 },

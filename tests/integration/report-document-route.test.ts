@@ -36,7 +36,7 @@ const BUNDLE = {
     { responseId: 'r1', questionId: 'q1', responseText: 'Konsumsi telat dua jam' },
     { responseId: 'r2', questionId: 'q1', responseText: 'Tidak dikutip' },
   ],
-  questions: [{ id: 'q1', text: 'Kritik dan saran' }],
+  questions: [{ id: 'q1', text: 'Kritik dan saran', mode: 'evaluative' }],
   document: {
     organizationName: 'OSIS SMA 1',
     datasetName: 'Pensi 2026',
@@ -44,16 +44,13 @@ const BUNDLE = {
     promptVersion: 'analysis.v2',
     summary: 'Ringkasan.',
     insights: [{ title: 'Konsumsi', detail: 'Telat.', evidenceResponseIds: ['r1'] }],
-    sentiment: {
-      total: 2,
-      counts: { positive: 0, neutral: 1, negative: 1 },
-      shares: { positive: 0, neutral: 0.5, negative: 0.5 },
-      dominant: null,
-    },
+    answers: 2,
     noContent: 3,
     sections: [
       {
         questionText: 'Kritik dan saran',
+        mode: 'evaluative',
+        answers: 2,
         sentiment: {
           total: 2,
           counts: { positive: 0, neutral: 1, negative: 1 },
@@ -98,7 +95,13 @@ describe('GET /api/reports/[id]/document', () => {
     expect(data.logoSrc).toBe('data:image/png;base64,AAAA')
     // Only the response an insight cites travels, not every row.
     expect(data.insights).toEqual([
-      { title: 'Konsumsi', detail: 'Telat.', quotes: ['Konsumsi telat dua jam'] },
+      {
+        title: 'Konsumsi',
+        detail: 'Telat.',
+        // One question: there is no other for the insight to be told apart from.
+        origin: null,
+        quotes: ['Konsumsi telat dua jam'],
+      },
     ])
     expect(JSON.stringify(data)).not.toContain('Tidak dikutip')
   })

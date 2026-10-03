@@ -1,8 +1,11 @@
 import { ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
+import { guessModeByRule } from '../services/mode-rules'
 import type {
   BatchInput,
   BatchOutput,
+  ClassifyInput,
+  ClassifyOutput,
   LlmAdapter,
   SummaryInput,
   SummaryOutput,
@@ -83,6 +86,7 @@ export function createLocalAdapter(): LlmAdapter {
           topic.count,
         )}% dari total).`,
         evidence: [] as number[],
+        question: null,
       }))
 
       return ok({
@@ -95,8 +99,22 @@ export function createLocalAdapter(): LlmAdapter {
                   title: 'Belum ada pola yang menonjol',
                   detail: `Dari ${totalResponses} aspirasi, belum ada topik yang cukup berulang untuk disimpulkan.`,
                   evidence: [] as number[],
+                  question: null,
                 },
               ],
+        citesQuestions: false,
+        modelId: 'local-lexicon-v0',
+        usage: { inputTokens: 0, outputTokens: 0 },
+        costMicroIdr: 0,
+      })
+    },
+
+    /** The same rules the wizard falls back to when the model does not answer. */
+    async classifyColumns(
+      input: ClassifyInput,
+    ): Promise<Result<ClassifyOutput, AppError>> {
+      return ok({
+        modes: input.columns.map(guessModeByRule),
         modelId: 'local-lexicon-v0',
         usage: { inputTokens: 0, outputTokens: 0 },
         costMicroIdr: 0,

@@ -1,3 +1,5 @@
+import type { QuestionMode } from '@/types/domain'
+
 /**
  * A report is split by question (pilot 01, §4.4): "Apa yang perlu diperbaiki?"
  * and "Apa yang paling berkesan?" are two reports that share a cover. Pooling
@@ -8,6 +10,11 @@ export type ReportQuestion = {
   id: string
   /** What the respondent was asked; the section's title. */
   text: string
+  /**
+   * How the job read the question, and so what its section draws: a question
+   * with no sentiment in it gets no sentiment chart (ADR-0016).
+   */
+  mode: QuestionMode
 }
 
 export type QuestionSection<Row> = {
@@ -48,6 +55,12 @@ export function groupByQuestion<Row extends { questionId: string }>(
   }))
 
   return strays.length > 0
-    ? [...sections, { question: { id: '', text: UNKNOWN_QUESTION_TEXT }, rows: strays }]
+    ? [
+        ...sections,
+        {
+          question: { id: '', text: UNKNOWN_QUESTION_TEXT, mode: 'evaluative' as const },
+          rows: strays,
+        },
+      ]
     : sections
 }

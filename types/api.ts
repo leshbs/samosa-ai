@@ -1,7 +1,9 @@
 import { z } from 'zod'
 import {
+  analysisModeSchema,
   datasetSourceSchema,
   invitableRoleSchema,
+  isQuestionMode,
   orgTimeZoneSchema,
 } from '@/types/domain'
 import type { ErrorCode } from '@/modules/shared'
@@ -21,31 +23,60 @@ export const MAX_RESPONSE_LENGTH = 4_000
  * that caused them. A Zod default would put English in an otherwise
  * Indonesian form.
  */
-export const createDatasetSchema = z.object({
-  name: z
-    .string()
-    .min(1, 'Nama dataset wajib diisi')
-    .max(120, 'Nama dataset maksimal 120 karakter'),
-  source: datasetSourceSchema,
-  /**
-   * Columns of the uploaded sheet that hold free-text answers: one question of
-   * the dataset each. The limit is enforced where the sheet is read
-   * (MAX_QUESTIONS_PER_DATASET); the bound here only keeps the request sane.
-   */
-  textColumns: z
-    .array(z.string().min(1).max(200, 'Nama kolom maksimal 200 karakter'))
-    .min(1, 'Pilih kolom yang berisi aspirasi')
-    .max(50),
-  /**
-   * Columns to store alongside the text. Absent means store none — the caller
-   * opts data in rather than out, so a request that forgets this field stores
-   * the least, not the most.
-   */
-  keepColumns: z
-    .array(z.string().max(200))
-    .max(50, 'Maksimal 50 kolom tambahan')
-    .default([]),
-})
+export const createDatasetSchema = z
+  .object({
+    name: z
+      .string()
+      .min(1, 'Nama dataset wajib diisi')
+      .max(120, 'Nama dataset maksimal 120 karakter'),
+    source: datasetSourceSchema,
+    /**
+     * Columns of the uploaded sheet that hold free-text answers: one question of
+     * the dataset each. The limit is enforced where the sheet is read
+     * (MAX_QUESTIONS_PER_DATASET); the bound here only keeps the request sane.
+     */
+    textColumns: z
+      .array(z.string().min(1).max(200, 'Nama kolom maksimal 200 karakter'))
+      .max(50)
+      .default([]),
+    /**
+     * Every column the wizard showed with the mode chosen for it and the mode
+     * the system guessed. Replaces `textColumns`, which a wizard loaded before
+     * the deploy still sends: its columns are read as `evaluative`.
+     */
+    columnModes: z
+      .array(
+        z.object({
+          column: z.string().min(1).max(200, 'Nama kolom maksimal 200 karakter'),
+          mode: analysisModeSchema,
+          detectedMode: analysisModeSchema.nullable().default(null),
+        }),
+      )
+      .max(200)
+      .default([]),
+    /** Which prompt made the guesses. Recorded for research; trusted for nothing. */
+    modeDetection: z
+      .object({
+        promptVersion: z.string().max(40).nullable().default(null),
+        modelId: z.string().max(80).nullable().default(null),
+      })
+      .optional(),
+    /**
+     * Columns to store alongside the text. Absent means store none — the caller
+     * opts data in rather than out, so a request that forgets this field stores
+     * the least, not the most.
+     */
+    keepColumns: z
+      .array(z.string().max(200))
+      .max(50, 'Maksimal 50 kolom tambahan')
+      .default([]),
+  })
+  .refine(
+    (value) =>
+      value.textColumns.length > 0 ||
+      value.columnModes.some((choice) => isQuestionMode(choice.mode)),
+    { message: 'Pilih paling tidak satu kolom untuk dianalisis', path: ['columnModes'] },
+  )
 export type CreateDatasetInput = z.infer<typeof createDatasetSchema>
 
 export const createAnalysisSchema = z.object({

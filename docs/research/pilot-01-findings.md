@@ -150,6 +150,14 @@ Wizard menampilkan tebakan dengan mode yang bisa diubah per kolom. **Tunjukkan t
 
 Simpan `detected_mode` terpisah dari `analysis_mode` agar akurasi deteksi bisa diukur belakangan — berapa sering user mengoreksi, dan untuk jenis pertanyaan apa. Ini data untuk paper.
 
+**Koreksi saat dikerjakan** (ADR-0016, prompt `modes.v1`):
+
+- **Tidak ada contoh nilai yang dikirim.** Tebakan dibuat sebelum pengunggah memilih kolom, jadi "3 contoh nilai per kolom" berarti mengirim nama dan email ke OpenAI — yang halaman privasi dan landing janjikan tidak terjadi. Model hanya diberi judul kolom dan gambaran isinya yang dihitung di server: berapa sel terisi, berapa yang berbeda, rata-rata jumlah kata, dan jenisnya (angka, teks pendek, teks panjang). Kolom yang isinya tanggal, email, atau nomor telepon diputuskan aturan lokal; judulnya pun tidak dikirim.
+- Deteksi tidak boleh menggagalkan unggahan. Kalau model gagal atau tidak menjawab dalam 8 detik, tebakan datang dari aturan lokal.
+- Tebakan dan pilihan disimpan untuk **semua** kolom di `datasets.metadata.column_modes`, bukan hanya untuk yang menjadi pertanyaan: kolom yang ditebak `ignore` lalu diubah pengguna juga data akurasi.
+- `segment` belum bisa dipilih di wizard (menunggu C.6); kolom yang ditebak `segment` tampil sebagai "Tidak dipakai". Saat menghitung koreksi, `segment` → `ignore` bukan koreksi pengguna.
+- Likert berupa kata ("sangat setuju") diarahkan ke `categorical`, bukan `scale`: ejaannya perlu disatukan, dan rata-ratanya tidak bisa dihitung tanpa tahu skalanya. `scale` berarti angka, dan dibaca kode tanpa model.
+
 ### 4.3 Skema
 
 ```sql
@@ -192,6 +200,17 @@ alter table responses
 - **Prompt per mode**, bukan satu prompt untuk semua. `thematic` dan `categorical` tidak boleh punya field sentimen sama sekali — jangan biarkan model mengisi sesuatu yang tidak diminta.
 - **Laporan tersegmentasi per pertanyaan.** Teks pertanyaannya jadi judul section. Jangan gabungkan jawaban dari pertanyaan berbeda ke satu kolam topik.
 - **Ringkasan eksekutif** menarik dari semua pertanyaan, tapi menyebutkan asalnya.
+
+**Saat dikerjakan** (putaran 2, ADR-0016, migrasi `20261006000100`):
+
+- "Tanpa field sentimen sama sekali" butuh migrasi: `analysis_results.sentiment` dan `sentiment_confidence` tadinya `NOT NULL`. Sekarang keduanya boleh kosong, dan harus kosong bersama.
+- Tidak ada kolom baru untuk pilihan dan nilai: `topics` memuat apa yang dihitung mode itu. Mode yang dipakai sebuah job dicatat di job (`question_counts[<id>].mode`), supaya laporan lama tidak berubah arti kalau mode pertanyaan diubah.
+- `analysis.v3` = satu prompt per mode + teks pertanyaan sebagai konteks. `evaluative` juga memuat yang diminta C.3: permintaan sopan, salah ketik, singkatan, campur bahasa, beberapa keluhan dalam satu jawaban. Perbandingan v2→v3 karena itu mengukur ketiganya sekaligus untuk pertanyaan `evaluative`.
+- "tidak" adalah non-jawaban di bawah "Ada saran?" dan jawaban di bawah "Ikut lagi tahun depan?". Kamus non-jawaban sekarang bergantung mode.
+- Batch satu pertanyaan `categorical` berjalan berurutan dan membawa daftar pilihan yang sudah dipakai, supaya satu pilihan punya satu ejaan di seluruh pertanyaan.
+- Batas keluaran dipotong, bukan ditolak, dan batch yang balasannya rusak diminta sekali lagi — sisa temuan "1 dari 100 balasan melanggar format" di putaran 1.
+- Persentase sentimen di mana pun hanya menghitung jawaban yang memang dinilai. Beranda sebelumnya membagi dengan jumlah semua hasil.
+- `summary.v3` diberi laporan pertanyaan demi pertanyaan; tiap insight menyebut pertanyaan asalnya, dan kutipan hanya diambil dari pertanyaan berupa prosa.
 
 ---
 

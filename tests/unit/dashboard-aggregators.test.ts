@@ -140,6 +140,16 @@ describe('buildDashboardData', () => {
     const data = buildDashboardData([])
 
     expect(data).toEqual({
+      answers: 0,
+      scale: {
+        values: [],
+        otherCount: 0,
+        answers: 0,
+        numericAnswers: 0,
+        mean: null,
+        mostCommon: null,
+        mostCommonCount: 0,
+      },
       sentiment: {
         total: 0,
         counts: { positive: 0, neutral: 0, negative: 0 },
