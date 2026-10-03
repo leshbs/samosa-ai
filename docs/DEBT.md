@@ -5,6 +5,72 @@ Tambahkan baris baru lewat PR yang menciptakan utangnya, jangan belakangan.
 
 ## Terbuka
 
+### Migrasi `dataset_questions` harus ditempel sebelum PR-nya di-merge
+
+**Lunas 2026-10-03.** Ditempel sebelum merge; `scripts/check-rls.mjs` 60/60
+tanpa SKIP, dan 17 dataset yang ada masing-masing mendapat satu pertanyaan.
+Catatan aslinya:
+
+`20261005000100_dataset_questions.sql` menambah tabel `dataset_questions`,
+`responses.question_id`, `responses.respondent_index`, dan
+`analysis_jobs.question_counts`. Kode baru membaca dan menulis semuanya: tanpa
+migrasi, unggah dan analisis gagal. Aman ditempel selagi kode lama masih live —
+trigger-nya mengisi kedua kolom untuk baris yang tidak menyebut pertanyaan
+(ADR-0015).
+
+**Pemicu:** sebelum merge. **Bayar dengan:** tempel di SQL Editor, lalu
+`scripts/check-rls.mjs`.
+
+### Semua pertanyaan dianalisis sebagai `evaluative`
+
+Putaran 1 dari C.2 (ADR-0015) memberi dataset beberapa pertanyaan, tapi setiap
+pertanyaan masih melewati `analysis.v2` — sentimen, topik, kata kunci. Kolom
+yang isinya pilihan ("kegiatan paling seru") atau angka tetap menghasilkan
+"100% netral", temuan §3.1 dari pilot 01. Wizard mengatakannya di langkah pilih
+kolom.
+
+**Pemicu:** putaran 2 (mode analisis dan `analysis.v3`). **Bayar dengan:**
+deteksi mode saat mapping, prompt per mode, bagian laporan per mode.
+
+### Ringkasan eksekutif digabung lintas pertanyaan
+
+Untuk laporan dengan beberapa pertanyaan, grafik, topik, dan kutipan sudah
+dipisah per pertanyaan, tapi `generateReportSummary` masih menyusun ringkasan
+dan insight dari semua jawaban sekaligus (`summary.v2`). Halaman laporan
+menyatakannya di bawah ringkasan. PDF dan halaman cetak tidak.
+
+**Pemicu:** putaran 2 — ringkasan per pertanyaan harus tahu pertanyaan mana
+yang tidak punya sentimen, jadi `summary.v3` dibuat sekali, bersama mode.
+**Bayar dengan:** prompt `summary.v3` dengan masukan per pertanyaan.
+
+### Batch analisis tidak diulang saat balasan model rusak
+
+Diukur 2026-10-03: kira-kira satu dari seratus balasan ringkasan melanggar
+format keluaran (1 dari 105 di data uji dua pertanyaan, dan sekali di uji nyata).
+Ringkasan sekarang meminta sekali lagi untuk kegagalan jenis itu
+(`generateReportSummary`), dan error-nya menyebut field mana yang rusak
+(`details.where`). **Batch analisis belum:** balasan batch yang rusak langsung
+menjadi 30 respons "gagal" dan job berstatus `partial`. Field yang rusak di
+ringkasan itu sendiri belum tertangkap — 90 percobaan setelah log-nya diperbaiki
+semuanya berhasil.
+
+**Pemicu:** job `partial` yang `error`-nya "tidak sesuai format", atau
+`reporting.summary.retrying` muncul di log dengan `where` yang sama berulang.
+**Bayar dengan:** ulang sekali per batch di orchestrator dengan penanda yang
+sama (`malformedReply`); kalau `where` selalu field yang sama, longgarkan batas
+itu di versi prompt berikutnya.
+
+### `question_text` belum bisa diubah
+
+Judul bagian laporan adalah header kolom apa adanya. Header Google Forms sering
+panjang atau berakhiran "(opsional)", dan belum ada tempat untuk merapikannya.
+Kolomnya sudah terpisah dari `column_name` supaya itu bisa ditambahkan tanpa
+migrasi.
+
+**Pemicu:** keluhan soal judul bagian, atau wizard mode di putaran 2 (tempat
+yang wajar untuk mengeditnya). **Bayar dengan:** kolom teks di wizard dan satu
+route `PATCH`.
+
 ### Migrasi `no_content_count` harus ditempel sebelum PR-nya di-merge
 
 **Lunas 2026-10-03.** Ditempel sebelum merge; `scripts/check-rls.mjs` 52/52

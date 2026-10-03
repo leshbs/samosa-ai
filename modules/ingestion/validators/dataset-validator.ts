@@ -10,15 +10,30 @@ import type { ParsedSheet } from '../parsers'
  * away from the model. Dropping them here used to make them vanish from both.
  */
 const MIN_RESPONSE_LENGTH = 1
+/**
+ * Answers, not respondents: 1,000 people answering five questions is 5,000.
+ * The cap is on what a job has to send to the model.
+ */
 const MAX_RESPONSES_PER_DATASET = 5_000
+/** A report section each; past this a survey is not one report any more. */
+export const MAX_QUESTIONS_PER_DATASET = 10
 
 export type ExtractedResponse = {
+  /** The header of the column this answer came from. */
+  column: string
+  /** The sheet row, counted from 0: the same on every answer of one respondent. */
+  respondentIndex: number
   text: string
   respondentMeta: Record<string, string>
 }
 
 export type ExtractionReport = {
+  /** The text columns, in sheet order, that had at least one answer. */
+  columns: string[]
   responses: ExtractedResponse[]
+  /** Sheet rows with at least one answer. */
+  respondentCount: number
+  /** Blank cells in the chosen columns. */
   skippedEmpty: number
   truncated: number
 }
@@ -36,7 +51,9 @@ export function validateUploadSize(bytes: number): Result<void, AppError> {
 }
 
 /**
- * Pulls the aspiration column out of a parsed sheet.
+ * Pulls the answer columns out of a parsed sheet: one response per respondent
+ * per question they answered. A blank cell is not a response, so a respondent
+ * who skipped a question simply has no row for it.
  *
  * Every other column is **dropped** unless it is named in `keepColumns`. That
  * default is the point of this function, not a detail of it: a Google Forms
@@ -50,48 +67,73 @@ export function validateUploadSize(bytes: number): Result<void, AppError> {
  */
 export function extractResponses(
   sheet: ParsedSheet,
-  textColumn: string,
+  textColumns: readonly string[],
   keepColumns: readonly string[] = [],
 ): Result<ExtractionReport, AppError> {
-  if (!sheet.columns.includes(textColumn)) {
+  const missing = textColumns.find((column) => !sheet.columns.includes(column))
+  if (textColumns.length === 0 || missing !== undefined) {
+    return err(
+      appError(ERROR_CODES.VALIDATION, `Kolom "${missing ?? ''}" tidak ada di file ini`, {
+        details: { available: sheet.columns },
+      }),
+    )
+  }
+  if (textColumns.length > MAX_QUESTIONS_PER_DATASET) {
     return err(
       appError(
         ERROR_CODES.VALIDATION,
-        `Column "${textColumn}" was not found in the file`,
-        {
-          details: { available: sheet.columns },
-        },
+        `Paling banyak ${MAX_QUESTIONS_PER_DATASET} pertanyaan per dataset`,
+        { details: { found: textColumns.length, limit: MAX_QUESTIONS_PER_DATASET } },
       ),
     )
   }
 
+  // Sheet order, each once: the order the questions appear in the report must
+  // not depend on the order the request happened to list them.
+  const questions = sheet.columns.filter((column) => textColumns.includes(column))
+
   // Resolved once, and only from columns the sheet actually has: a stale name
   // in the request must not become an empty key on every row.
   const kept = sheet.columns.filter(
-    (column) => column !== textColumn && keepColumns.includes(column),
+    (column) => !questions.includes(column) && keepColumns.includes(column),
   )
 
   const responses: ExtractedResponse[] = []
+  const answered = new Set<string>()
+  let respondentCount = 0
   let skippedEmpty = 0
   let truncated = 0
 
-  for (const row of sheet.rows) {
-    const raw = (row[textColumn] ?? '').trim()
-    if (raw.length < MIN_RESPONSE_LENGTH) {
-      skippedEmpty += 1
-      continue
+  sheet.rows.forEach((row, respondentIndex) => {
+    let respondentMeta: Record<string, string> | null = null
+
+    for (const column of questions) {
+      const raw = (row[column] ?? '').trim()
+      if (raw.length < MIN_RESPONSE_LENGTH) {
+        skippedEmpty += 1
+        continue
+      }
+
+      if (raw.length > MAX_RESPONSE_LENGTH) truncated += 1
+
+      if (respondentMeta === null) {
+        respondentMeta = {}
+        for (const keptColumn of kept) {
+          const value = row[keptColumn]
+          if (value) respondentMeta[keptColumn] = value
+        }
+        respondentCount += 1
+      }
+
+      answered.add(column)
+      responses.push({
+        column,
+        respondentIndex,
+        text: raw.slice(0, MAX_RESPONSE_LENGTH),
+        respondentMeta,
+      })
     }
-
-    if (raw.length > MAX_RESPONSE_LENGTH) truncated += 1
-
-    const respondentMeta: Record<string, string> = {}
-    for (const column of kept) {
-      const value = row[column]
-      if (value) respondentMeta[column] = value
-    }
-
-    responses.push({ text: raw.slice(0, MAX_RESPONSE_LENGTH), respondentMeta })
-  }
+  })
 
   if (responses.length === 0) {
     return err(
@@ -103,11 +145,23 @@ export function extractResponses(
   }
   if (responses.length > MAX_RESPONSES_PER_DATASET) {
     return err(
-      appError(ERROR_CODES.VALIDATION, 'Dataset melebihi batas 5.000 aspirasi', {
-        details: { found: responses.length, limit: MAX_RESPONSES_PER_DATASET },
-      }),
+      appError(
+        ERROR_CODES.VALIDATION,
+        questions.length > 1
+          ? 'Dataset melebihi batas 5.000 jawaban (responden × pertanyaan). Kurangi pertanyaan yang dipilih.'
+          : 'Dataset melebihi batas 5.000 aspirasi',
+        { details: { found: responses.length, limit: MAX_RESPONSES_PER_DATASET } },
+      ),
     )
   }
 
-  return ok({ responses, skippedEmpty, truncated })
+  return ok({
+    // A chosen column nobody answered is not a question of this dataset: it
+    // would be a report section with nothing in it.
+    columns: questions.filter((column) => answered.has(column)),
+    responses,
+    respondentCount,
+    skippedEmpty,
+    truncated,
+  })
 }

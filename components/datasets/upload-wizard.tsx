@@ -38,6 +38,13 @@ const OFFER_KEPT_COLUMNS = false
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
+/**
+ * Mirrors MAX_QUESTIONS_PER_DATASET in the ingestion module, which is where it
+ * is enforced; this copy only stops the wizard offering what the server will
+ * refuse.
+ */
+const MAX_QUESTIONS = 10
+
 const ACCEPTED = {
   'text/csv': ['.csv'],
   'application/vnd.ms-excel': ['.xls'],
@@ -58,6 +65,8 @@ function defaultName(file: File): string {
 type CreatedDataset = {
   datasetId: string
   responseCount: number
+  respondentCount: number
+  questionCount: number
   skippedEmpty: number
 }
 
@@ -133,7 +142,12 @@ export function UploadWizard() {
   const [step, setStep] = useState<Step>(1)
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<DatasetPreview | null>(null)
-  const [textColumn, setTextColumn] = useState('')
+  /**
+   * The open questions: every ticked column becomes a question of the dataset
+   * and a section of its report. One is the common case; a survey with "kritik"
+   * and "saran" in separate columns is why it is not the only one (pilot 01).
+   */
+  const [textColumns, setTextColumns] = useState<string[]>([])
   /**
    * Starts empty and stays empty unless the uploader ticks something. A Google
    * Forms export puts names, classes and email addresses in the columns next to
@@ -171,7 +185,8 @@ export function UploadWizard() {
 
     setFile(picked)
     setPreview(previewed.value)
-    setTextColumn(previewed.value.suggestedColumn ?? previewed.value.columns[0] ?? '')
+    const suggested = previewed.value.suggestedColumn ?? previewed.value.columns[0]
+    setTextColumns(suggested ? [suggested] : [])
     setKeepColumns([])
     setName(defaultName(picked))
     setStep(2)
@@ -185,14 +200,20 @@ export function UploadWizard() {
     multiple: false,
   })
 
-  /** Never includes the text column, even if it was ticked before being chosen. */
-  const keptColumns = keepColumns.filter((column) => column !== textColumn)
-  const otherColumns = preview
-    ? preview.columns.filter((column) => column !== textColumn)
+  // Sheet order, whatever order they were ticked in: it is the order the
+  // questions appear in the report.
+  const questions = preview
+    ? preview.columns.filter((column) => textColumns.includes(column))
     : []
+  /** Never includes a question column, even if it was ticked before being chosen. */
+  const keptColumns = keepColumns.filter((column) => !questions.includes(column))
+  const otherColumns = preview
+    ? preview.columns.filter((column) => !questions.includes(column))
+    : []
+  const atLimit = questions.length >= MAX_QUESTIONS
 
   async function submit() {
-    if (!file || !textColumn) return
+    if (!file || questions.length === 0) return
 
     setBusy(true)
     setProgress(0)
@@ -202,7 +223,10 @@ export function UploadWizard() {
     body.append('file', file)
     body.append('name', name.trim())
     body.append('source', sourceOf(file))
-    body.append('textColumn', textColumn)
+    // One entry per question, as with the kept columns below.
+    for (const column of questions) {
+      body.append('textColumns', column)
+    }
     // One entry per kept column; none appended means none stored.
     for (const column of keptColumns) {
       body.append('keepColumns', column)
@@ -218,7 +242,11 @@ export function UploadWizard() {
       return
     }
 
-    toast.success(`${created.value.responseCount} aspirasi berhasil diunggah.`)
+    toast.success(
+      created.value.questionCount > 1
+        ? `${created.value.responseCount} jawaban dari ${created.value.respondentCount} responden berhasil diunggah.`
+        : `${created.value.responseCount} aspirasi berhasil diunggah.`,
+    )
     router.replace(`/datasets/${created.value.datasetId}`)
     router.refresh()
   }
@@ -227,7 +255,7 @@ export function UploadWizard() {
     setStep(1)
     setFile(null)
     setPreview(null)
-    setTextColumn('')
+    setTextColumns([])
     setKeepColumns([])
     setError(null)
   }
@@ -335,36 +363,65 @@ export function UploadWizard() {
                 <p className="text-sm text-muted-foreground">
                   {file?.name} · {preview.totalRows} baris
                 </p>
+                <p className="text-sm text-muted-foreground">
+                  Pilih satu atau lebih. Setiap kolom menjadi satu pertanyaan di laporan,
+                  dengan judul kolomnya sebagai judul bagian. Semua kolom dianalisis
+                  sebagai aspirasi (sentimen dan topik), jadi kolom yang isinya pilihan
+                  atau angka belum cocok dipilih.
+                </p>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {preview.columns.map((column) => (
-                    <label
-                      key={column}
-                      className={cn(
-                        'flex cursor-pointer items-start gap-3 rounded-control border p-3 text-sm transition-colors',
-                        textColumn === column
-                          ? 'border-primary bg-secondary/40'
-                          : 'hover:bg-accent',
-                      )}
-                    >
-                      <input
-                        type="radio"
-                        name="textColumn"
-                        value={column}
-                        checked={textColumn === column}
-                        onChange={() => setTextColumn(column)}
-                        className="mt-1 accent-[hsl(var(--primary))]"
-                      />
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium">{column}</span>
-                        <span className="block truncate text-muted-foreground">
-                          {preview.sampleRows[0]?.[column] || '—'}
+                <fieldset className="grid gap-2 sm:grid-cols-2">
+                  <legend className="sr-only">Kolom yang berisi aspirasi</legend>
+                  {preview.columns.map((column) => {
+                    const checked = questions.includes(column)
+                    return (
+                      <label
+                        key={column}
+                        className={cn(
+                          'flex items-start gap-3 rounded-control border p-3 text-sm transition-colors',
+                          checked ? 'border-primary bg-secondary/40' : 'hover:bg-accent',
+                          !checked && atLimit
+                            ? 'cursor-not-allowed opacity-60'
+                            : 'cursor-pointer',
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          name="textColumns"
+                          value={column}
+                          checked={checked}
+                          disabled={!checked && atLimit}
+                          onChange={(event) =>
+                            setTextColumns((current) =>
+                              event.target.checked
+                                ? [...current, column]
+                                : current.filter((picked) => picked !== column),
+                            )
+                          }
+                          className="mt-1 accent-[hsl(var(--primary))]"
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{column}</span>
+                          <span className="block truncate text-muted-foreground">
+                            {preview.sampleRows[0]?.[column] || '—'}
+                          </span>
                         </span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
+                      </label>
+                    )
+                  })}
+                </fieldset>
+
+                <p aria-live="polite" className="text-sm text-muted-foreground">
+                  {questions.length === 0
+                    ? 'Belum ada kolom yang dipilih.'
+                    : questions.length === 1
+                      ? '1 pertanyaan dipilih.'
+                      : `${questions.length} pertanyaan dipilih; laporannya punya satu bagian untuk masing-masing.`}
+                  {atLimit
+                    ? ` Paling banyak ${MAX_QUESTIONS} pertanyaan per dataset.`
+                    : ''}
+                </p>
 
                 {otherColumns.length > 0 ? (
                   <div className="space-y-3 rounded-card border border-dashed p-4">
@@ -455,7 +512,7 @@ export function UploadWizard() {
                             key={column}
                             className={cn(
                               'whitespace-nowrap',
-                              column === textColumn && 'text-primary',
+                              questions.includes(column) && 'text-primary',
                             )}
                           >
                             {column}
@@ -471,7 +528,7 @@ export function UploadWizard() {
                               key={column}
                               className={cn(
                                 'max-w-xs truncate',
-                                column === textColumn && 'font-medium',
+                                questions.includes(column) && 'font-medium',
                               )}
                             >
                               {row[column]}
@@ -487,7 +544,11 @@ export function UploadWizard() {
                   <Button type="button" variant="outline" onClick={restart}>
                     Ganti file
                   </Button>
-                  <Button type="button" onClick={() => setStep(3)} disabled={!textColumn}>
+                  <Button
+                    type="button"
+                    onClick={() => setStep(3)}
+                    disabled={questions.length === 0}
+                  >
                     Lanjut
                   </Button>
                 </div>
@@ -519,8 +580,11 @@ export function UploadWizard() {
                   <div className="space-y-1">
                     <p className="font-medium">{file.name}</p>
                     <p className="text-muted-foreground">
-                      {preview.totalRows} baris · kolom teks:{' '}
-                      <strong className="text-foreground">{textColumn}</strong>
+                      {preview.totalRows} baris ·{' '}
+                      {questions.length === 1
+                        ? 'kolom teks: '
+                        : `${questions.length} pertanyaan: `}
+                      <strong className="text-foreground">{questions.join(' · ')}</strong>
                     </p>
                     {/* Stated on the last screen before it is irreversible. */}
                     <p className="text-muted-foreground">

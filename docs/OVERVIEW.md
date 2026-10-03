@@ -288,15 +288,18 @@ Aturan 1, 2, dan 4 **dipaksakan ESLint** (`no-restricted-imports` di `.eslintrc.
 
 ```
 User uploads CSV
-  → POST /api/datasets                     (Zod validate)
+  → POST /api/datasets                     (Zod validate; `textColumns` satu
+                                            entri per pertanyaan)
   → ingestion.uploadDataset()
-  → save to Supabase Storage + insert DB row
+  → save to Supabase Storage + insert DB row: dataset, pertanyaannya, lalu
+    satu respons per (responden, pertanyaan yang dijawab) — ADR-0015
   → POST /api/analysis                     (create job)
   → analysis.createJob()                   → return { job_id }, HTTP 202
   → [async worker picks up job]
   → analysis.runJob(job_id):
-       - load responses dari DB
-       - batch responses (30 per batch, konkurensi 4)
+       - load responses dari DB, berhalaman (satu select berhenti di 1.000 baris)
+       - batch responses (30 per batch, konkurensi 4); satu batch tidak pernah
+         mencampur pertanyaan
        - openai adapter untuk sentiment/topic/keyword/summary
        - save ke analysis_results table
   → Client polls /api/analysis/[id]/status atau subscribe Supabase realtime
@@ -320,9 +323,14 @@ users              — anggota organisasi (via organization_members)
   ↓
 datasets           — metadata upload (nama, source, size, uploader_id)
   ↓
-responses          — raw aspirasi (dataset_id, text, respondent_meta)
+dataset_questions  — pertanyaan terbuka sebuah dataset: satu kolom sheet
+                     (column_name, question_text, analysis_mode, position) — ADR-0015
   ↓
-analysis_jobs      — job tracking (dataset_id, status, prompt_version)
+responses          — satu jawaban: satu responden atas satu pertanyaan
+                     (dataset_id, question_id, respondent_index, text, respondent_meta)
+  ↓
+analysis_jobs      — job tracking (dataset_id, status, prompt_version,
+                     question_counts: hitungan per pertanyaan)
   ↓
 analysis_results   — per-response hasil (response_id, sentiment, topics[], keywords[])
   ↓

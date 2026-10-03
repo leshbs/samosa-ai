@@ -27,10 +27,17 @@ export async function POST(request: NextRequest) {
     return failure(appError(ERROR_CODES.VALIDATION, 'File wajib dipilih'))
   }
 
+  // One `textColumns` entry per question. `textColumn` is the single-column
+  // form this endpoint took before questions existed, still honoured for a
+  // wizard that was loaded before the deploy.
+  const textColumns = form.getAll('textColumns').filter((v) => typeof v === 'string')
+  const legacy = form.get('textColumn')
+
   const parsed = createDatasetSchema.safeParse({
     name: form.get('name'),
     source: form.get('source'),
-    textColumn: form.get('textColumn'),
+    textColumns:
+      textColumns.length === 0 && typeof legacy === 'string' ? [legacy] : textColumns,
     // Repeated form field, one entry per column the uploader chose to keep.
     // `getAll` returns [] when the field is absent, which is the safe default.
     keepColumns: form.getAll('keepColumns').filter((v) => typeof v === 'string'),
@@ -58,6 +65,7 @@ export async function POST(request: NextRequest) {
   log.info('api.dataset.uploaded', {
     datasetId: result.value.datasetId,
     responseCount: result.value.responseCount,
+    questionCount: result.value.questionCount,
   })
   return success(result.value, 201)
 }

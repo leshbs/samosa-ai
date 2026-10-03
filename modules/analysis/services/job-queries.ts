@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { readAll } from '@/lib/supabase/read-all'
 import { ERROR_CODES, appError, err, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
 import {
@@ -10,6 +11,7 @@ import {
   type JobStatus,
   type Sentiment,
 } from '@/types/domain'
+import { readQuestionCounts } from './question-counts'
 
 /**
  * Reads go through the request-scoped client, so RLS keeps other tenants out.
@@ -41,6 +43,7 @@ function toJob(row: JobRow): AnalysisJob {
     totalCount: Number(row.total_count ?? 0),
     failedCount: Number(row.failed_count ?? 0),
     noContentCount: Number(row.no_content_count ?? 0),
+    questionCounts: readQuestionCounts(row.question_counts),
     inputTokens: Number(row.input_tokens ?? 0),
     outputTokens: Number(row.output_tokens ?? 0),
     costMicroIdr: Number(row.cost_micro_idr ?? 0),
@@ -137,6 +140,10 @@ export async function getJob(
 
 export type AnalysisResultRow = {
   responseId: string
+  /** The question the response answers; the report groups by it. */
+  questionId: string
+  /** The sheet row: the same on every answer one respondent gave. */
+  respondentIndex: number
   responseText: string
   sentiment: Sentiment
   confidence: number
@@ -145,9 +152,28 @@ export type AnalysisResultRow = {
   summary: string | null
 }
 
+type ResultRow = {
+  response_id: string
+  sentiment: string
+  sentiment_confidence: number
+  topics: string[] | null
+  keywords: string[] | null
+  summary: string | null
+  responses: JoinedResponse | JoinedResponse[] | null
+}
+
+type JoinedResponse = { text?: string; question_id?: string; respondent_index?: number }
+
 /**
  * Results joined back to the text they describe. A sentiment label with no
  * visible aspiration next to it is unreviewable.
+ *
+ * One embedded, paged read. It used to be two — the results, then their
+ * responses by a list of ids — and both halves broke quietly on a large job:
+ * the first stops at 1,000 rows, and the id list fails as a request once it
+ * passes about 400 ids, which left every row of the report with an empty text.
+ * Measured on the hosted project; three questions put an ordinary survey over
+ * both lines.
  */
 export async function listJobResults(
   organizationId: string,
@@ -155,39 +181,45 @@ export async function listJobResults(
 ): Promise<Result<AnalysisResultRow[], AppError>> {
   const supabase = await createClient()
 
-  const { data, error } = await supabase
-    .from('analysis_results')
-    .select('response_id, sentiment, sentiment_confidence, topics, keywords, summary')
-    .eq('job_id', jobId)
-    .eq('organization_id', organizationId)
+  const { data, error } = await readAll<ResultRow>(
+    (from, to) =>
+      supabase
+        .from('analysis_results')
+        .select(
+          'response_id, sentiment, sentiment_confidence, topics, keywords, summary, responses (text, question_id, respondent_index)',
+        )
+        .eq('job_id', jobId)
+        .eq('organization_id', organizationId)
+        .order('id', { ascending: true })
+        // The hand-written database types declare no relationships, so the
+        // embedded select has no inferred row type to return.
+        .range(from, to) as unknown as PromiseLike<{
+        data: ResultRow[] | null
+        error: unknown
+      }>,
+  )
 
   if (error)
     return err(appError(ERROR_CODES.INTERNAL, 'Hasil analisis tidak bisa dimuat'))
 
-  const results = data ?? []
-  if (results.length === 0) return ok([])
-
-  const { data: responses } = await supabase
-    .from('responses')
-    .select('id, text')
-    .eq('organization_id', organizationId)
-    .in('id', [...new Set(results.map((row) => String(row.response_id)))])
-
-  const textById = new Map(
-    (responses ?? []).map((row) => [String(row.id), String(row.text)]),
-  )
-
-  return ok(
-    results.map((row) => ({
+  const rows = data.map((row) => {
+    const joined = Array.isArray(row.responses) ? row.responses[0] : row.responses
+    return {
       responseId: String(row.response_id),
-      responseText: textById.get(String(row.response_id)) ?? '',
+      questionId: String(joined?.question_id ?? ''),
+      respondentIndex: Number(joined?.respondent_index ?? 0),
+      responseText: String(joined?.text ?? ''),
       sentiment: row.sentiment as Sentiment,
       confidence: Number(row.sentiment_confidence),
       topics: (row.topics ?? []) as string[],
       keywords: (row.keywords ?? []) as string[],
       summary: row.summary ? String(row.summary) : null,
-    })),
-  )
+    }
+  })
+
+  // Sheet order, so "urutan dataset" in the explorer means the order of the
+  // file and one respondent's answers sit together.
+  return ok(rows.sort((a, b) => a.respondentIndex - b.respondentIndex))
 }
 
 /** Latest job for a dataset, so the detail page can link straight to it. */

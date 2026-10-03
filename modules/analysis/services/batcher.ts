@@ -14,9 +14,16 @@ export const MAX_ANALYZED_LENGTH = 2_000
 /** Below this there is nothing to classify — punctuation or a stray keystroke. */
 const MIN_ANALYZED_LENGTH = 3
 
-export type Analyzable = { id: string; text: string }
+export type Analyzable = {
+  id: string
+  text: string
+  /** The question this answers. Answers to different questions never share a batch. */
+  questionId?: string
+}
 
 export type PreparedBatch = {
+  /** The one question every item answers; null when the caller named none. */
+  questionId: string | null
   /** Batch-local order is meaningful: the model answers by index. */
   items: Array<{ id: string; text: string }>
 }
@@ -48,12 +55,19 @@ export function chunk<T>(items: readonly T[], size: number): T[][] {
  * Sanitizing here rather than inside the adapter means every adapter gets the
  * same guarantees, and the caller learns what was dropped — a job that silently
  * analyzed 400 of 500 responses would be a reporting bug waiting to happen.
+ *
+ * Batches are cut per question. "Apa yang perlu diperbaiki?" and "Apa yang
+ * paling berkesan?" set different expectations for the same words, and a batch
+ * is the unit a prompt speaks to: once prompts differ by question, a mixed
+ * batch could not be given either one.
  */
 export function planBatches(
   responses: ReadonlyArray<Analyzable>,
   batchSize: number = BATCH_SIZE,
 ): BatchPlan {
-  const analyzable: Array<{ id: string; text: string }> = []
+  // Insertion order of a Map is first-seen order, so questions keep the order
+  // their answers arrive in.
+  const byQuestion = new Map<string | null, Array<{ id: string; text: string }>>()
   const skippedIds: string[] = []
   const truncatedIds: string[] = []
   const flaggedIds: string[] = []
@@ -77,11 +91,16 @@ export function planBatches(
       truncatedIds.push(response.id)
     }
 
-    analyzable.push({ id: response.id, text })
+    const questionId = response.questionId ?? null
+    const group = byQuestion.get(questionId) ?? []
+    group.push({ id: response.id, text })
+    byQuestion.set(questionId, group)
   }
 
   return {
-    batches: chunk(analyzable, batchSize).map((items) => ({ items })),
+    batches: [...byQuestion].flatMap(([questionId, items]) =>
+      chunk(items, batchSize).map((batch) => ({ questionId, items: batch })),
+    ),
     skippedIds,
     truncatedIds,
     flaggedIds,

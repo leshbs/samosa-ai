@@ -1,12 +1,14 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { readAll } from '@/lib/supabase/read-all'
 import { createOpenAiAdapter } from '../adapters/openai'
 import { DEFAULT_PROMPT_VERSION } from '../prompts'
 import { ERROR_CODES, appError, err, logger, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
-import type { AnalysisJob } from '@/types/domain'
+import type { AnalysisJob, QuestionCounts } from '@/types/domain'
 import { analyzeResponses } from './orchestrator'
+import { toStoredQuestionCounts } from './question-counts'
 
 export type CreateJobInput = {
   organizationId: string
@@ -152,12 +154,23 @@ export async function runJob(
     return err(appError(ERROR_CODES.CONFLICT, 'Job analisis ini sudah pernah dijalankan'))
   }
 
-  const { data: responses, error: responsesError } = await supabase
-    .from('responses')
-    .select('id, text')
-    .eq('dataset_id', job.dataset_id)
+  // Paged: one select returns 1,000 rows at most, and a job that read only
+  // those would analyse a fifth of a 5,000-answer dataset and call it done.
+  const { data: responses, error: responsesError } = await readAll<{
+    id: string
+    text: string
+    question_id: string
+  }>((from, to) =>
+    supabase
+      .from('responses')
+      .select('id, text, question_id')
+      .eq('dataset_id', job.dataset_id)
+      .order('respondent_index', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to),
+  )
 
-  if (responsesError || !responses) {
+  if (responsesError) {
     await failJob(jobId, 'Aspirasi di dataset tidak bisa dimuat')
     return err(appError(ERROR_CODES.INTERNAL, 'Aspirasi di dataset tidak bisa dimuat'))
   }
@@ -165,7 +178,11 @@ export async function runJob(
   const outcome = await analyzeResponses(createOpenAiAdapter(), {
     jobId,
     promptVersion: String(job.prompt_version),
-    responses: responses.map((row) => ({ id: String(row.id), text: String(row.text) })),
+    responses: responses.map((row) => ({
+      id: String(row.id),
+      text: String(row.text),
+      questionId: String(row.question_id),
+    })),
     // Persist progress as batches land so the polling endpoint has something
     // to report; a 500-row job otherwise sits at 0 for minutes.
     onProgress: async ({ processed, total }) => {
@@ -210,6 +227,26 @@ export async function runJob(
     }
   }
 
+  // The same three counters the job carries, split by question: a report
+  // section says "127 dari 181" about its own question, not about the survey.
+  const questionOf = new Map(
+    responses.map((row) => [String(row.id), String(row.question_id)]),
+  )
+  const questionCounts: Record<string, QuestionCounts> = {}
+  const count = (responseId: string, field: keyof QuestionCounts) => {
+    const questionId = questionOf.get(responseId)
+    if (!questionId) return
+    const counts = (questionCounts[questionId] ??= {
+      analyzed: 0,
+      noContent: 0,
+      failed: 0,
+    })
+    counts[field] += 1
+  }
+  for (const result of outcome.value.results) count(result.responseId, 'analyzed')
+  for (const id of outcome.value.noContentResponseIds) count(id, 'noContent')
+  for (const id of outcome.value.failedResponseIds) count(id, 'failed')
+
   // Some batches failed but we kept what landed: saying "succeeded" would
   // overstate the result, and "failed" would throw away usable analysis.
   const failedCount = outcome.value.failedResponseIds.length
@@ -222,6 +259,7 @@ export async function runJob(
       processed_count: rows.length,
       failed_count: failedCount,
       no_content_count: outcome.value.noContentResponseIds.length,
+      question_counts: toStoredQuestionCounts(questionCounts),
       input_tokens: outcome.value.totalInputTokens,
       output_tokens: outcome.value.totalOutputTokens,
       cost_micro_idr: outcome.value.costMicroIdr,
@@ -235,6 +273,7 @@ export async function runJob(
     analyzed: rows.length,
     failed: failedCount,
     noContent: outcome.value.noContentResponseIds.length,
+    questions: Object.keys(questionCounts).length,
     inputTokens: outcome.value.totalInputTokens,
     outputTokens: outcome.value.totalOutputTokens,
     costMicroIdr: outcome.value.costMicroIdr,

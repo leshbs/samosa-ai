@@ -9,7 +9,12 @@ import {
   pdf,
 } from '@react-pdf/renderer'
 import { SENTIMENT_LABELS, SENTIMENT_ORDER } from '@/components/charts/palette'
-import type { CountedTerm, ReportPdfPayload } from '@/modules/reporting'
+import type {
+  CountedTerm,
+  PrintableSection,
+  ReportPdfPayload,
+  SentimentDistribution,
+} from '@/modules/reporting'
 import { mapStrings, printableText } from './printable-text'
 import { rasterLogo } from './raster-logo'
 
@@ -220,6 +225,14 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
   },
 
+  questionRule: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.rule,
+    paddingTop: 16,
+    marginBottom: 14,
+  },
+  questionTitle: { fontSize: 15, fontWeight: 600, lineHeight: 1.3, marginTop: 2 },
+
   tailCell: { flex: 1, flexDirection: 'row' },
   tailGutter: { width: 24 },
   tailCount: { fontSize: 9, width: 30, textAlign: 'right' },
@@ -290,23 +303,166 @@ function TailCell({ term }: { term: CountedTerm | undefined }) {
   )
 }
 
-function respondentLine(analyzed: number, noContent: number | null): string {
-  return noContent
-    ? `${analyzed} dari ${analyzed + noContent} responden memberikan aspirasi`
-    : `${analyzed} aspirasi`
+function SentimentBlock({
+  sentiment,
+  noContent,
+}: {
+  sentiment: SentimentDistribution
+  noContent: number | null
+}) {
+  return (
+    <>
+      <Heading>Sentimen</Heading>
+      <View style={styles.legend}>
+        {SENTIMENT_ORDER.map((key) => (
+          <View key={key} style={styles.legendItem}>
+            <View style={[styles.swatch, { backgroundColor: COLORS[key] }]} />
+            <Text style={[styles.small, styles.muted]}>{SENTIMENT_LABELS[key]}</Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.stack}>
+        {SENTIMENT_ORDER.filter((key) => sentiment.counts[key] > 0).map((key) => (
+          <View
+            key={key}
+            style={[
+              styles.segment,
+              { backgroundColor: COLORS[key], flexGrow: sentiment.counts[key] },
+            ]}
+          />
+        ))}
+      </View>
+
+      {/* The table is the reading of that bar for a black-and-white copier. */}
+      <View style={styles.table}>
+        <View style={styles.tableHead}>
+          <Text style={[styles.cell, { fontWeight: 600 }]}>Sentimen</Text>
+          <Text style={[styles.number, { fontWeight: 600 }]}>Jumlah</Text>
+          <Text style={[styles.number, { fontWeight: 600 }]}>Porsi</Text>
+        </View>
+        {SENTIMENT_ORDER.map((key) => (
+          <View key={key} style={styles.row}>
+            <Text style={styles.cell}>{SENTIMENT_LABELS[key]}</Text>
+            <Text style={styles.number}>{sentiment.counts[key]}</Text>
+            <Text style={styles.number}>{percent(sentiment.shares[key])}</Text>
+          </View>
+        ))}
+      </View>
+
+      {noContent ? (
+        <Text style={[styles.small, styles.muted, { marginTop: 8 }]}>
+          {noContent} responden tidak memberikan aspirasi (misalnya menjawab “tidak ada”).
+          Mereka tidak dihitung di persentase ini.
+        </Text>
+      ) : null}
+    </>
+  )
+}
+
+/**
+ * Everything the report says about one question, as blocks that sit directly
+ * on the page — a fragment adds no box, so the page's gap spaces them like any
+ * other block.
+ *
+ * With one question there is no heading over it, and the document reads as it
+ * did before questions existed. With several, each opens with what the
+ * respondent was asked, in one unbreakable box with its first chart: a
+ * question must not end a page as a bare title.
+ */
+function QuestionBlocks({
+  section,
+  position,
+  count,
+}: {
+  section: PrintableSection
+  position: number
+  count: number
+}) {
+  const total = section.sentiment.total
+  // Two columns, so a long tail costs half the pages; read down, then across.
+  const half = Math.ceil(section.tail.length / 2)
+  const tailRows = section.tail.slice(0, half).map((term, index) => ({
+    left: term,
+    right: section.tail[index + half],
+  }))
+  const [firstQuoted, ...otherQuoted] = section.quoted
+
+  return (
+    <>
+      <View wrap={false}>
+        {section.title ? (
+          <View style={styles.questionRule}>
+            <Text style={styles.eyebrow}>
+              PERTANYAAN {position} DARI {count}
+            </Text>
+            <Text style={styles.questionTitle}>{section.title}</Text>
+            {section.countLine ? (
+              <Text style={styles.meta}>{section.countLine}</Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        {total === 0 ? (
+          <Text style={styles.muted}>
+            Tidak ada aspirasi untuk pertanyaan ini: jawabannya kosong, “tidak ada”, atau
+            gagal dianalisis.
+          </Text>
+        ) : (
+          <SentimentBlock sentiment={section.sentiment} noContent={section.noContent} />
+        )}
+      </View>
+
+      {total > 0 && section.topics.length > 0 ? (
+        <Block title="Topik teratas">
+          <BarList terms={section.topics} total={total} />
+        </Block>
+      ) : null}
+
+      {total > 0 && tailRows.length > 0 ? (
+        <View>
+          <View wrap={false}>
+            <Heading>{`Topik lainnya (${section.tail.length})`}</Heading>
+            <Text style={[styles.muted, { marginBottom: 6 }]}>
+              Topik di luar sepuluh besar, dengan jumlah aspirasi yang menyebutnya.
+            </Text>
+          </View>
+          {tailRows.map((row) => (
+            <View key={row.left.term} style={styles.row} wrap={false}>
+              <TailCell term={row.left} />
+              <View style={styles.tailGutter} />
+              <TailCell term={row.right} />
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {total > 0 && section.keywords.length > 0 ? (
+        <Block title="Kata kunci teratas">
+          <BarList terms={section.keywords} total={total} />
+        </Block>
+      ) : null}
+
+      {total > 0 && firstQuoted ? (
+        <View>
+          <View wrap={false}>
+            <Heading>Contoh aspirasi per topik</Heading>
+            <QuoteGroup group={firstQuoted} />
+          </View>
+          {otherQuoted.map((group) => (
+            <View key={group.topic} wrap={false}>
+              <QuoteGroup group={group} />
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </>
+  )
 }
 
 export function ReportPdf({ report }: { report: ReportPdfPayload }) {
-  const { view, sentiment } = report
-  const total = sentiment.total
+  const { view } = report
   const paragraphs = (report.summary ?? '').split(/\n+/).filter((text) => text.trim())
-  // Two columns, so a long tail costs half the pages; read down, then across.
-  const half = Math.ceil(view.tail.length / 2)
-  const tailRows = view.tail.slice(0, half).map((term, index) => ({
-    left: term,
-    right: view.tail[index + half],
-  }))
-  const [firstQuoted, ...otherQuoted] = view.quoted
 
   /**
    * Where a long section may break across pages, its heading is kept with what
@@ -343,8 +499,7 @@ export function ReportPdf({ report }: { report: ReportPdfPayload }) {
           <Text style={styles.eyebrow}>LAPORAN ASPIRASI</Text>
           <Text style={styles.title}>{report.datasetName}</Text>
           <Text style={styles.meta}>
-            {respondentLine(total, report.noContent)} · {report.generatedAt} · prompt{' '}
-            {report.promptVersion}
+            {view.countLine} · {report.generatedAt} · prompt {report.promptVersion}
           </Text>
           <View style={styles.rule} />
         </View>
@@ -377,95 +532,14 @@ export function ReportPdf({ report }: { report: ReportPdfPayload }) {
           ))}
         </View>
 
-        <Block title="Sentimen">
-          <View style={styles.legend}>
-            {SENTIMENT_ORDER.map((key) => (
-              <View key={key} style={styles.legendItem}>
-                <View style={[styles.swatch, { backgroundColor: COLORS[key] }]} />
-                <Text style={[styles.small, styles.muted]}>{SENTIMENT_LABELS[key]}</Text>
-              </View>
-            ))}
-          </View>
-
-          <View style={styles.stack}>
-            {SENTIMENT_ORDER.filter((key) => sentiment.counts[key] > 0).map((key) => (
-              <View
-                key={key}
-                style={[
-                  styles.segment,
-                  { backgroundColor: COLORS[key], flexGrow: sentiment.counts[key] },
-                ]}
-              />
-            ))}
-          </View>
-
-          {/* The table is the reading of that bar for a black-and-white copier. */}
-          <View style={styles.table}>
-            <View style={styles.tableHead}>
-              <Text style={[styles.cell, { fontWeight: 600 }]}>Sentimen</Text>
-              <Text style={[styles.number, { fontWeight: 600 }]}>Jumlah</Text>
-              <Text style={[styles.number, { fontWeight: 600 }]}>Porsi</Text>
-            </View>
-            {SENTIMENT_ORDER.map((key) => (
-              <View key={key} style={styles.row}>
-                <Text style={styles.cell}>{SENTIMENT_LABELS[key]}</Text>
-                <Text style={styles.number}>{sentiment.counts[key]}</Text>
-                <Text style={styles.number}>{percent(sentiment.shares[key])}</Text>
-              </View>
-            ))}
-          </View>
-
-          {report.noContent ? (
-            <Text style={[styles.small, styles.muted, { marginTop: 8 }]}>
-              {report.noContent} responden tidak memberikan aspirasi (misalnya menjawab
-              “tidak ada”). Mereka tidak dihitung di persentase ini.
-            </Text>
-          ) : null}
-        </Block>
-
-        {view.topics.length > 0 ? (
-          <Block title="Topik teratas">
-            <BarList terms={view.topics} total={total} />
-          </Block>
-        ) : null}
-
-        {tailRows.length > 0 ? (
-          <View>
-            <View wrap={false}>
-              <Heading>{`Topik lainnya (${view.tail.length})`}</Heading>
-              <Text style={[styles.muted, { marginBottom: 6 }]}>
-                Topik di luar sepuluh besar, dengan jumlah aspirasi yang menyebutnya.
-              </Text>
-            </View>
-            {tailRows.map((row) => (
-              <View key={row.left.term} style={styles.row} wrap={false}>
-                <TailCell term={row.left} />
-                <View style={styles.tailGutter} />
-                <TailCell term={row.right} />
-              </View>
-            ))}
-          </View>
-        ) : null}
-
-        {view.keywords.length > 0 ? (
-          <Block title="Kata kunci teratas">
-            <BarList terms={view.keywords} total={total} />
-          </Block>
-        ) : null}
-
-        {firstQuoted ? (
-          <View>
-            <View wrap={false}>
-              <Heading>Contoh aspirasi per topik</Heading>
-              <QuoteGroup group={firstQuoted} />
-            </View>
-            {otherQuoted.map((group) => (
-              <View key={group.topic} wrap={false}>
-                <QuoteGroup group={group} />
-              </View>
-            ))}
-          </View>
-        ) : null}
+        {view.sections.map((section, index) => (
+          <QuestionBlocks
+            key={index}
+            section={section}
+            position={index + 1}
+            count={view.sections.length}
+          />
+        ))}
 
         {view.provenance ? (
           <Block title="Asal data">
@@ -492,7 +566,7 @@ export function ReportPdf({ report }: { report: ReportPdfPayload }) {
   )
 }
 
-function QuoteGroup({ group }: { group: ReportPdfPayload['view']['quoted'][number] }) {
+function QuoteGroup({ group }: { group: PrintableSection['quoted'][number] }) {
   return (
     <View style={styles.quoteGroup}>
       <Text style={styles.insightTitle}>{group.topic}</Text>

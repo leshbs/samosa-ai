@@ -33,9 +33,10 @@ const SESSION = {
 const BUNDLE = {
   archived: true,
   rows: [
-    { responseId: 'r1', responseText: 'Konsumsi telat dua jam' },
-    { responseId: 'r2', responseText: 'Tidak dikutip' },
+    { responseId: 'r1', questionId: 'q1', responseText: 'Konsumsi telat dua jam' },
+    { responseId: 'r2', questionId: 'q1', responseText: 'Tidak dikutip' },
   ],
+  questions: [{ id: 'q1', text: 'Kritik dan saran' }],
   document: {
     organizationName: 'OSIS SMA 1',
     datasetName: 'Pensi 2026',
@@ -50,9 +51,21 @@ const BUNDLE = {
       dominant: null,
     },
     noContent: 3,
-    topics: [],
-    keywords: [],
-    topResponsesByTopic: [],
+    sections: [
+      {
+        questionText: 'Kritik dan saran',
+        sentiment: {
+          total: 2,
+          counts: { positive: 0, neutral: 1, negative: 1 },
+          shares: { positive: 0, neutral: 0.5, negative: 0.5 },
+          dominant: null,
+        },
+        noContent: 3,
+        topics: [],
+        keywords: [],
+        topResponsesByTopic: [],
+      },
+    ],
     logoSrc: 'data:image/png;base64,AAAA',
   },
 }
@@ -81,7 +94,7 @@ describe('GET /api/reports/[id]/document', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
     const { data } = (await response.json()) as ApiSuccess<ReportPdfPayload>
     expect(data.fileName).toBe('samosa-pensi-2026.pdf')
-    expect(data.noContent).toBe(3)
+    expect(data.view.countLine).toBe('2 dari 5 responden memberikan aspirasi')
     expect(data.logoSrc).toBe('data:image/png;base64,AAAA')
     // Only the response an insight cites travels, not every row.
     expect(data.insights).toEqual([

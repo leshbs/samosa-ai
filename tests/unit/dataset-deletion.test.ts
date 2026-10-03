@@ -99,7 +99,7 @@ describe('uploadDataset rollback', () => {
     uploaderId: 'user-1',
     name: 'Evaluasi Pensi',
     source: 'csv' as const,
-    textColumn: 'Aspirasi',
+    textColumns: ['Aspirasi'],
   }
 
   function csv(): File {
@@ -136,7 +136,13 @@ describe('uploadDataset rollback', () => {
             }),
             delete: datasetDelete,
           }
-        : { insert: async () => ({ error: { message: 'responses failed' } }) },
+        : table === 'dataset_questions'
+          ? {
+              insert: () => ({
+                select: async () => ({ data: [{ id: 'q-1', position: 0 }], error: null }),
+              }),
+            }
+          : { insert: async () => ({ error: { message: 'responses failed' } }) },
     )
 
     const result = await uploadDataset({ ...input, file: csv() })
@@ -144,5 +150,97 @@ describe('uploadDataset rollback', () => {
     expect(result.ok).toBe(false)
     expect(datasetDelete).toHaveBeenCalled()
     expect(remove).toHaveBeenCalledTimes(1)
+  })
+
+  it('deletes the upload when the questions cannot be stored', async () => {
+    const datasetDelete = vi.fn(() => ({ eq: async () => ({ error: null }) }))
+    const responsesInsert = vi.fn()
+    adminFrom.mockImplementation((table: string) =>
+      table === 'datasets'
+        ? {
+            insert: () => ({
+              select: () => ({
+                single: async () => ({ data: { id: 'dataset-1' }, error: null }),
+              }),
+            }),
+            delete: datasetDelete,
+          }
+        : table === 'dataset_questions'
+          ? {
+              insert: () => ({
+                select: async () => ({
+                  data: null,
+                  error: { message: 'questions failed' },
+                }),
+              }),
+            }
+          : { insert: responsesInsert },
+    )
+
+    const result = await uploadDataset({ ...input, file: csv() })
+
+    expect(result.ok).toBe(false)
+    // No answer is stored without the question it answers.
+    expect(responsesInsert).not.toHaveBeenCalled()
+    expect(datasetDelete).toHaveBeenCalled()
+    expect(remove).toHaveBeenCalledTimes(1)
+  })
+
+  it('stores each answer under its question, with the sheet row it came from', async () => {
+    const questionsInsert = vi.fn((_rows: unknown) => ({
+      select: async () => ({
+        data: [
+          { id: 'q-saran', position: 1 },
+          { id: 'q-kritik', position: 0 },
+        ],
+        error: null,
+      }),
+    }))
+    const responsesInsert = vi.fn(async (_rows: unknown) => ({ error: null }))
+    const datasetInsert = vi.fn((_row: unknown) => ({
+      select: () => ({
+        single: async () => ({ data: { id: 'dataset-1' }, error: null }),
+      }),
+    }))
+    adminFrom.mockImplementation((table: string) =>
+      table === 'datasets'
+        ? { insert: datasetInsert }
+        : table === 'dataset_questions'
+          ? { insert: questionsInsert }
+          : { insert: responsesInsert },
+    )
+
+    const file = new File(
+      ['Kritik,Saran\nKonsumsi telat,Tambah vendor\n,Mulai tepat waktu\n'],
+      'aspirasi.csv',
+      { type: 'text/csv' },
+    )
+    const result = await uploadDataset({
+      ...input,
+      textColumns: ['Kritik', 'Saran'],
+      file,
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.value).toMatchObject({
+      responseCount: 3,
+      respondentCount: 2,
+      questionCount: 2,
+    })
+    expect(questionsInsert.mock.calls[0]?.[0]).toMatchObject([
+      { column_name: 'Kritik', question_text: 'Kritik', position: 0 },
+      { column_name: 'Saran', question_text: 'Saran', position: 1 },
+    ])
+    // Matched by position, not by the order the insert happened to return.
+    expect(responsesInsert.mock.calls[0]?.[0]).toMatchObject([
+      { question_id: 'q-kritik', respondent_index: 0, text: 'Konsumsi telat' },
+      { question_id: 'q-saran', respondent_index: 0, text: 'Tambah vendor' },
+      { question_id: 'q-saran', respondent_index: 1, text: 'Mulai tepat waktu' },
+    ])
+    expect(datasetInsert.mock.calls[0]?.[0]).toMatchObject({
+      response_count: 3,
+      metadata: { text_column_name: 'Kritik', respondent_count: 2 },
+    })
   })
 })

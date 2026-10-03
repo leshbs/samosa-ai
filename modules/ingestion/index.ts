@@ -7,6 +7,7 @@ export {
   listDatasets,
   countDatasets,
   getDataset,
+  listQuestions,
   listResponses,
   listAllResponses,
   deleteDataset,
@@ -23,7 +24,11 @@ export {
 export type { RetentionDataset } from './services/dataset-retention'
 export { previewDataset, PREVIEW_ROW_COUNT } from './services/preview-dataset'
 export type { DatasetPreview } from './services/preview-dataset'
-export { extractResponses, validateUploadSize } from './validators/dataset-validator'
+export {
+  extractResponses,
+  validateUploadSize,
+  MAX_QUESTIONS_PER_DATASET,
+} from './validators/dataset-validator'
 export { validateFileSignature, validateUploadFile } from './validators/file-signature'
 export type { ExtractedResponse, ExtractionReport } from './validators/dataset-validator'
 export { purgeOrganizationFiles } from './services/dataset-storage'

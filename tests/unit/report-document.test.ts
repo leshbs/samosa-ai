@@ -1,30 +1,36 @@
 import { describe, expect, it } from 'vitest'
 import {
   printableReport,
+  reportCountLine,
   reportFileStem,
   reportPdfPayload,
   truncateQuote,
   type ReportDocumentData,
+  type ReportDocumentSection,
 } from '@/modules/reporting'
 
 function term(name: string, count: number) {
   return { term: name, count, share: 0 }
 }
 
-function fixture(overrides: Partial<ReportDocumentData> = {}): ReportDocumentData {
+function sentiment(positive: number, neutral: number, negative: number) {
+  const total = positive + neutral + negative
   return {
-    organizationName: 'OSIS SMA 1',
-    datasetName: 'Pensi 2026',
-    generatedAt: '3 Okt 2026 10.00',
-    promptVersion: 'analysis.v2',
-    summary: 'Ringkasan.',
-    insights: [],
-    sentiment: {
-      total: 128,
-      counts: { positive: 60, neutral: 40, negative: 28 },
-      shares: { positive: 60 / 128, neutral: 40 / 128, negative: 28 / 128 },
-      dominant: 'positive',
+    total,
+    counts: { positive, neutral, negative },
+    shares: {
+      positive: positive / total,
+      neutral: neutral / total,
+      negative: negative / total,
     },
+    dominant: 'positive' as const,
+  }
+}
+
+function section(overrides: Partial<ReportDocumentSection> = {}): ReportDocumentSection {
+  return {
+    questionText: 'Kritik dan saran',
+    sentiment: sentiment(60, 40, 28),
     noContent: 12,
     topics: Array.from({ length: 14 }, (_, i) => term(`topik ${i}`, 20 - i)),
     keywords: Array.from({ length: 20 }, (_, i) => term(`kata ${i}`, 30 - i)),
@@ -36,6 +42,21 @@ function fixture(overrides: Partial<ReportDocumentData> = {}): ReportDocumentDat
       })),
     })),
     topicTail: [term('ekor', 1)],
+    ...overrides,
+  }
+}
+
+function fixture(overrides: Partial<ReportDocumentData> = {}): ReportDocumentData {
+  return {
+    organizationName: 'OSIS SMA 1',
+    datasetName: 'Pensi 2026',
+    generatedAt: '3 Okt 2026 10.00',
+    promptVersion: 'analysis.v2',
+    summary: 'Ringkasan.',
+    insights: [],
+    sentiment: sentiment(60, 40, 28),
+    noContent: 12,
+    sections: [section()],
     provenance: {
       modelId: 'gpt-4o-mini',
       promptVersion: 'analysis.v2',
@@ -49,15 +70,32 @@ function fixture(overrides: Partial<ReportDocumentData> = {}): ReportDocumentDat
   }
 }
 
+/** A survey with two open questions: 128 + 90 analysed, 12 + 4 non-answers. */
+function twoQuestions(): ReportDocumentData {
+  return fixture({
+    sentiment: sentiment(100, 70, 48),
+    noContent: 16,
+    sections: [
+      section(),
+      section({
+        questionText: 'Apa yang paling berkesan?',
+        sentiment: sentiment(70, 15, 5),
+        noContent: 4,
+        topics: [term('penampilan band', 30)],
+      }),
+    ],
+  })
+}
+
 describe('printableReport', () => {
   it('caps topics, keywords and quotes so the length follows topics, not rows', () => {
-    const view = printableReport(fixture())
+    const [only] = printableReport(fixture()).sections
 
-    expect(view.topics).toHaveLength(10)
-    expect(view.keywords).toHaveLength(12)
-    expect(view.quoted).toHaveLength(5)
-    expect(view.quoted[0]?.responses).toHaveLength(3)
-    expect(view.quoted[0]?.responses[0]?.text.endsWith('...')).toBe(true)
+    expect(only?.topics).toHaveLength(10)
+    expect(only?.keywords).toHaveLength(12)
+    expect(only?.quoted).toHaveLength(5)
+    expect(only?.quoted[0]?.responses).toHaveLength(3)
+    expect(only?.quoted[0]?.responses[0]?.text.endsWith('...')).toBe(true)
   })
 
   it('follows the organization report defaults', () => {
@@ -71,8 +109,8 @@ describe('printableReport', () => {
       }),
     )
 
-    expect(view.quoted).toEqual([])
-    expect(view.tail).toHaveLength(1)
+    expect(view.sections[0]?.quoted).toEqual([])
+    expect(view.sections[0]?.tail).toHaveLength(1)
     expect(view.provenance).toBeNull()
     expect(view.provenanceFacts).toEqual([])
   })
@@ -84,11 +122,54 @@ describe('printableReport', () => {
     expect(facts.get('Tanpa aspirasi')).toBe('12')
     // Nothing failed, so the line is left out rather than printed as 0.
     expect(facts.has('Gagal dianalisis')).toBe(false)
+    // One question: saying so would be noise.
+    expect(facts.has('Pertanyaan')).toBe(false)
   })
 
   it('leaves the no-aspiration fact out when the job never counted it', () => {
     const facts = new Map(printableReport(fixture({ noContent: null })).provenanceFacts)
     expect(facts.has('Tanpa aspirasi')).toBe(false)
+  })
+
+  it('prints a one-question report with no question heading, as it always did', () => {
+    const view = printableReport(fixture())
+
+    expect(view.sections).toHaveLength(1)
+    expect(view.sections[0]?.title).toBeNull()
+    expect(view.sections[0]?.countLine).toBeNull()
+    expect(view.countLine).toBe('128 dari 140 responden memberikan aspirasi')
+  })
+
+  it('gives every question its own section, under what was asked', () => {
+    const view = printableReport(twoQuestions())
+
+    expect(view.sections.map((s) => s.title)).toEqual([
+      'Kritik dan saran',
+      'Apa yang paling berkesan?',
+    ])
+    // Each section counts its own answers and its own non-answers.
+    expect(view.sections.map((s) => s.countLine)).toEqual([
+      '128 dari 140 jawaban berisi aspirasi',
+      '90 dari 94 jawaban berisi aspirasi',
+    ])
+    // Topics are never pooled: the second question has its one topic only.
+    expect(view.sections[1]?.topics).toEqual([term('penampilan band', 30)])
+    expect(new Map(view.provenanceFacts).get('Pertanyaan')).toBe('2')
+  })
+
+  it('counts answers, not respondents, once there are several questions', () => {
+    expect(printableReport(twoQuestions()).countLine).toBe(
+      '2 pertanyaan · 218 dari 234 jawaban berisi aspirasi',
+    )
+  })
+})
+
+describe('reportCountLine', () => {
+  it('reads as a plain count when non-answers were never measured', () => {
+    expect(reportCountLine(181, null, 1)).toBe('181 aspirasi')
+    expect(reportCountLine(181, null, 3)).toBe('3 pertanyaan · 181 jawaban dianalisis')
+    // Zero is "none found", and adds nothing to say.
+    expect(reportCountLine(181, 0, 1)).toBe('181 aspirasi')
   })
 })
 
@@ -118,7 +199,6 @@ describe('reportPdfPayload', () => {
 
     expect(payload.fileName).toBe('samosa-pensi-2026.pdf')
     expect(payload.view).toEqual(printableReport(fixture()))
-    expect(payload.noContent).toBe(12)
     expect(payload.logoSrc).toBeNull()
   })
 
@@ -145,7 +225,7 @@ describe('reportPdfPayload', () => {
   })
 
   it('is plain JSON: nothing is lost crossing the network', () => {
-    const payload = reportPdfPayload(fixture({ insights: [insight] }), quotes)
+    const payload = reportPdfPayload(twoQuestions(), quotes)
     expect(JSON.parse(JSON.stringify(payload))).toEqual(payload)
   })
 })

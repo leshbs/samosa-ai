@@ -172,8 +172,47 @@ describe('exportDatasetToCsv', () => {
     ])
     const lines = csv.replace(/^﻿/, '').split('\n')
 
-    expect(lines[0]).toBe('response_id,response,kelas,jurusan')
-    expect(lines[1]).toBe('r1,Kantin mahal,XI,')
-    expect(lines[2]).toBe('r2,"Parkir, sempit",X,IPA')
+    expect(lines[0]).toBe('response_id,response,question,respondent,kelas,jurusan')
+    expect(lines[1]).toBe('r1,Kantin mahal,,,XI,')
+    expect(lines[2]).toBe('r2,"Parkir, sempit",,,X,IPA')
+  })
+
+  it('names the question and the sheet row, so the sheet can be put back together', () => {
+    const csv = exportDatasetToCsv(
+      [
+        {
+          id: 'r1',
+          text: 'Konsumsi telat',
+          questionId: 'q1',
+          respondentIndex: 0,
+          respondentMeta: {},
+        },
+        {
+          id: 'r2',
+          text: 'Tambah vendor',
+          questionId: 'q2',
+          respondentIndex: 0,
+          respondentMeta: {},
+        },
+        {
+          id: 'r3',
+          text: 'Mulai tepat waktu',
+          questionId: 'q2',
+          respondentIndex: 4,
+          respondentMeta: {},
+        },
+      ],
+      [
+        { id: 'q1', text: 'Kritik' },
+        { id: 'q2', text: 'Saran, usul' },
+      ],
+    )
+    const lines = csv.replace(/^\uFEFF/, '').split('\n')
+
+    expect(lines[0]).toBe('response_id,response,question,respondent')
+    expect(lines[1]).toBe('r1,Konsumsi telat,Kritik,1')
+    // The same respondent number on both answers of one person, counted from 1.
+    expect(lines[2]).toBe('r2,Tambah vendor,"Saran, usul",1')
+    expect(lines[3]).toBe('r3,Mulai tepat waktu,"Saran, usul",5')
   })
 })

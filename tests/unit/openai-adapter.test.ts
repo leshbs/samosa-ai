@@ -202,6 +202,11 @@ describe('createOpenAiAdapter', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error.message).toContain('tidak sesuai format')
+    // Which field broke and how, and that the reply — not the provider — is at
+    // fault. Never the value: that is a respondent's words.
+    expect(result.error.details?.malformedReply).toBe(true)
+    expect(result.error.details?.issues).toBeGreaterThan(0)
+    expect(JSON.stringify(result.error.details?.where)).toMatch(/: [a-z_]+/)
   })
 
   it('separates analysis.v2 no_content answers from the results', async () => {

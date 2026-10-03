@@ -27,11 +27,15 @@ export const createDatasetSchema = z.object({
     .min(1, 'Nama dataset wajib diisi')
     .max(120, 'Nama dataset maksimal 120 karakter'),
   source: datasetSourceSchema,
-  /** Column in the uploaded sheet that holds the free-text aspiration. */
-  textColumn: z
-    .string()
+  /**
+   * Columns of the uploaded sheet that hold free-text answers: one question of
+   * the dataset each. The limit is enforced where the sheet is read
+   * (MAX_QUESTIONS_PER_DATASET); the bound here only keeps the request sane.
+   */
+  textColumns: z
+    .array(z.string().min(1).max(200, 'Nama kolom maksimal 200 karakter'))
     .min(1, 'Pilih kolom yang berisi aspirasi')
-    .max(200, 'Nama kolom maksimal 200 karakter'),
+    .max(50),
   /**
    * Columns to store alongside the text. Absent means store none — the caller
    * opts data in rather than out, so a request that forgets this field stores

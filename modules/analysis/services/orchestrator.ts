@@ -11,7 +11,8 @@ export const MAX_CONCURRENCY = 4
 export type OrchestratorInput = {
   jobId: string
   promptVersion: string
-  responses: ReadonlyArray<{ id: string; text: string }>
+  /** `questionId` keeps answers to different questions out of each other's batches. */
+  responses: ReadonlyArray<{ id: string; text: string; questionId?: string }>
   /**
    * Called as each batch lands, so a long job can show progress. Fired from the
    * batch loop, so it must not throw — failures are logged and swallowed.
