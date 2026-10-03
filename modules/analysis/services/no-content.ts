@@ -1,3 +1,5 @@
+import type { QuestionMode } from '@/types/domain'
+
 /**
  * Layer 1 of the non-answer filter (pilot 01, §3.2): answers that say the
  * respondent has nothing to say, caught before any model call.
@@ -45,7 +47,18 @@ export function normalizeAnswer(text: string): string {
     .trim()
 }
 
-export function isNonAnswer(text: string): boolean {
+/**
+ * What is left when the question asks for a choice or a number. There "tidak",
+ * "tidak ada" and "no" are answers — to "Apakah kamu ikut lagi?", to "Kegiatan
+ * apa yang kurang seru?" — so only the marks that say nothing at all are
+ * dropped before the model.
+ */
+const BLANK_ANSWERS = new Set(['n a'])
+
+export function isNonAnswer(text: string, mode: QuestionMode = 'evaluative'): boolean {
   const normalized = normalizeAnswer(text)
-  return normalized === '' || NON_ANSWERS.has(normalized)
+  if (normalized === '') return true
+  return mode === 'categorical' || mode === 'scale'
+    ? BLANK_ANSWERS.has(normalized)
+    : NON_ANSWERS.has(normalized)
 }

@@ -35,6 +35,7 @@ import {
   listQuestions,
   listResponses,
 } from '@/modules/ingestion'
+import { MODE_LABELS, MODE_OUTPUTS, isQuestionMode } from '@/types/domain'
 
 export const metadata: Metadata = { title: 'Detail dataset' }
 
@@ -161,15 +162,25 @@ export default async function DatasetDetailPage({
         </CardContent>
       </Card>
 
-      {manyQuestions ? (
+      {/* With one question read the way every question once was, there is
+          nothing here the page title does not already say. */}
+      {manyQuestions || questions.some((q) => q.analysisMode !== 'evaluative') ? (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Pertanyaan</CardTitle>
           </CardHeader>
           <CardContent>
-            <ol className="list-decimal space-y-1 pl-5 text-sm">
+            <ol className="list-decimal space-y-2 pl-5 text-sm">
               {questions.map((question) => (
-                <li key={question.id}>{question.questionText}</li>
+                <li key={question.id}>
+                  <span>{question.questionText}</span>{' '}
+                  <Badge variant="muted">{MODE_LABELS[question.analysisMode]}</Badge>
+                  {isQuestionMode(question.analysisMode) ? (
+                    <span className="block text-xs text-muted-foreground">
+                      Laporan: {MODE_OUTPUTS[question.analysisMode]}.
+                    </span>
+                  ) : null}
+                </li>
               ))}
             </ol>
           </CardContent>
@@ -189,8 +200,8 @@ export default async function DatasetDetailPage({
             <span className="font-medium text-foreground">
               Kolom lain tidak disimpan.
             </span>{' '}
-            Hanya kolom teks aspirasi yang masuk ke basis data. Nama, kelas, atau email di
-            file aslinya tidak ikut tersimpan.
+            Hanya kolom yang dianalisis yang masuk ke basis data. Nama, kelas, atau email
+            di file aslinya tidak ikut tersimpan.
           </p>
         ) : (
           <div className="space-y-1">

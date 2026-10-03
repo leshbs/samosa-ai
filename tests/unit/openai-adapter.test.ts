@@ -241,6 +241,105 @@ describe('createOpenAiAdapter', () => {
     expect(result.ok).toBe(false)
   })
 
+  it('sends a batch with the prompt of its mode and the question it answers', async () => {
+    create.mockResolvedValue(completion([{ index: 0, values: ['outbound'] }]))
+
+    const result = await createOpenAiAdapter(noWait).analyzeBatch({
+      texts: ['Outbond nya seru'],
+      promptVersion: 'analysis.v3',
+      mode: 'categorical',
+      question: 'Kegiatan apa yang paling seru?',
+      knownValues: ['api unggun'],
+    })
+
+    const messages = create.mock.calls[0]?.[0].messages as Array<{ content: string }>
+    expect(messages[0]?.content).toContain('pilihan')
+    expect(messages.at(-1)?.content).toContain('Kegiatan apa yang paling seru?')
+    expect(messages.at(-1)?.content).toContain('["api unggun"]')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // No sentiment came back because none was asked for.
+    expect(result.value.items).toEqual([
+      {
+        index: 0,
+        sentiment: null,
+        confidence: null,
+        topics: ['outbound'],
+        keywords: [],
+        summary: '',
+      },
+    ])
+  })
+
+  it('marks a reply it could not read as the model\u2019s fault, so it can be asked again', async () => {
+    create.mockResolvedValue({ choices: [{ message: { content: '{"items": [' } }] })
+
+    const result = await createOpenAiAdapter(noWait).analyzeBatch({
+      texts: ['Acaranya seru'],
+      promptVersion: 'analysis.v3',
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.details?.malformedReply).toBe(true)
+  })
+
+  it('guesses column modes from headers and shapes, never cells', async () => {
+    create.mockResolvedValue({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              columns: [
+                { index: 0, mode: 'evaluative' },
+                // Index 1 is left out: the caller fills it from the rules.
+                { index: 2, mode: 'scale' },
+              ],
+            }),
+          },
+        },
+      ],
+      usage: { prompt_tokens: 300, completion_tokens: 20 },
+    })
+
+    const result = await createOpenAiAdapter(noWait).classifyColumns({
+      promptVersion: 'modes.v1',
+      columns: [
+        {
+          header: 'Kritik dan saran',
+          kind: 'long_text',
+          filled: 110,
+          distinct: 104,
+          averageWords: 11.2,
+        },
+        {
+          header: 'Paling seru?',
+          kind: 'short_text',
+          filled: 118,
+          distinct: 14,
+          averageWords: 1.8,
+        },
+        {
+          header: 'Puas? (1-5)',
+          kind: 'number',
+          filled: 120,
+          distinct: 5,
+          averageWords: 1,
+        },
+      ],
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.value.modes).toEqual(['evaluative', null, 'scale'])
+    expect(result.value.costMicroIdr).toBeGreaterThan(0)
+
+    const sent = (create.mock.calls[0]?.[0].messages as Array<{ content: string }>).at(-1)
+    expect(sent?.content).toContain('Kritik dan saran')
+    expect(sent?.content).toContain('isi="teks panjang"')
+  })
+
   it('rejects an unknown prompt version instead of silently using another', async () => {
     await expect(
       createOpenAiAdapter(noWait).analyzeBatch({

@@ -1,9 +1,11 @@
 import {
   DEFAULT_REPORT_PREFERENCES,
+  type QuestionMode,
   type ReportInsight,
   type ReportPreferences,
 } from '@/types/domain'
 import type { TopicQuotes } from '../aggregators/quotes'
+import type { ScaleSummary } from '../aggregators/scale'
 import type { SentimentDistribution } from '../aggregators/sentiment'
 import type { CountedTerm } from '../aggregators/types'
 
@@ -19,8 +21,8 @@ export type ReportDocumentData = {
   promptVersion: string
   summary: string | null
   insights: ReportInsight[]
-  /** Every question together: the cover line's count, nothing else. */
-  sentiment: SentimentDistribution
+  /** Answers with a result, every question together: the cover line's count. */
+  answers: number
   /**
    * Answers that held no aspiration ("tidak ada", "-"), across the job. Out of
    * every percentage. Null when the job predates the count.
@@ -41,16 +43,29 @@ export type ReportDocumentData = {
 }
 
 export type ReportDocumentSection = {
+  /** The question's id, so an insight can name the section it comes from. */
+  questionId?: string
   /** What the respondent was asked. */
   questionText: string
+  /**
+   * How the job read the question (ADR-0016). It decides what the section
+   * prints: only `evaluative` has a sentiment block; `categorical` and `scale`
+   * print counts of what was answered rather than topics.
+   */
+  mode: QuestionMode
+  /** Answers with a result. */
+  answers: number
   sentiment: SentimentDistribution
   /** This question's non-answers; null when they were never counted. */
   noContent: number | null
+  /** Topics — or, for a `categorical` question, the choices named. */
   topics: CountedTerm[]
   keywords: CountedTerm[]
   topResponsesByTopic: TopicQuotes[]
   /** Topics past the top ten, printed only when the tail is switched on. */
   topicTail?: CountedTerm[]
+  /** Only for a `scale` question. */
+  scale?: ScaleSummary | null
 }
 
 /**
@@ -84,17 +99,44 @@ export type PrintableSection = {
   title: string | null
   /** "127 dari 181 jawaban berisi aspirasi"; null with the title. */
   countLine: string | null
+  mode: QuestionMode
+  /** Answers with a result: the denominator of every bar that is not a sentiment. */
+  answers: number
   sentiment: SentimentDistribution
   noContent: number | null
+  /** The heading over `topics`: what the bars count, in the reader's word. */
+  termsTitle: string
   topics: CountedTerm[]
   keywords: CountedTerm[]
   quoted: TopicQuotes[]
   tail: CountedTerm[]
+  /** Only for a `scale` question: its bars are `scale.values`, not `topics`. */
+  scale: ScaleSummary | null
+  /**
+   * That question's mean and most common value as one sentence. Written here
+   * rather than by the layouts: the PDF is drawn in the browser, which must
+   * not import this module to format it.
+   */
+  scaleLine: string | null
+}
+
+export type PrintableInsight = {
+  title: string
+  detail: string
+  /** The question it comes from, when the report has several and it names one. */
+  origin: string | null
+  evidenceResponseIds: string[]
 }
 
 export type PrintableReport = {
   /** The line under the title: how much was analysed, in the reader's terms. */
   countLine: string
+  /**
+   * Whether every question asked for a judgement. When one did not, the
+   * document says "jawaban" where it would say "aspirasi".
+   */
+  aspirations: boolean
+  insights: PrintableInsight[]
   sections: PrintableSection[]
   provenance: ReportProvenance | null
   /** "Dianalisis" facts in print order, with the optional ones dropped. */
@@ -112,26 +154,51 @@ export function truncateQuote(text: string): string {
  * "128 dari 140 responden memberikan aspirasi" for one question. With several,
  * a stored row is an answer rather than a respondent — one person gave several
  * — so the line counts answers and says how many questions they span.
+ *
+ * `aspirations` is false when a question of the report is not `evaluative`:
+ * a choice or a number is an answer, not an aspiration, and the line says
+ * "jawaban" throughout.
  */
 export function reportCountLine(
   analyzed: number,
   noContent: number | null,
   questionCount: number,
+  aspirations: boolean = true,
 ): string {
   if (questionCount > 1) {
-    return noContent
+    if (!noContent) return `${questionCount} pertanyaan · ${analyzed} jawaban dianalisis`
+    return aspirations
       ? `${questionCount} pertanyaan · ${analyzed} dari ${analyzed + noContent} jawaban berisi aspirasi`
-      : `${questionCount} pertanyaan · ${analyzed} jawaban dianalisis`
+      : `${questionCount} pertanyaan · ${analyzed} dari ${analyzed + noContent} jawaban dianalisis`
+  }
+  if (!aspirations) {
+    return noContent
+      ? `${analyzed} dari ${analyzed + noContent} responden menjawab`
+      : `${analyzed} jawaban`
   }
   return noContent
     ? `${analyzed} dari ${analyzed + noContent} responden memberikan aspirasi`
     : `${analyzed} aspirasi`
 }
 
-function sectionCountLine(analyzed: number, noContent: number | null): string {
-  return noContent
+/** The line under a question's title, in a report with several. */
+export function sectionCountLine(
+  analyzed: number,
+  noContent: number | null,
+  mode: QuestionMode = 'evaluative',
+): string {
+  if (!noContent) return `${analyzed} jawaban dianalisis`
+  return mode === 'evaluative'
     ? `${analyzed} dari ${analyzed + noContent} jawaban berisi aspirasi`
-    : `${analyzed} jawaban dianalisis`
+    : `${analyzed} dari ${analyzed + noContent} jawaban dianalisis`
+}
+
+/** What a section's bars count, as their heading says it. */
+export const TERMS_TITLES: Record<QuestionMode, string> = {
+  evaluative: 'Topik teratas',
+  thematic: 'Topik teratas',
+  categorical: 'Pilihan jawaban',
+  scale: 'Sebaran jawaban',
 }
 
 /**
@@ -144,13 +211,22 @@ export function printableReport(data: ReportDocumentData): PrintableReport {
   const preferences = data.preferences ?? DEFAULT_REPORT_PREFERENCES
   const provenance = preferences.includeProvenance ? (data.provenance ?? null) : null
   const many = data.sections.length > 1
+  const aspirations = data.sections.every((section) => section.mode === 'evaluative')
 
   const provenanceFacts: Array<[string, string]> = []
   if (provenance) {
     provenanceFacts.push(['Dataset', data.datasetName])
     if (many) provenanceFacts.push(['Pertanyaan', String(data.sections.length)])
-    provenanceFacts.push(['Aspirasi dianalisis', String(provenance.analyzed)])
-    if (data.noContent) provenanceFacts.push(['Tanpa aspirasi', String(data.noContent)])
+    provenanceFacts.push([
+      aspirations ? 'Aspirasi dianalisis' : 'Jawaban dianalisis',
+      String(provenance.analyzed),
+    ])
+    if (data.noContent) {
+      provenanceFacts.push([
+        aspirations ? 'Tanpa aspirasi' : 'Tidak berisi jawaban',
+        String(data.noContent),
+      ])
+    }
     if (provenance.failed > 0) {
       provenanceFacts.push(['Gagal dianalisis', String(provenance.failed)])
     }
@@ -163,31 +239,65 @@ export function printableReport(data: ReportDocumentData): PrintableReport {
     if (provenance.cost) provenanceFacts.push(['Perkiraan biaya', provenance.cost])
   }
 
+  const titleOf = new Map(
+    data.sections
+      .filter((section) => section.questionId)
+      .map((section) => [section.questionId, section.questionText]),
+  )
+
   return {
+    aspirations,
     countLine: reportCountLine(
-      data.sentiment.total,
+      data.answers,
       data.noContent,
       data.sections.length,
+      aspirations,
     ),
-    sections: data.sections.map((section) => ({
-      title: many ? section.questionText : null,
-      countLine: many
-        ? sectionCountLine(section.sentiment.total, section.noContent)
-        : null,
-      sentiment: section.sentiment,
-      noContent: section.noContent,
-      topics: section.topics.slice(0, MAX_TOPICS),
-      keywords: section.keywords.slice(0, MAX_KEYWORDS),
-      quoted: preferences.includeQuotes
-        ? section.topResponsesByTopic.slice(0, MAX_QUOTE_TOPICS).map((group) => ({
-            topic: group.topic,
-            responses: group.responses
-              .slice(0, MAX_QUOTES_PER_TOPIC)
-              .map((response) => ({ ...response, text: truncateQuote(response.text) })),
-          }))
-        : [],
-      tail: preferences.includeTopicTail ? (section.topicTail ?? []) : [],
+    insights: data.insights.map((insight) => ({
+      title: insight.title,
+      detail: insight.detail,
+      // With one question there is nothing to tell apart.
+      origin:
+        many && insight.questionId ? (titleOf.get(insight.questionId) ?? null) : null,
+      evidenceResponseIds: insight.evidenceResponseIds,
     })),
+    sections: data.sections.map((section) => {
+      const prose = section.mode === 'evaluative' || section.mode === 'thematic'
+      return {
+        title: many ? section.questionText : null,
+        countLine: many
+          ? sectionCountLine(section.answers, section.noContent, section.mode)
+          : null,
+        mode: section.mode,
+        answers: section.answers,
+        sentiment: section.sentiment,
+        noContent: section.noContent,
+        termsTitle: TERMS_TITLES[section.mode],
+        topics: section.mode === 'scale' ? [] : section.topics.slice(0, MAX_TOPICS),
+        // A choice or a number has no keywords and nothing to quote: the
+        // answer is the value already counted above.
+        keywords: prose ? section.keywords.slice(0, MAX_KEYWORDS) : [],
+        quoted:
+          prose && preferences.includeQuotes
+            ? section.topResponsesByTopic.slice(0, MAX_QUOTE_TOPICS).map((group) => ({
+                topic: group.topic,
+                responses: group.responses
+                  .slice(0, MAX_QUOTES_PER_TOPIC)
+                  .map((response) => ({
+                    ...response,
+                    text: truncateQuote(response.text),
+                  })),
+              }))
+            : [],
+        tail:
+          section.mode !== 'scale' && preferences.includeTopicTail
+            ? (section.topicTail ?? [])
+            : [],
+        scale: section.mode === 'scale' ? (section.scale ?? null) : null,
+        scaleLine:
+          section.mode === 'scale' && section.scale ? scaleLine(section.scale) : null,
+      }
+    }),
     provenance,
     provenanceFacts,
   }
@@ -209,7 +319,12 @@ export type ReportPdfPayload = {
   generatedAt: string
   promptVersion: string
   summary: string | null
-  insights: Array<{ title: string; detail: string; quotes: string[] }>
+  insights: Array<{
+    title: string
+    detail: string
+    origin: string | null
+    quotes: string[]
+  }>
   logoSrc: string | null
   /** "Disiapkan oleh Rani Putri · Sekretaris OSIS", or null. */
   preparedLine: string | null
@@ -222,6 +337,7 @@ export function reportPdfPayload(
   quotes: Record<string, string>,
 ): ReportPdfPayload {
   const prepared = data.preparedBy
+  const view = printableReport(data)
   return {
     fileName: `${reportFileStem(data.datasetName)}.pdf`,
     organizationName: data.organizationName,
@@ -229,9 +345,10 @@ export function reportPdfPayload(
     generatedAt: data.generatedAt,
     promptVersion: data.promptVersion,
     summary: data.summary,
-    insights: data.insights.map((insight) => ({
+    insights: view.insights.map((insight) => ({
       title: insight.title,
       detail: insight.detail,
+      origin: insight.origin,
       quotes: insight.evidenceResponseIds
         .map((id) => quotes[id])
         .filter((text): text is string => Boolean(text))
@@ -242,8 +359,28 @@ export function reportPdfPayload(
     preparedLine: prepared?.name
       ? `Disiapkan oleh ${prepared.name}${prepared.title ? ` · ${prepared.title}` : ''}`
       : null,
-    view: printableReport(data),
+    view,
   }
+}
+
+/** A mean as an Indonesian reader writes it: "4,25". */
+export function formatMean(mean: number): string {
+  return mean.toLocaleString('id-ID', { maximumFractionDigits: 2 })
+}
+
+/**
+ * The two figures of a `scale` section as one line, for the layouts that have
+ * no tiles: "Rata-rata 4,2 dari 180 jawaban berupa angka · paling sering 4 (72
+ * jawaban)".
+ */
+function scaleLine(scale: ScaleSummary): string {
+  const mean =
+    scale.mean === null
+      ? 'Tidak ada jawaban berupa angka, jadi tidak ada rata-rata'
+      : `Rata-rata ${formatMean(scale.mean)} dari ${scale.numericAnswers} jawaban berupa angka`
+  return scale.mostCommon
+    ? `${mean} · paling sering ${scale.mostCommon} (${scale.mostCommonCount} jawaban)`
+    : mean
 }
 
 /**

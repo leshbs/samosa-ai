@@ -145,8 +145,10 @@ export type AnalysisResultRow = {
   /** The sheet row: the same on every answer one respondent gave. */
   respondentIndex: number
   responseText: string
-  sentiment: Sentiment
-  confidence: number
+  /** Null unless the question was read as `evaluative`. */
+  sentiment: Sentiment | null
+  confidence: number | null
+  /** Topics, or for a `categorical` or `scale` question the value(s) given. */
   topics: string[]
   keywords: string[]
   summary: string | null
@@ -154,8 +156,8 @@ export type AnalysisResultRow = {
 
 type ResultRow = {
   response_id: string
-  sentiment: string
-  sentiment_confidence: number
+  sentiment: string | null
+  sentiment_confidence: number | null
   topics: string[] | null
   keywords: string[] | null
   summary: string | null
@@ -209,8 +211,9 @@ export async function listJobResults(
       questionId: String(joined?.question_id ?? ''),
       respondentIndex: Number(joined?.respondent_index ?? 0),
       responseText: String(joined?.text ?? ''),
-      sentiment: row.sentiment as Sentiment,
-      confidence: Number(row.sentiment_confidence),
+      sentiment: (row.sentiment ?? null) as Sentiment | null,
+      confidence:
+        row.sentiment_confidence === null ? null : Number(row.sentiment_confidence),
       topics: (row.topics ?? []) as string[],
       keywords: (row.keywords ?? []) as string[],
       summary: row.summary ? String(row.summary) : null,

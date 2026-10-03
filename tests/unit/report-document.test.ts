@@ -30,6 +30,8 @@ function sentiment(positive: number, neutral: number, negative: number) {
 function section(overrides: Partial<ReportDocumentSection> = {}): ReportDocumentSection {
   return {
     questionText: 'Kritik dan saran',
+    mode: 'evaluative',
+    answers: 128,
     sentiment: sentiment(60, 40, 28),
     noContent: 12,
     topics: Array.from({ length: 14 }, (_, i) => term(`topik ${i}`, 20 - i)),
@@ -54,7 +56,7 @@ function fixture(overrides: Partial<ReportDocumentData> = {}): ReportDocumentDat
     promptVersion: 'analysis.v2',
     summary: 'Ringkasan.',
     insights: [],
-    sentiment: sentiment(60, 40, 28),
+    answers: 128,
     noContent: 12,
     sections: [section()],
     provenance: {
@@ -73,12 +75,14 @@ function fixture(overrides: Partial<ReportDocumentData> = {}): ReportDocumentDat
 /** A survey with two open questions: 128 + 90 analysed, 12 + 4 non-answers. */
 function twoQuestions(): ReportDocumentData {
   return fixture({
-    sentiment: sentiment(100, 70, 48),
+    answers: 218,
     noContent: 16,
     sections: [
-      section(),
+      section({ questionId: 'q1' }),
       section({
+        questionId: 'q2',
         questionText: 'Apa yang paling berkesan?',
+        answers: 90,
         sentiment: sentiment(70, 15, 5),
         noContent: 4,
         topics: [term('penampilan band', 30)],

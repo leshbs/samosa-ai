@@ -132,12 +132,26 @@ describe('planBatches with questions', () => {
 
 describe('question counts', () => {
   it('survives the round trip to the column', () => {
-    const counts = { q1: { analyzed: 127, noContent: 54, failed: 0 } }
+    const counts = {
+      q1: { analyzed: 127, noContent: 54, failed: 0, mode: 'categorical' as const },
+    }
 
     expect(toStoredQuestionCounts(counts)).toEqual({
-      q1: { analyzed: 127, no_content: 54, failed: 0 },
+      q1: { analyzed: 127, no_content: 54, failed: 0, mode: 'categorical' },
     })
     expect(readQuestionCounts(toStoredQuestionCounts(counts))).toEqual(counts)
+  })
+
+  it('reads a job from before modes as naming none, and writes none back', () => {
+    const stored = { q1: { analyzed: 127, no_content: 54, failed: 0 } }
+    const counts = readQuestionCounts(stored)
+
+    expect(counts.q1?.mode).toBeNull()
+    expect(toStoredQuestionCounts(counts)).toEqual(stored)
+    // A mode nobody defined is not trusted either.
+    expect(
+      readQuestionCounts({ q1: { ...stored.q1, mode: 'sentimen' } }).q1?.mode,
+    ).toBeNull()
   })
 
   it('reads anything that is not the expected shape as no counts', () => {
@@ -146,7 +160,7 @@ describe('question counts', () => {
     expect(readQuestionCounts([])).toEqual({})
     expect(readQuestionCounts({ q1: 'banyak' })).toEqual({})
     expect(readQuestionCounts({ q1: { analyzed: -3, no_content: '4' } })).toEqual({
-      q1: { analyzed: 0, noContent: 0, failed: 0 },
+      q1: { analyzed: 0, noContent: 0, failed: 0, mode: null },
     })
   })
 
@@ -160,8 +174,8 @@ describe('question counts', () => {
   it('reads a question its own count', () => {
     const counted = job({
       questionCounts: {
-        q1: { analyzed: 127, noContent: 50, failed: 0 },
-        q2: { analyzed: 90, noContent: 4, failed: 0 },
+        q1: { analyzed: 127, noContent: 50, failed: 0, mode: null },
+        q2: { analyzed: 90, noContent: 4, failed: 0, mode: null },
       },
     })
 
@@ -183,9 +197,9 @@ describe('question counts', () => {
 
 describe('groupByQuestion', () => {
   const QUESTIONS = [
-    { id: 'q1', text: 'Kritik' },
-    { id: 'q2', text: 'Saran' },
-    { id: 'q3', text: 'Usul lain' },
+    { id: 'q1', text: 'Kritik', mode: 'evaluative' as const },
+    { id: 'q2', text: 'Saran', mode: 'evaluative' as const },
+    { id: 'q3', text: 'Usul lain', mode: 'evaluative' as const },
   ]
   const row = (responseId: string, questionId: string) => ({ responseId, questionId })
 
@@ -228,31 +242,55 @@ describe('exportResponsesToCsv', () => {
     keywords: ['telat'],
   }
 
-  it('appends the question and the respondent, leaving the first five columns alone', () => {
+  it('appends the question, the respondent and the mode, leaving the first five columns alone', () => {
     const csv = exportResponsesToCsv(
       [
         { ...base, responseText: 'Konsumsi telat', questionId: 'q1', respondentIndex: 0 },
         { ...base, responseText: 'Tambah vendor', questionId: 'q2', respondentIndex: 0 },
       ],
       [
-        { id: 'q1', text: 'Kritik' },
+        { id: 'q1', text: 'Kritik', mode: 'evaluative' },
         { id: 'q2', text: 'Saran' },
       ],
     )
     const lines = csv.replace(/^﻿/, '').split('\n')
 
     expect(lines[0]).toBe(
-      'response,sentiment,sentiment_score,topics,keywords,question,respondent',
+      'response,sentiment,sentiment_score,topics,keywords,question,respondent,mode',
     )
-    expect(lines[1]).toBe('Konsumsi telat,negative,0.90,konsumsi,telat,Kritik,1')
-    expect(lines[2]).toBe('Tambah vendor,negative,0.90,konsumsi,telat,Saran,1')
+    expect(lines[1]).toBe(
+      'Konsumsi telat,negative,0.90,konsumsi,telat,Kritik,1,evaluative',
+    )
+    expect(lines[2]).toBe('Tambah vendor,negative,0.90,konsumsi,telat,Saran,1,')
   })
 
-  it('leaves the two cells empty for a row that names neither', () => {
+  it('leaves sentiment and its score empty where none was judged', () => {
+    const csv = exportResponsesToCsv(
+      [
+        {
+          responseText: 'Outbond nya seru',
+          sentiment: null,
+          confidence: null,
+          topics: ['outbound'],
+          keywords: [],
+          questionId: 'q1',
+          respondentIndex: 4,
+        },
+      ],
+      [{ id: 'q1', text: 'Kegiatan paling seru?', mode: 'categorical' }],
+    )
+
+    // "null" in a spreadsheet cell would read as an answer.
+    expect(csv.replace(/^\uFEFF/, '').split('\n')[1]).toBe(
+      'Outbond nya seru,,,outbound,,Kegiatan paling seru?,5,categorical',
+    )
+  })
+
+  it('leaves the cells empty for a row that names no question', () => {
     const csv = exportResponsesToCsv([{ ...base, responseText: 'Konsumsi telat' }])
 
     expect(csv.replace(/^﻿/, '').split('\n')[1]).toBe(
-      'Konsumsi telat,negative,0.90,konsumsi,telat,,',
+      'Konsumsi telat,negative,0.90,konsumsi,telat,,,',
     )
   })
 })

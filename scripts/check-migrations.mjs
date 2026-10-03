@@ -1256,5 +1256,90 @@ check(
   JSON.stringify(rows),
 )
 
+// ── a result without a sentiment (20261006000100) ──
+
+const MODES_JOB = '40000000-0000-0000-0000-000000000001'
+await db.exec(`
+  insert into public.analysis_jobs (id, organization_id, dataset_id, prompt_version)
+  values ('${MODES_JOB}', '${ORG.dualSecond}', '${LEGACY}', 'analysis.v3')
+`)
+const answers = await sql(
+  `select id from public.responses where dataset_id = '${LEGACY}' order by respondent_index`,
+)
+const result = (responseId, sentiment, confidence) => `
+  insert into public.analysis_results
+    (organization_id, job_id, response_id, sentiment, sentiment_confidence, topics, prompt_version, model_id)
+  values
+    ('${ORG.dualSecond}', '${MODES_JOB}', '${responseId}', ${sentiment}, ${confidence}, '{outbound}', 'analysis.v3', 'probe')
+`
+
+// What the code that is live while this is pasted writes: both, always.
+await db.exec(result(answers[0].id, `'negative'`, '0.9'))
+// What the new code writes for a question that is not read for sentiment.
+await db.exec(result(answers[1].id, 'null', 'null'))
+rows = await sql(
+  `select sentiment, sentiment_confidence from public.analysis_results
+   where job_id = '${MODES_JOB}' order by sentiment nulls last`,
+)
+check(
+  'modes: a result is stored with a sentiment or without one',
+  rows.length === 2 &&
+    rows[0].sentiment === 'negative' &&
+    rows[1].sentiment === null &&
+    rows[1].sentiment_confidence === null,
+  JSON.stringify(rows),
+)
+
+for (const [name, sentiment, confidence] of [
+  ['a sentiment with no confidence', `'positive'`, 'null'],
+  ['a confidence with no sentiment', 'null', '0.5'],
+]) {
+  try {
+    await db.exec(result(answers[2].id, sentiment, confidence))
+    check(`modes: ${name} is refused`, false, 'accepted')
+  } catch (error) {
+    check(`modes: ${name} is refused`, true, error.message)
+  }
+}
+
+rows = await sql(
+  `select is_nullable from information_schema.columns
+   where table_name = 'analysis_results' and column_name in ('sentiment', 'sentiment_confidence')`,
+)
+check(
+  'modes: a second paste leaves both columns optional',
+  rows.length === 2 && rows.every((row) => row.is_nullable === 'YES'),
+  JSON.stringify(rows),
+)
+
+r = await as(
+  U.dual,
+  `select sentiment from public.analysis_results where job_id = '${MODES_JOB}'`,
+)
+check(
+  'modes: a member reads results that have no sentiment like any other',
+  r.rows.length === 2,
+  r.error ?? `${r.rows.length} rows`,
+)
+r = await as(
+  U.dual,
+  `update public.analysis_results set sentiment = 'positive', sentiment_confidence = 1
+   where job_id = '${MODES_JOB}'`,
+)
+check(
+  'modes: and cannot give one a sentiment',
+  r.affected === 0,
+  r.error ?? `${r.affected} rows`,
+)
+r = await as(
+  U.stranger,
+  `select id from public.analysis_results where job_id = '${MODES_JOB}'`,
+)
+check(
+  'modes: nobody else reads them',
+  r.rows.length === 0,
+  r.error ?? `${r.rows.length} rows`,
+)
+
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`)
 process.exit(failures === 0 ? 0 : 1)

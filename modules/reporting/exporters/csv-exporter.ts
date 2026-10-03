@@ -41,8 +41,9 @@ export function exportReportToCsv(report: Report): string {
 
 export type ExportableResponse = {
   responseText: string
-  sentiment: Sentiment
-  confidence: number
+  /** Null where the question was not read for sentiment: an empty cell. */
+  sentiment: Sentiment | null
+  confidence: number | null
   topics: readonly string[]
   keywords: readonly string[]
   questionId?: string
@@ -50,24 +51,30 @@ export type ExportableResponse = {
   respondentIndex?: number
 }
 
-/** A question as a CSV names it: by what the respondent was asked. */
-export type ExportableQuestion = { id: string; text: string }
+/**
+ * A question as a CSV names it: by what the respondent was asked, and by how
+ * the report read it.
+ */
+export type ExportableQuestion = { id: string; text: string; mode?: string }
 
 /**
  * One row per aspiration, for the reader who wants to sort and pivot it
  * themselves. Semicolons join the multi-value columns: a comma inside a cell is
  * legal but turns every topic list into a quoting puzzle in a spreadsheet.
  *
- * `question` and `respondent` come last, so the five columns a spreadsheet
- * built on the earlier export refers to by position stay where they were.
- * `respondent` is the row of the uploaded sheet, counted from 1: the same
- * number on every answer one person gave.
+ * `question`, `respondent` and `mode` come last, so the five columns a
+ * spreadsheet built on the earlier export refers to by position stay where
+ * they were. `respondent` is the row of the uploaded sheet, counted from 1:
+ * the same number on every answer one person gave. `mode` says how the
+ * question was read, which is what explains an empty `sentiment`: only an
+ * `evaluative` question has one, and for a `categorical` or `scale` question
+ * `topics` holds the choice or the value the answer gave.
  */
 export function exportResponsesToCsv(
   rows: readonly ExportableResponse[],
   questions: readonly ExportableQuestion[] = [],
 ): string {
-  const textOf = new Map(questions.map((question) => [question.id, question.text]))
+  const byId = new Map(questions.map((question) => [question.id, question]))
 
   const table: Array<Array<string | number>> = [
     [
@@ -78,16 +85,21 @@ export function exportResponsesToCsv(
       'keywords',
       'question',
       'respondent',
+      'mode',
     ],
-    ...rows.map((row) => [
-      row.responseText,
-      row.sentiment,
-      row.confidence.toFixed(2),
-      row.topics.join('; '),
-      row.keywords.join('; '),
-      textOf.get(row.questionId ?? '') ?? '',
-      row.respondentIndex === undefined ? '' : row.respondentIndex + 1,
-    ]),
+    ...rows.map((row) => {
+      const question = byId.get(row.questionId ?? '')
+      return [
+        row.responseText,
+        row.sentiment ?? '',
+        row.confidence === null ? '' : row.confidence.toFixed(2),
+        row.topics.join('; '),
+        row.keywords.join('; '),
+        question?.text ?? '',
+        row.respondentIndex === undefined ? '' : row.respondentIndex + 1,
+        question?.mode ?? '',
+      ]
+    }),
   ]
 
   return UTF8_BOM + toCsv(table)

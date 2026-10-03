@@ -6,7 +6,8 @@ import type { Sentiment } from '@/types/domain'
  * with a three-field fixture rather than a full database row.
  */
 export type AnalyzedRecord = {
-  sentiment: Sentiment
+  /** Null on an answer to a question that was not read for sentiment. */
+  sentiment: Sentiment | null
   topics: readonly string[]
   keywords: readonly string[]
 }

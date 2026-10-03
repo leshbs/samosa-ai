@@ -70,7 +70,9 @@ yang salah satunya memakai daftar id.
 - (+) Job dan laporan benar untuk dataset di atas 1.000 jawaban — sebelumnya
   salah tanpa pesan.
 - (+) Putaran berikutnya (mode analisis) tidak butuh migrasi: kolom mode sudah
-  ada.
+  ada. _Koreksi 2026-10-03:_ keliru. Kolom mode memang sudah ada, tapi
+  `analysis_results.sentiment` adalah `NOT NULL`, dan mode tanpa sentimen butuh
+  migrasi `20261006000100` ([ADR-0016](0016-analysis-modes.md)).
 - (−) **Semua pertanyaan masih dianalisis sebagai `evaluative`.** Kolom yang
   isinya pilihan atau angka tetap menghasilkan "100% netral" sampai mode
   analisis ada; wizard mengatakan itu.
