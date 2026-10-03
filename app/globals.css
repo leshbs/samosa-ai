@@ -405,7 +405,11 @@ html.theme-switching::view-transition-new(root) {
  */
 @media print {
   @page {
-    margin: 16mm;
+    /* A letter's margins, not a web page's: 16mm read as cramped next to the
+       school documents this report is filed with (pilot 01). The sheet on
+       screen in app/(print) pads by the same amounts — var() does not reach
+       @page, so the two are kept equal by hand. */
+    margin: 22mm 25mm;
 
     /* Page numbers, where the browser supports margin boxes (Chromium 131+).
        Elsewhere the page simply has none, as the old PDF never did. */

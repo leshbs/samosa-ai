@@ -3,16 +3,21 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { cache } from 'react'
 import { ArrowLeft } from 'lucide-react'
+import { DownloadPdfButton } from '@/components/reports/download-pdf-button'
 import { PrintButton } from '@/components/reports/print-button'
 import { PrintDocument } from '@/components/reports/print-document'
 import { Button } from '@/components/ui/button'
 import { can, getSessionUser } from '@/modules/auth'
 import { reportFileStem } from '@/modules/reporting'
-import { loadExportContext, loadReportExport } from '@/app/api/_lib/report-data'
+import {
+  citedQuotes,
+  loadExportContext,
+  loadReportExport,
+} from '@/app/api/_lib/report-data'
 
 type Props = {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ auto?: string }>
+  searchParams: Promise<{ auto?: string; from?: string }>
 }
 
 /**
@@ -47,11 +52,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 /**
  * Pilot 01, §2.2: the server-rendered PDF timed out in production, and what
- * worked was printing. So the PDF is this page, printed by the browser.
+ * worked was printing. This page is the report laid out for paper. It is also
+ * the fallback for "Unduh PDF" (ADR-0014): when the browser cannot draw the
+ * file itself, the reader lands here with the print dialog open.
  */
 export default async function ReportPrintPage({ params, searchParams }: Props) {
   const { id } = await params
-  const { auto } = await searchParams
+  const { auto, from } = await searchParams
   const loaded = await loadPrintable(id)
 
   if (loaded.kind === 'signed-out') redirect(`/login?next=/reports/${id}/print`)
@@ -72,11 +79,6 @@ export default async function ReportPrintPage({ params, searchParams }: Props) {
   }
 
   const { bundle } = loaded
-  const cited = new Set(bundle.document.insights.flatMap((i) => i.evidenceResponseIds))
-  const quotes: Record<string, string> = {}
-  for (const row of bundle.rows) {
-    if (cited.has(row.responseId)) quotes[row.responseId] = row.responseText
-  }
 
   // An archived report has no page in the app to go back to.
   const back = bundle.archived
@@ -97,17 +99,24 @@ export default async function ReportPrintPage({ params, searchParams }: Props) {
             </Link>
           </Button>
           <div className="flex flex-wrap items-center gap-3">
-            <p className="text-xs text-muted-foreground">
-              Pilih <span className="font-medium">Simpan sebagai PDF</span> di jendela
-              cetak.
-            </p>
+            {from === 'download' ? (
+              // Sent here because the direct download failed: say so, and say
+              // what to do instead.
+              <p role="status" className="text-xs text-muted-foreground">
+                Unduhan langsung gagal. Pilih{' '}
+                <span className="font-medium">Simpan sebagai PDF</span> di jendela cetak.
+              </p>
+            ) : null}
             <PrintButton auto={auto === '1'} />
+            {from === 'download' ? null : <DownloadPdfButton jobId={id} />}
           </div>
         </div>
       </div>
 
-      <main className="print-sheet mx-auto my-8 max-w-[210mm] rounded-card border bg-card p-[16mm]">
-        <PrintDocument data={bundle.document} quotes={quotes} />
+      {/* The padding is the paper's margin (@page in globals.css); a phone has no
+          room for 25mm a side, so it only applies from `sm` up. */}
+      <main className="print-sheet mx-auto my-8 max-w-[210mm] rounded-card border bg-card p-6 sm:px-[25mm] sm:py-[22mm]">
+        <PrintDocument data={bundle.document} quotes={citedQuotes(bundle)} />
       </main>
     </>
   )
