@@ -1,4 +1,4 @@
-import { AlertTriangle, CircleSlash, Info } from 'lucide-react'
+import { AlertTriangle, CircleSlash, Info, MessageSquareOff } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
@@ -6,10 +6,12 @@ import { cn } from '@/lib/utils'
  * §6.2 and §P2. What this dataset does *not* tell you, stated before the charts
  * rather than in a footnote under them.
  *
- * Three numbers matter and all three are routinely hidden by report tools:
+ * Four numbers matter and all four are routinely hidden by report tools:
  * responses the model could not analyse at all, responses it analysed but gave
  * no topic (so they are missing from the topic chart even though they are in the
- * sentiment chart), and whether the job finished completely.
+ * sentiment chart), respondents who wrote "tidak ada" (pilot 01: counted as
+ * neutral, they made every percentage lie), and whether the job finished
+ * completely.
  *
  * Styled as information, not alarm (§P2). A red banner on a job where 12 of 340
  * rows failed reads as "this report is broken"; the truth is "this report covers
@@ -19,12 +21,15 @@ export function DataConditionStrip({
   analyzed,
   failed,
   untagged,
+  noContent,
   isPartial,
   className,
 }: {
   analyzed: number
   failed: number
   untagged: number
+  /** Null when the job predates the count (analysis.v1): unknown, not zero. */
+  noContent: number | null
   isPartial: boolean
   className?: string
 }) {
@@ -46,6 +51,23 @@ export function DataConditionStrip({
           label="Dianalisis"
           value={`${analyzed} aspirasi`}
           detail="Punya sentimen dan masuk ke seluruh grafik."
+        />
+
+        <Row
+          icon={<MessageSquareOff aria-hidden className="text-muted-foreground" />}
+          label="Tanpa aspirasi"
+          value={
+            noContent === null
+              ? 'Tidak dihitung'
+              : noContent === 0
+                ? 'Tidak ada'
+                : `${noContent} jawaban`
+          }
+          detail={
+            noContent === null
+              ? 'Analisis ini dijalankan sebelum jawaban seperti “tidak ada” dipisahkan. Jalankan ulang untuk memisahkannya.'
+              : 'Jawaban seperti “tidak ada” atau “-”. Tidak dihitung di persentase mana pun.'
+          }
         />
 
         <Row

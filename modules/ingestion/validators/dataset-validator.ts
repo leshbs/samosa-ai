@@ -3,8 +3,13 @@ import type { AppError } from '@/modules/shared'
 import { MAX_RESPONSE_LENGTH, MAX_UPLOAD_BYTES } from '@/types/api'
 import type { ParsedSheet } from '../parsers'
 
-/** Below this a "response" is punctuation or a stray keystroke, not an opinion. */
-const MIN_RESPONSE_LENGTH = 3
+/**
+ * Only a blank cell is not a response. "-", "ga" and "." are respondents who
+ * answered "nothing" — they are kept so the report can count them ("128 dari
+ * 140 responden memberikan aspirasi"), and the analysis batcher keeps them
+ * away from the model. Dropping them here used to make them vanish from both.
+ */
+const MIN_RESPONSE_LENGTH = 1
 const MAX_RESPONSES_PER_DATASET = 5_000
 
 export type ExtractedResponse = {

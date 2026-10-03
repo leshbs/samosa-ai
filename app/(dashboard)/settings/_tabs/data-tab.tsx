@@ -8,11 +8,15 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { countReports } from '@/modules/analysis'
+import { countReports, listJobs } from '@/modules/analysis'
 import { can, listMembers, type SessionUser } from '@/modules/auth'
 import { countDatasets, listDatasets } from '@/modules/ingestion'
 import { deletionDate } from '@/lib/retention'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatDateTime } from '@/lib/utils'
+import { isReportable } from '@/types/domain'
+
+/** Every job, archived ones included; the list page stops at 50, this must not. */
+const ALL_JOBS = 1_000
 
 /**
  * Checklist 5.7: the portability promise (docs/OVERVIEW.md, "semua data user
@@ -33,6 +37,21 @@ export async function DataTab({ session }: { session: SessionUser }) {
   const archived = await listDatasets(session.organizationId, { archived: 'only' })
   const timezone = session.organizationTimezone
 
+  // Archived reports have no page in the app, so their PDFs are reached from
+  // here: the print page opens them. Only fetched when there is something
+  // archived, and only for someone allowed to export.
+  const archivedIds = new Set(archived.ok ? archived.value.map((d) => d.id) : [])
+  const archivedJobs =
+    archivedIds.size > 0 && can(session.role, 'report:export')
+      ? await listJobs(session.organizationId, { limit: ALL_JOBS, includeArchived: true })
+      : null
+  const reportsOf = (datasetId: string) =>
+    archivedJobs?.ok
+      ? archivedJobs.value.filter(
+          (job) => job.datasetId === datasetId && isReportable(job.status),
+        )
+      : []
+
   return (
     <div className="space-y-6">
       {archived.ok && archived.value.length > 0 ? (
@@ -43,8 +62,9 @@ export async function DataTab({ session }: { session: SessionUser }) {
             </CardTitle>
             <CardDescription>
               Masa simpannya sudah habis, jadi dataset ini dan laporannya tidak tampil
-              lagi di aplikasi. Semuanya masih ikut di unduhan di bawah, dan pulih kalau
-              paketmu diganti ke yang menyimpan data permanen.
+              lagi di aplikasi. Datanya masih ikut di unduhan di bawah, PDF laporannya
+              bisa diunduh dari sini, dan semuanya pulih kalau paketmu diganti ke yang
+              menyimpan data permanen.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -64,6 +84,20 @@ export async function DataTab({ session }: { session: SessionUser }) {
                       timezone,
                     )}
                   </span>
+                  {reportsOf(dataset.id).length > 0 ? (
+                    <ul className="flex w-full flex-wrap gap-x-4 gap-y-1 text-xs">
+                      {reportsOf(dataset.id).map((job) => (
+                        <li key={job.id}>
+                          <Link
+                            href={`/reports/${job.id}/print`}
+                            className="font-medium underline underline-offset-4"
+                          >
+                            PDF laporan {formatDateTime(job.createdAt, timezone)}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -75,9 +109,9 @@ export async function DataTab({ session }: { session: SessionUser }) {
         <CardHeader>
           <CardTitle className="text-base">Unduh semua data</CardTitle>
           <CardDescription>
-            Satu file .zip: setiap dataset sebagai CSV, setiap laporan sebagai PDF dan
-            CSV, plus metadata{session.solo ? '' : ' — organisasi, anggota,'} dan versi
-            prompt setiap analisis.
+            Satu file .zip: setiap dataset dan hasil setiap laporan sebagai CSV, plus
+            metadata{session.solo ? '' : ' — organisasi, anggota,'} dan versi prompt
+            setiap analisis.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">

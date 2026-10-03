@@ -27,6 +27,7 @@ const SNAPSHOT = {
   processedCount: 154,
   totalCount: 154,
   failedCount: 0,
+  noContentCount: 0,
   createdBy: 'u-1',
   finishedAt: '2026-09-29T05:00:00Z',
 }

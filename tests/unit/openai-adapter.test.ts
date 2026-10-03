@@ -204,6 +204,38 @@ describe('createOpenAiAdapter', () => {
     expect(result.error.message).toContain('tidak sesuai format')
   })
 
+  it('separates analysis.v2 no_content answers from the results', async () => {
+    create.mockResolvedValue(
+      completion([
+        ITEM,
+        // Anything the model adds to a no_content item is dropped.
+        { index: 1, sentiment: 'no_content', summary: 'Tidak ada masukan.' },
+        { ...ITEM, index: 2 },
+      ]),
+    )
+
+    const result = await createOpenAiAdapter(noWait).analyzeBatch({
+      texts: ['Acaranya seru', 'belum kepikiran', 'Band-nya keren'],
+      promptVersion: 'analysis.v2',
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.value.items.map((item) => item.index)).toEqual([0, 2])
+    expect(result.value.noContentIndexes).toEqual([1])
+  })
+
+  it('holds analysis.v1 to its own contract, which has no no_content', async () => {
+    create.mockResolvedValue(completion([{ index: 0, sentiment: 'no_content' }]))
+
+    const result = await createOpenAiAdapter(noWait).analyzeBatch({
+      texts: ['belum kepikiran'],
+      promptVersion: 'analysis.v1',
+    })
+
+    expect(result.ok).toBe(false)
+  })
+
   it('rejects an unknown prompt version instead of silently using another', async () => {
     await expect(
       createOpenAiAdapter(noWait).analyzeBatch({

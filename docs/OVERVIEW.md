@@ -38,7 +38,7 @@ samosa/
 | Layer         | Tech                            | Rasional                                                               |
 | ------------- | ------------------------------- | ---------------------------------------------------------------------- |
 | Framework     | Next.js 15 (App Router)         | React SSR/RSC, TS-first, single deploy                                 |
-| UI runtime    | React 19                        | Dipasangkan dengan Next 15; wajib untuk export PDF (ADR-0007)          |
+| UI runtime    | React 19                        | Dipasangkan dengan Next 15 (ADR-0007)                                  |
 | Language      | TypeScript strict               | Type safety, portfolio-grade                                           |
 | Styling       | Tailwind CSS + shadcn/ui        | Utility-first, fully customizable                                      |
 | Design system | `design_system.md`              | Token warna, tipe, gradien, dan layout; komponen Watermelon UI di-port |
@@ -54,7 +54,7 @@ samosa/
 | Hosting       | Vercel                          | CI/CD dari GitHub, edge                                                |
 | Monitoring    | Log terstruktur + `requestId`   | Korelasi edge ke log line. Sentry belum dipasang, lihat `DEBT.md`      |
 | Rate limiting | Postgres (`consume_rate_limit`) | Tanpa vendor kedua; penghitung in-process tidak berguna di serverless  |
-| PDF export    | @react-pdf/renderer             | Jalan di Node function biasa, tanpa binary Chromium (ADR-0004)         |
+| PDF export    | Cetak browser (`/print`)        | Server tidak membuat PDF: nol timeout, nol biaya (ADR-0013)            |
 | Testing       | Vitest + Playwright             | Unit + E2E                                                             |
 | Package mgr   | pnpm                            | Fast, disk-efficient                                                   |
 
@@ -184,6 +184,7 @@ samosa/
 │   │   ├── datasets/
 │   │   ├── analysis/[id]/
 │   │   └── reports/[id]/
+│   ├── (print)/reports/[id]/print/  # Laporan siap cetak; browser membuat PDF-nya (ADR-0013)
 │   └── api/                         # Route Handlers — thin controllers
 │       ├── _lib/respond.ts          # success() / failure() helpers
 │       ├── datasets/route.ts
@@ -209,6 +210,7 @@ samosa/
 │   │   │   ├── local.ts             # Lexicon baseline; future: IndoBERT
 │   │   │   └── types.ts
 │   │   ├── prompts/                 # Versioned prompt templates
+│   │   │   ├── analysis.v2.ts       # Default: + label no_content (pilot 01)
 │   │   │   ├── sentiment.v1.ts
 │   │   │   ├── topic.v1.ts
 │   │   │   └── summary.v1.ts
@@ -217,7 +219,7 @@ samosa/
 │   ├── notifications/               # Email: transport Resend + template (ADR-0011)
 │   ├── reporting/
 │   │   ├── aggregators/
-│   │   ├── exporters/               # PDF, CSV, PPT
+│   │   ├── exporters/               # CSV, zip arsip, model dokumen cetak
 │   │   └── index.ts
 │   └── shared/                      # Cross-module utilities
 │       ├── errors/
@@ -302,7 +304,7 @@ User uploads CSV
          menulis ringkasan eksekutif + insight ke tabel reports
   → Ketika done, client fetch /api/reports/[id]
   → reporting.buildReport() → aggregated view untuk dashboard
-  → Export: GET /api/reports/[id]/pdf | /csv
+  → Export: GET /api/reports/[id]/csv · PDF: /reports/[id]/print (cetak browser)
 ```
 
 ### Data model (skema utama)
@@ -520,7 +522,7 @@ Audit penuh beserta buktinya ada di **[`docs/security-audit.md`](security-audit.
 - ✅ **CSRF** — pengecekan `Origin` untuk setiap metode tulis di middleware; `/api/webhooks/*` dikecualikan karena memakai shared secret.
 - ✅ **Content Security Policy** — nonce per request, `strict-dynamic`, plus header konstan di `next.config.ts`. Nol pelanggaran di enam route, diperiksa di browser sungguhan.
 - ✅ **Auth** — email wajib diverifikasi; tautan email ditebus di server lewat `token_hash` (ADR-0009); reset password mengeluarkan sesi di perangkat lain; form lupa-password tidak membocorkan email mana yang terdaftar; setiap `?next=` lewat `safeNextPath()` (menutup open redirect `//` dan `/\`). Diverifikasi end-to-end di project hosted dengan akun sekali pakai. Pengiriman email sungguhan menunggu SMTP — lihat `DEBT.md`.
-- ✅ **Keanggotaan dan kepemilikan** — admin tidak bisa menaikkan dirinya jadi pemilik, menyentuh baris pemilik, atau menambah anggota langsung; kepemilikan hanya berpindah lewat fungsi `security definer` dalam satu transaksi. Undangan menyimpan hash token, bukan tokennya. Diverifikasi dengan `pnpm db:check` (107 cek di PGlite, termasuk `accounts` yang tidak bisa ditulis dari browser); `scripts/check-rls.mjs` mengulang cek lintas-tenant-nya terhadap project hosted setelah migrasi diterapkan (ADR-0010).
+- ✅ **Keanggotaan dan kepemilikan** — admin tidak bisa menaikkan dirinya jadi pemilik, menyentuh baris pemilik, atau menambah anggota langsung; kepemilikan hanya berpindah lewat fungsi `security definer` dalam satu transaksi. Undangan menyimpan hash token, bukan tokennya. Diverifikasi dengan `pnpm db:check` (110 cek di PGlite, termasuk `accounts` yang tidak bisa ditulis dari browser); `scripts/check-rls.mjs` mengulang cek lintas-tenant-nya terhadap project hosted setelah migrasi diterapkan (ADR-0010).
 - ✅ **Korelasi log** — satu `requestId` dari edge sampai ke log line, dikembalikan sebagai header `x-request-id`.
 - 🟡 **Rate limiting di endpoint upload dan analysis** — kodenya ada dan gagal-terbuka dengan benar, tapi migrasinya belum diterapkan ke project hosted. Postgres, bukan Upstash: penghitung in-process tidak berguna di serverless. Lihat `DEBT.md`.
 - ⬜ **PII handling** — belum diimplementasi. Rencana: opsi anonymize (hapus nama, email) sebelum data disimpan. Saat ini `respondent_meta` disimpan apa adanya dan **tidak** ikut dikirim ke LLM.

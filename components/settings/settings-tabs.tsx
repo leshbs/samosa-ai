@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { LinkPending } from '@/components/layout/link-pending'
 import { cn } from '@/lib/utils'
 
 /**
@@ -57,7 +58,7 @@ export function SettingsTabs({
                 scroll={false}
                 aria-current={current ? 'page' : undefined}
                 className={cn(
-                  '-mb-px inline-flex h-10 items-center border-b-2 px-3 text-sm font-medium transition-colors duration-fast',
+                  'relative -mb-px inline-flex h-10 items-center border-b-2 px-3 text-sm font-medium transition-colors duration-fast',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
                   current
                     ? 'border-primary text-foreground'
@@ -65,6 +66,9 @@ export function SettingsTabs({
                 )}
               >
                 {settingsTabLabel(tab.id, solo)}
+                {/* The underline moves to the pressed tab at once; the panel
+                    follows when the server answers. */}
+                <LinkPending className="absolute inset-x-0 -bottom-0.5 h-0.5 bg-primary/60" />
               </Link>
             </li>
           )

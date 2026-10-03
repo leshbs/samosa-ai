@@ -40,6 +40,7 @@ function toJob(row: JobRow): AnalysisJob {
     processedCount: Number(row.processed_count ?? 0),
     totalCount: Number(row.total_count ?? 0),
     failedCount: Number(row.failed_count ?? 0),
+    noContentCount: Number(row.no_content_count ?? 0),
     inputTokens: Number(row.input_tokens ?? 0),
     outputTokens: Number(row.output_tokens ?? 0),
     costMicroIdr: Number(row.cost_micro_idr ?? 0),

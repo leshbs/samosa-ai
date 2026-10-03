@@ -1027,5 +1027,37 @@ rows = await sql(
 )
 check('retention: reports can be archived with their dataset', rows.length === 1)
 
+// ── non-answers (20261004000100) ──
+
+const NO_CONTENT = readFileSync(
+  join(MIGRATIONS, '20261004000100_no_content_count.sql'),
+  'utf8',
+)
+await db.exec(`
+  insert into public.analysis_jobs (organization_id, dataset_id, prompt_version, created_by)
+  select organization_id, id, 'analysis.v2', uploader_id from public.datasets
+  where organization_id = '${ORG.dualSecond}'
+`)
+await db.exec(`update public.analysis_jobs set no_content_count = 12`)
+await db.exec(NO_CONTENT)
+rows = await sql(`select distinct no_content_count from public.analysis_jobs`)
+check(
+  'no_content: a second paste keeps the counts',
+  rows.length === 1 && rows[0].no_content_count === 12,
+  JSON.stringify(rows),
+)
+try {
+  await db.exec(`update public.analysis_jobs set no_content_count = -1`)
+  check('no_content: the count cannot go negative', false, 'accepted -1')
+} catch (error) {
+  check('no_content: the count cannot go negative', true, error.message)
+}
+r = await as(U.dual, `update public.analysis_jobs set no_content_count = 0`)
+check(
+  'no_content: a member cannot rewrite the count',
+  r.affected === 0,
+  r.error ?? `${r.affected} rows`,
+)
+
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`)
 process.exit(failures === 0 ? 0 : 1)
