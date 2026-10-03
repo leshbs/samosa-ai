@@ -12,6 +12,12 @@ export type HomeJob = {
   datasetName: string
   status: JobStatus
   processedCount: number
+  /**
+   * Results that carry a sentiment: the denominator of every share here. Less
+   * than `processedCount` when the dataset has questions that are not read for
+   * sentiment, and 0 when it has no other kind.
+   */
+  evaluatedCount: number
   totalCount: number
   costMicroIdr: number
   createdAt: string
@@ -81,10 +87,10 @@ function monthKey(value: Date, timeZone: string): string {
 
 function positiveShareOf(job: HomeJob, positive: HomeSummaryInput['positiveCounts']) {
   const count = positive[job.id]
-  if (!isReportable(job.status) || count === undefined || job.processedCount <= 0) {
+  if (!isReportable(job.status) || count === undefined || job.evaluatedCount <= 0) {
     return null
   }
-  return count / job.processedCount
+  return count / job.evaluatedCount
 }
 
 function progressOf(job: HomeJob): number | null {
@@ -102,10 +108,12 @@ function latestReportOf(
 
   const positive = positiveCounts[job.id]
   const negative = negativeCounts[job.id]
-  if (positive === undefined || negative === undefined) return { job, sentiment: null }
+  if (positive === undefined || negative === undefined || job.evaluatedCount <= 0) {
+    return { job, sentiment: null }
+  }
 
-  // The runner stores exactly `processedCount` results, so neutral is the rest.
-  const neutral = Math.max(0, job.processedCount - positive - negative)
+  // Every result read for sentiment has one of three, so neutral is the rest.
+  const neutral = Math.max(0, job.evaluatedCount - positive - negative)
   return { job, sentiment: { positive, neutral, negative } }
 }
 
@@ -117,7 +125,7 @@ function trendOf(
     .slice(0, TREND_POINTS)
     .filter((job) => positiveShareOf(job, positive) !== null)
 
-  const pooledTotal = plotted.reduce((sum, job) => sum + job.processedCount, 0)
+  const pooledTotal = plotted.reduce((sum, job) => sum + job.evaluatedCount, 0)
   const pooledPositive = plotted.reduce((sum, job) => sum + (positive[job.id] ?? 0), 0)
 
   return {

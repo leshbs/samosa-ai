@@ -77,6 +77,7 @@ function adapterAnswering(noContentIndexes: (texts: string[]) => number[]): LlmA
   return {
     name: 'stub',
     summarize: vi.fn(),
+    classifyColumns: vi.fn(),
     analyzeBatch: vi.fn(async ({ texts }: { texts: string[] }) => {
       const empty = new Set(noContentIndexes(texts))
       return ok({

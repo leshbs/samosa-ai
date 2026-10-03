@@ -161,7 +161,7 @@ export default async function AnalysisDetailPage({
                     <TableCell className="align-top">
                       <SentimentBadge sentiment={row.sentiment} />
                       <span className="mt-1 block text-xs tabular-nums text-muted-foreground">
-                        {formatPercent(row.confidence)}
+                        {row.confidence === null ? null : formatPercent(row.confidence)}
                       </span>
                     </TableCell>
                     <TableCell className="whitespace-pre-wrap align-top">

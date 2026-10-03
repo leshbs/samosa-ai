@@ -14,17 +14,24 @@ import { formatPercent } from '@/lib/utils'
  * and only the list itself tells you which. Collapsing it into a bucket without
  * offering the list would hide the one view that answers that.
  */
-export function TopicTail({ topics }: { topics: TopicCount[] }) {
+export function TopicTail({
+  topics,
+  noun = 'topik',
+}: {
+  topics: TopicCount[]
+  /** What the listed terms are: topics, or the choices of a "pilihan" question. */
+  noun?: 'topik' | 'pilihan'
+}) {
   if (topics.length === 0) return null
 
   return (
     <details className="group rounded-md border bg-card">
       <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium marker:content-none">
         <span className="text-muted-foreground group-open:hidden">
-          Lihat {topics.length} topik lain di kelompok “Lainnya”
+          Lihat {topics.length} {noun} lain di kelompok “Lainnya”
         </span>
         <span className="hidden text-muted-foreground group-open:inline">
-          Sembunyikan {topics.length} topik lain
+          Sembunyikan {topics.length} {noun} lain
         </span>
       </summary>
 

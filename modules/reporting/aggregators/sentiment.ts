@@ -1,6 +1,7 @@
 import { SENTIMENTS, type Sentiment } from '@/types/domain'
 
 export type SentimentDistribution = {
+  /** Records that carry a sentiment: the denominator of every share. */
   total: number
   counts: Record<Sentiment, number>
   shares: Record<Sentiment, number>
@@ -15,16 +16,23 @@ const EMPTY: Record<Sentiment, number> = { positive: 0, neutral: 0, negative: 0 
  * built from this is a diverging stacked bar rather than a pie; the shares are
  * returned alongside the counts because a reader compares proportions, and
  * dividing in the component would put that arithmetic outside the tests.
+ *
+ * A record without a sentiment — an answer to a question that asks for a
+ * choice, a number or a reflection — is not in the total. Counting it would
+ * shrink every share by answers that were never judged.
  */
 export function aggregateSentiment(
-  records: ReadonlyArray<{ sentiment: Sentiment }>,
+  records: ReadonlyArray<{ sentiment: Sentiment | null }>,
 ): SentimentDistribution {
   const counts = { ...EMPTY }
+  let total = 0
   for (const record of records) {
-    if (record.sentiment in counts) counts[record.sentiment] += 1
+    if (record.sentiment !== null && record.sentiment in counts) {
+      counts[record.sentiment] += 1
+      total += 1
+    }
   }
 
-  const total = records.length
   const shares = { ...EMPTY }
   for (const sentiment of SENTIMENTS) {
     shares[sentiment] = total === 0 ? 0 : counts[sentiment] / total

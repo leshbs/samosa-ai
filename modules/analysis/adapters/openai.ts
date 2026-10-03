@@ -4,13 +4,20 @@ import OpenAI from 'openai'
 import { serverEnv } from '@/lib/env'
 import { ERROR_CODES, appError, err, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
-import { analysisPrompt, summaryPrompt, type AnalysisPrompt } from '../prompts'
+import {
+  analysisPrompt,
+  modePrompt,
+  summaryPrompt,
+  type AnalysisPrompt,
+} from '../prompts'
 import { estimateCostMicroIdr } from './pricing'
 import { MAX_ATTEMPTS, backoffDelayMs, isRetryableError, retryAfterMs } from './retry'
 import {
   isNoContentItem,
   type BatchInput,
   type BatchOutput,
+  type ClassifyInput,
+  type ClassifyOutput,
   type LlmAdapter,
   type SummaryInput,
   type SummaryOutput,
@@ -141,6 +148,7 @@ function parseBatch(
         'Model membalas dengan format yang tidak bisa dibaca',
         {
           cause,
+          details: { malformedReply: true },
         },
       ),
     )
@@ -189,15 +197,39 @@ function describeIssues(
   }
 }
 
-/** The narrative is prose, not a per-response table, so it needs far less room. */
-const MAX_SUMMARY_TOKENS = 1_024
+/**
+ * The narrative is prose, not a per-response table, so it needs far less room.
+ * Enough for six insights and a summary that covers several questions.
+ */
+const MAX_SUMMARY_TOKENS = 1_536
+
+/** One short object per column of a sheet. */
+const MAX_CLASSIFY_TOKENS = 1_024
+
+/** Reads a reply as JSON, or says the reply — not the provider — was at fault. */
+function parseJson(content: string): Result<unknown, AppError> {
+  try {
+    return ok(JSON.parse(stripCodeFence(content)))
+  } catch (cause) {
+    return err(
+      appError(
+        ERROR_CODES.UPSTREAM,
+        'Model membalas dengan format yang tidak bisa dibaca',
+        {
+          cause,
+          details: { malformedReply: true },
+        },
+      ),
+    )
+  }
+}
 
 export function createOpenAiAdapter(options: AdapterOptions = {}): LlmAdapter {
   return {
     name: 'openai',
 
     async analyzeBatch(input: BatchInput): Promise<Result<BatchOutput, AppError>> {
-      const prompt = analysisPrompt(input.promptVersion)
+      const prompt = analysisPrompt(input.promptVersion, input.mode)
       const modelId = serverEnv().OPENAI_MODEL
 
       const response = await callWithRetry(
@@ -212,7 +244,13 @@ export function createOpenAiAdapter(options: AdapterOptions = {}): LlmAdapter {
             messages: [
               { role: 'system', content: prompt.SYSTEM },
               ...prompt.FEW_SHOT_MESSAGES(),
-              { role: 'user', content: prompt.USER_TEMPLATE(input.texts) },
+              {
+                role: 'user',
+                content: prompt.USER_TEMPLATE(input.texts, {
+                  question: input.question,
+                  knownValues: input.knownValues,
+                }),
+              },
             ],
           }),
         options,
@@ -268,23 +306,10 @@ export function createOpenAiAdapter(options: AdapterOptions = {}): LlmAdapter {
         return err(appError(ERROR_CODES.UPSTREAM, 'Penyedia AI membalas tanpa isi'))
       }
 
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(stripCodeFence(content))
-      } catch (cause) {
-        return err(
-          appError(
-            ERROR_CODES.UPSTREAM,
-            'Model membalas dengan format yang tidak bisa dibaca',
-            {
-              cause,
-              details: { malformedReply: true },
-            },
-          ),
-        )
-      }
+      const parsed = parseJson(content)
+      if (!parsed.ok) return parsed
 
-      const summary = prompt.parse(parsed)
+      const summary = prompt.parse(parsed.value)
       if (!summary.success) {
         return err(
           appError(
@@ -304,6 +329,63 @@ export function createOpenAiAdapter(options: AdapterOptions = {}): LlmAdapter {
 
       return ok({
         ...summary.data,
+        citesQuestions: prompt.citesQuestions,
+        modelId,
+        usage,
+        costMicroIdr: estimateCostMicroIdr(modelId, usage),
+      })
+    },
+
+    async classifyColumns(
+      input: ClassifyInput,
+    ): Promise<Result<ClassifyOutput, AppError>> {
+      const prompt = modePrompt(input.promptVersion)
+      const modelId = serverEnv().OPENAI_MODEL
+
+      const response = await callWithRetry(
+        () =>
+          getClient().chat.completions.create({
+            model: modelId,
+            max_tokens: MAX_CLASSIFY_TOKENS,
+            temperature: TEMPERATURE,
+            response_format: { type: 'json_object' },
+            messages: [
+              { role: 'system', content: prompt.SYSTEM },
+              ...prompt.FEW_SHOT_MESSAGES(),
+              { role: 'user', content: prompt.USER_TEMPLATE(input.columns) },
+            ],
+          }),
+        options,
+      )
+
+      if (!response.ok) return response
+
+      const content = response.value.choices[0]?.message.content
+      if (!content) {
+        return err(appError(ERROR_CODES.UPSTREAM, 'Penyedia AI membalas tanpa isi'))
+      }
+
+      const parsed = parseJson(content)
+      if (!parsed.ok) return parsed
+
+      const guesses = prompt.parse(parsed.value)
+      if (!guesses.success) {
+        return err(
+          appError(
+            ERROR_CODES.UPSTREAM,
+            'Balasan model tidak sesuai format yang diharapkan',
+            { details: describeIssues(guesses.error.issues) },
+          ),
+        )
+      }
+
+      const usage = {
+        inputTokens: response.value.usage?.prompt_tokens ?? 0,
+        outputTokens: response.value.usage?.completion_tokens ?? 0,
+      }
+
+      return ok({
+        modes: input.columns.map((_, index) => guesses.data.get(index) ?? null),
         modelId,
         usage,
         costMicroIdr: estimateCostMicroIdr(modelId, usage),

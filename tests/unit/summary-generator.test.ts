@@ -11,14 +11,16 @@ vi.mock('@/lib/supabase/admin', () => ({
       if (table === 'reports') return { upsert }
       const chain = {
         select: (...args: unknown[]) => {
-          select(...args)
+          if (table === 'analysis_results') select(...args)
           return chain
         },
         eq: () => chain,
         // The read is paged; one short page is the whole result.
         order: () => chain,
         range: () => chain,
-        then: (resolve: (value: unknown) => unknown) => resolve(rowsFromDb),
+        maybeSingle: async () => ({ data: jobFromDb }),
+        then: (resolve: (value: unknown) => unknown) =>
+          resolve(table === 'dataset_questions' ? { data: questionsFromDb } : rowsFromDb),
       }
       return chain
     },
@@ -30,20 +32,38 @@ const { generateReportSummary, selectQuotes } =
 
 type DbRow = {
   response_id: string
-  sentiment: string
+  sentiment: string | null
   topics: string[]
   keywords: string[]
-  responses: { text: string }
+  responses: { text: string; question_id?: string }
 }
 
 let rowsFromDb: { data: DbRow[] | null; error: null }
+/** The job row and its questions; null and empty for a job from before either. */
+let jobFromDb: Record<string, unknown> | null
+let questionsFromDb: Array<{ id: string; question_text: string; position: number }>
 
-function row(id: string, sentiment: string, topics: string[], text: string): DbRow {
-  return { response_id: id, sentiment, topics, keywords: [], responses: { text } }
+function row(
+  id: string,
+  sentiment: string | null,
+  topics: string[],
+  text: string,
+  questionId?: string,
+): DbRow {
+  return {
+    response_id: id,
+    sentiment,
+    topics,
+    keywords: [],
+    responses: { text, question_id: questionId },
+  }
 }
 
 /** Captures what the adapter was handed so the prompt input can be asserted. */
-function stubAdapter(insights: Array<{ evidence: number[] }>): {
+function stubAdapter(
+  insights: Array<{ evidence: number[]; question?: number | null }>,
+  citesQuestions = false,
+): {
   adapter: LlmAdapter
   seen: SummaryInput[]
 } {
@@ -59,7 +79,9 @@ function stubAdapter(insights: Array<{ evidence: number[] }>): {
           title: `insight ${index}`,
           detail: 'detail',
           evidence: insight.evidence,
+          question: insight.question ?? null,
         })),
+        citesQuestions,
         modelId: 'stub-model',
         usage: { inputTokens: 1, outputTokens: 1 },
         costMicroIdr: 42,
@@ -74,6 +96,8 @@ beforeEach(() => {
   upsert.mockReset()
   upsert.mockResolvedValue({ error: null })
   select.mockReset()
+  jobFromDb = null
+  questionsFromDb = []
   rowsFromDb = {
     data: [
       row('r1', 'negative', ['kantin'], 'Kantin antre panjang sekali.'),
@@ -215,6 +239,149 @@ describe('generateReportSummary', () => {
 
     expect(result.ok).toBe(false)
     expect(summarize).toHaveBeenCalledTimes(1)
+  })
+
+  it('writes from one pool when the job has no questions on record', async () => {
+    const { adapter, seen } = stubAdapter([{ evidence: [1] }])
+
+    await generateReportSummary({ organizationId: 'org-1', jobId: 'job-1', adapter })
+
+    expect(seen[0]?.data.questions).toEqual([
+      expect.objectContaining({ text: 'Aspirasi', mode: 'evaluative', answers: 3 }),
+    ])
+  })
+
+  describe('with questions of different kinds', () => {
+    beforeEach(() => {
+      jobFromDb = {
+        dataset_id: 'dataset-1',
+        prompt_version: 'analysis.v3',
+        no_content_count: 6,
+        question_counts: {
+          q1: { analyzed: 2, no_content: 5, failed: 0, mode: 'evaluative' },
+          q2: { analyzed: 3, no_content: 1, failed: 0, mode: 'categorical' },
+          q3: { analyzed: 3, no_content: 0, failed: 0, mode: 'scale' },
+        },
+      }
+      questionsFromDb = [
+        { id: 'q1', question_text: 'Kritik dan saran', position: 0 },
+        { id: 'q2', question_text: 'Kegiatan paling seru?', position: 1 },
+        { id: 'q3', question_text: 'Seberapa puas? (1-5)', position: 2 },
+      ]
+      rowsFromDb = {
+        data: [
+          row('r1', 'negative', ['kantin'], 'Kantin antre panjang sekali.', 'q1'),
+          row('r2', 'positive', ['kantin'], 'Kantin sekarang lebih bersih.', 'q1'),
+          row('c1', null, ['outbound'], 'Outbond', 'q2'),
+          row('c2', null, ['outbound'], 'outbound!!', 'q2'),
+          row('c3', null, ['api unggun'], 'api unggun', 'q2'),
+          row('s1', null, ['4'], '4', 'q3'),
+          row('s2', null, ['4'], '4/5', 'q3'),
+          row('s3', null, ['5'], '5', 'q3'),
+        ],
+        error: null,
+      }
+    })
+
+    it('hands the model each question as the report draws it', async () => {
+      const { adapter, seen } = stubAdapter([{ evidence: [] }], true)
+
+      await generateReportSummary({ organizationId: 'org-1', jobId: 'job-1', adapter })
+
+      const [kritik, pilihan, nilai] = seen[0]?.data.questions ?? []
+      expect(kritik).toMatchObject({
+        text: 'Kritik dan saran',
+        mode: 'evaluative',
+        answers: 2,
+        noContent: 5,
+        sentimentCounts: { positive: 1, neutral: 0, negative: 1 },
+        top: [{ term: 'kantin', count: 2 }],
+      })
+      // No sentiment is offered for a question that has none to offer.
+      expect(pilihan).toMatchObject({
+        mode: 'categorical',
+        answers: 3,
+        top: [
+          { term: 'outbound', count: 2 },
+          { term: 'api unggun', count: 1 },
+        ],
+      })
+      expect(pilihan).not.toHaveProperty('sentimentCounts')
+      expect(nilai).toMatchObject({
+        mode: 'scale',
+        answers: 3,
+        scale: { mostCommon: '4' },
+        top: [
+          { term: '4', count: 2 },
+          { term: '5', count: 1 },
+        ],
+      })
+      expect(nilai?.scale?.mean).toBeCloseTo(13 / 3)
+    })
+
+    it('quotes only prose, and says which question each quote answers', async () => {
+      const { adapter, seen } = stubAdapter([{ evidence: [] }], true)
+
+      await generateReportSummary({ organizationId: 'org-1', jobId: 'job-1', adapter })
+
+      // A choice or a number is already its own count; quoting "4" adds nothing.
+      expect(seen[0]?.data.sampleQuotes).toEqual([
+        'Kantin antre panjang sekali.',
+        'Kantin sekarang lebih bersih.',
+      ])
+      expect(seen[0]?.data.quoteQuestions).toEqual([1, 1])
+      // The pooled sentiment the older prompts read counts the judged rows only.
+      expect(seen[0]?.data.sentimentCounts).toEqual({
+        positive: 1,
+        neutral: 0,
+        negative: 1,
+      })
+    })
+
+    it('records the question each insight comes from', async () => {
+      const { adapter } = stubAdapter(
+        [
+          { evidence: [1], question: 1 },
+          { evidence: [], question: 2 },
+          // 0 and a number past the last question both mean "several".
+          { evidence: [], question: 0 },
+          { evidence: [], question: 9 },
+        ],
+        true,
+      )
+
+      const result = await generateReportSummary({
+        organizationId: 'org-1',
+        jobId: 'job-1',
+        adapter,
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.value.insights.map((insight) => insight.questionId)).toEqual([
+        'q1',
+        'q2',
+        null,
+        null,
+      ])
+      expect(result.value.insights[0]?.evidenceResponseIds).toEqual(['r1'])
+    })
+
+    it('leaves the origin out when the prompt never asked for one', async () => {
+      const { adapter } = stubAdapter([{ evidence: [1] }], false)
+
+      const result = await generateReportSummary({
+        organizationId: 'org-1',
+        jobId: 'job-1',
+        adapter,
+        promptVersion: 'summary.v2',
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      // Absent, not null: the page tells a pooled summary by this.
+      expect(result.value.insights[0]).not.toHaveProperty('questionId')
+    })
   })
 })
 

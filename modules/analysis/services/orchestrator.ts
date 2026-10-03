@@ -1,7 +1,9 @@
 import { ERROR_CODES, appError, err, logger, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
-import type { AnalyzedItem, LlmAdapter } from '../adapters/types'
-import { BATCH_SIZE, chunk, planBatches } from './batcher'
+import type { QuestionMode } from '@/types/domain'
+import type { AnalyzedItem, BatchOutput, LlmAdapter } from '../adapters/types'
+import { normalizeTopic } from '../postprocess/normalize'
+import { BATCH_SIZE, chunk, planBatches, type PreparedBatch } from './batcher'
 
 export { BATCH_SIZE, chunk }
 
@@ -13,6 +15,13 @@ export type OrchestratorInput = {
   promptVersion: string
   /** `questionId` keeps answers to different questions out of each other's batches. */
   responses: ReadonlyArray<{ id: string; text: string; questionId?: string }>
+  /**
+   * What each question asked and how it is read, by question id. A question
+   * that is absent — or the whole map, for a caller from before modes — is
+   * `evaluative` with no question text. The caller passes modes the prompt
+   * version can honour (see `effectiveMode`).
+   */
+  questions?: Readonly<Record<string, { text: string; mode: QuestionMode }>>
   /**
    * Called as each batch lands, so a long job can show progress. Fired from the
    * batch loop, so it must not throw — failures are logged and swallowed.
@@ -61,6 +70,40 @@ async function withConcurrency<T, R>(
   return results
 }
 
+type BatchOutcome = { batch: PreparedBatch; outcome: Result<BatchOutput, AppError> }
+
+/**
+ * Batches that must run one after another. Every batch is a lane of its own,
+ * except the batches of one `categorical` question: each is told the choices
+ * the ones before it named, so "outbound" in the first thirty answers is not
+ * "kegiatan outbound" in the next thirty. Lanes still run side by side.
+ */
+function intoLanes(batches: readonly PreparedBatch[]): PreparedBatch[][] {
+  const lanes: PreparedBatch[][] = []
+  const chains = new Map<string | null, PreparedBatch[]>()
+
+  for (const batch of batches) {
+    if (batch.mode !== 'categorical') {
+      lanes.push([batch])
+      continue
+    }
+    const chain = chains.get(batch.questionId)
+    if (chain) chain.push(batch)
+    else {
+      const started = [batch]
+      chains.set(batch.questionId, started)
+      lanes.push(started)
+    }
+  }
+
+  return lanes
+}
+
+/** Most named first, so the list the next batch sees leads with the real choices. */
+function rankedValues(counts: ReadonlyMap<string, number>): string[] {
+  return [...counts].sort((a, b) => b[1] - a[1]).map(([value]) => value)
+}
+
 /**
  * Fans a dataset out across batched LLM calls and stitches the results back to
  * their response ids. A failed batch degrades that batch only — a 500-row job
@@ -80,9 +123,15 @@ export async function analyzeResponses(
   }
 
   const log = logger.child({ jobId: input.jobId, adapter: adapter.name })
-  const plan = planBatches(input.responses)
+  const questions = input.questions ?? {}
+  const plan = planBatches(
+    input.responses,
+    BATCH_SIZE,
+    (questionId) =>
+      (questionId ? questions[questionId]?.mode : undefined) ?? 'evaluative',
+  )
 
-  if (plan.batches.length === 0) {
+  if (plan.batches.length === 0 && plan.values.length === 0) {
     return err(
       appError(
         ERROR_CODES.VALIDATION,
@@ -96,36 +145,95 @@ export async function analyzeResponses(
     skipped: plan.skippedIds.length,
     truncated: plan.truncatedIds.length,
     flagged: plan.flaggedIds.length,
+    readWithoutModel: plan.values.length,
   })
 
-  const analyzableCount = plan.batches.reduce((sum, batch) => sum + batch.items.length, 0)
-  let processed = 0
+  // Numbers were read while planning, so they are done before the first call.
+  const analyzableCount =
+    plan.values.length + plan.batches.reduce((sum, batch) => sum + batch.items.length, 0)
+  let processed = plan.values.length
 
-  const batchOutcomes = await withConcurrency(
-    plan.batches,
-    MAX_CONCURRENCY,
-    async (batch, index) => {
-      const outcome = await adapter.analyzeBatch({
-        texts: batch.items.map((item) => item.text),
-        promptVersion: input.promptVersion,
+  const runBatch = async (
+    batch: PreparedBatch,
+    knownValues?: readonly string[],
+  ): Promise<BatchOutcome> => {
+    const request = {
+      texts: batch.items.map((item) => item.text),
+      promptVersion: input.promptVersion,
+      mode: batch.mode,
+      question: batch.questionId ? questions[batch.questionId]?.text : undefined,
+      knownValues,
+    }
+
+    let outcome = await adapter.analyzeBatch(request)
+
+    /**
+     * One more ask when the model's reply broke the output format. The request
+     * went through, so the same request again is a fresh draw rather than a
+     * hammering of something that is down — and without it one stray reply
+     * marks thirty answers as failed. An unreachable provider is not retried
+     * here: the adapter has already done that.
+     */
+    if (!outcome.ok && outcome.error.details?.malformedReply === true) {
+      log.warn('analysis.batch.retrying', {
+        reason: outcome.error.message,
+        ...outcome.error.details,
       })
+      outcome = await adapter.analyzeBatch(request)
+    }
 
-      // Progress counts attempted work, so a failing batch still advances the
-      // bar rather than leaving the user watching a stalled job.
-      processed += batch.items.length
-      if (input.onProgress) {
-        try {
-          await input.onProgress({ processed, total: analyzableCount })
-        } catch (cause) {
-          log.warn('analysis.progress.failed', { batch: index, cause: String(cause) })
+    // Progress counts attempted work, so a failing batch still advances the
+    // bar rather than leaving the user watching a stalled job.
+    processed += batch.items.length
+    if (input.onProgress) {
+      try {
+        await input.onProgress({ processed, total: analyzableCount })
+      } catch (cause) {
+        log.warn('analysis.progress.failed', { cause: String(cause) })
+      }
+    }
+
+    return { batch, outcome }
+  }
+
+  const laneOutcomes = await withConcurrency(
+    intoLanes(plan.batches),
+    MAX_CONCURRENCY,
+    async (lane) => {
+      const outcomes: BatchOutcome[] = []
+      const named = new Map<string, number>()
+
+      for (const batch of lane) {
+        const done = await runBatch(
+          batch,
+          batch.mode === 'categorical' ? rankedValues(named) : undefined,
+        )
+        outcomes.push(done)
+
+        if (batch.mode === 'categorical' && done.outcome.ok) {
+          for (const item of done.outcome.value.items) {
+            for (const raw of item.topics) {
+              const value = normalizeTopic(raw)
+              if (value) named.set(value, (named.get(value) ?? 0) + 1)
+            }
+          }
         }
       }
 
-      return { batch, outcome }
+      return outcomes
     },
   )
+  const batchOutcomes = laneOutcomes.flat()
 
-  const results: AnalyzedResponse[] = []
+  const results: AnalyzedResponse[] = plan.values.map((read) => ({
+    responseId: read.id,
+    index: 0,
+    sentiment: null,
+    confidence: null,
+    topics: [read.value],
+    keywords: [],
+    summary: '',
+  }))
   const failedResponseIds: string[] = []
   const noContentResponseIds: string[] = [...plan.skippedIds]
   let modelId = adapter.name

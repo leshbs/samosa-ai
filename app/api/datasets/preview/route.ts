@@ -1,15 +1,16 @@
 import type { NextRequest } from 'next/server'
 import { can, getSessionUser } from '@/modules/auth'
-import { previewDataset } from '@/modules/ingestion'
 import { enforceRateLimit } from '@/modules/security'
 import { ERROR_CODES, appError } from '@/modules/shared'
 import { datasetSourceSchema } from '@/types/domain'
+import { previewWithModes } from '@/app/api/_lib/preview-with-modes'
 import { failure, success } from '@/app/api/_lib/respond'
 
 /**
- * Step 2 of the upload wizard: parse the sheet and hand back its headers so the
- * uploader can pick the aspiration column. Nothing is stored — the same file is
- * posted again to POST /api/datasets once the column is chosen.
+ * Step 2 of the upload wizard: parse the sheet and hand back its headers, with
+ * a guess at what each column holds, so the uploader can confirm which columns
+ * to analyse and how. Nothing is stored — the same file is posted again to
+ * POST /api/datasets once the columns are chosen.
  */
 export async function POST(request: NextRequest) {
   const session = await getSessionUser()
@@ -32,6 +33,6 @@ export async function POST(request: NextRequest) {
     return failure(appError(ERROR_CODES.VALIDATION, 'Tipe file tidak didukung'))
   }
 
-  const result = await previewDataset(file, source.data)
+  const result = await previewWithModes(file, source.data)
   return result.ok ? success(result.value) : failure(result.error)
 }
