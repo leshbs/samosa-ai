@@ -243,6 +243,39 @@
 }
 
 @layer components {
+  /* Print pages, app/(print). Paper is light whatever the theme, so the light
+     tokens are pinned here rather than inherited from <html class="dark">. */
+  .print-doc {
+    color-scheme: light;
+    --background: 27 73.3% 97.1%;
+    --foreground: 26 15.6% 8.8%;
+    --card: 0 0% 100%;
+    --card-foreground: 26 15.6% 8.8%;
+    --primary: 20 79.6% 42.4%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 29 58.1% 91.6%;
+    --secondary-foreground: 26 15.6% 8.8%;
+    --muted: 29 58.1% 91.6%;
+    --muted-foreground: 27 9.9% 43.5%;
+    --accent: 29 58.1% 91.6%;
+    --accent-foreground: 26 15.6% 8.8%;
+    --border: 33 22.7% 82.7%;
+    --input: 30 14.9% 71%;
+    --chart-positive: #3a9e8d;
+    --chart-neutral: #e8a63c;
+    --chart-negative: #be4a63;
+    --chart-series-1: #3a9e8d;
+    --chart-grid: #ddd4c9;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+
+  /* The running header exists only on paper, where <thead> repeats it on
+     every page. */
+  .print-running {
+    display: none;
+  }
+
   /* The system's signature (§4.3): mono, 11px, uppercase, 0.14em. Colour is
      set per surface — ember-700 on landing, ink-500 in the app. */
   .eyebrow {
@@ -373,6 +406,38 @@ html.theme-switching::view-transition-new(root) {
 @media print {
   @page {
     margin: 16mm;
+
+    /* Page numbers, where the browser supports margin boxes (Chromium 131+).
+       Elsewhere the page simply has none, as the old PDF never did. */
+    @bottom-right {
+      content: counter(page) ' / ' counter(pages);
+      font-size: 8pt;
+      color: #7a6e64;
+    }
+  }
+
+  .print-doc {
+    background: #fff !important;
+  }
+
+  /* On screen the document sits on a sheet; on paper the page is the sheet. */
+  .print-sheet {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+    border: 0 !important;
+  }
+
+  .print-running {
+    display: table-header-group;
+  }
+
+  .keep-together {
+    break-inside: avoid;
+  }
+
+  .print-heading {
+    break-after: avoid;
   }
 
   :root {

@@ -5,7 +5,7 @@ import { buildOrganizationArchive } from '@/app/api/_lib/organization-archive'
 import { requestLog } from '@/app/api/_lib/request-log'
 import { failure } from '@/app/api/_lib/respond'
 
-/** One PDF per report, rendered in sequence; a large organization takes a while. */
+/** Every dataset and every report's results, read in sequence; a large organization takes a while. */
 export const maxDuration = 300
 
 export async function GET(request: Request) {

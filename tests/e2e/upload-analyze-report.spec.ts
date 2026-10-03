@@ -100,12 +100,28 @@ test.describe('upload to report', () => {
     await expect(summary).toBeVisible()
     await expect(page.locator('svg.recharts-surface').first()).toBeVisible()
 
-    const pdf = page.waitForEvent('download')
-    await page.getByRole('link', { name: 'Export PDF' }).click()
-    expect((await pdf).suggestedFilename()).toMatch(/\.pdf$/)
-
     const csv = page.waitForEvent('download')
-    await page.getByRole('link', { name: 'Export CSV' }).click()
+    await page.getByRole('link', { name: 'CSV' }).click()
     expect((await csv).suggestedFilename()).toMatch(/\.csv$/)
+
+    // The PDF is the browser's: "Unduh PDF" opens the print page, which opens
+    // the print dialog by itself. Count the calls instead of opening one.
+    // Both: the link is a client-side navigation, which keeps this window, and
+    // the init script covers a full load if Next ever makes it one.
+    const stubPrint = () => {
+      const counted = window as unknown as { printed: number }
+      counted.printed = 0
+      window.print = () => {
+        counted.printed += 1
+      }
+    }
+    await page.addInitScript(stubPrint)
+    await page.evaluate(stubPrint)
+    await page.getByRole('link', { name: 'Unduh PDF' }).click()
+    await page.waitForURL(/\/reports\/[0-9a-f-]{36}\/print\?auto=1/)
+    await expect(page.getByRole('heading', { name: 'Ringkasan eksekutif' })).toBeVisible()
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { printed: number }).printed))
+      .toBe(1)
   })
 })

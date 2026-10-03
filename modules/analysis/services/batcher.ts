@@ -1,4 +1,5 @@
 import { sanitizeResponseText } from '../postprocess/sanitize'
+import { isNonAnswer } from './no-content'
 
 /** 30 fits comfortably in one request while keeping the 2-minute/500-row budget. */
 export const BATCH_SIZE = 30
@@ -22,7 +23,11 @@ export type PreparedBatch = {
 
 export type BatchPlan = {
   batches: PreparedBatch[]
-  /** Responses dropped before any model call, with the reason. */
+  /**
+   * Responses that say nothing — empty, a stray keystroke, or a non-answer
+   * like "tidak ada" — and are never sent to the model. They are not
+   * aspirations, so they get no result and stay out of every percentage.
+   */
   skippedIds: string[]
   truncatedIds: string[]
   flaggedIds: string[]
@@ -56,7 +61,7 @@ export function planBatches(
   for (const response of responses) {
     const sanitized = sanitizeResponseText(response.text)
 
-    if (sanitized.text.length < MIN_ANALYZED_LENGTH) {
+    if (sanitized.text.length < MIN_ANALYZED_LENGTH || isNonAnswer(sanitized.text)) {
       skippedIds.push(response.id)
       continue
     }

@@ -1,26 +1,33 @@
 'use client'
 
-import { Printer } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 /**
- * The print stylesheet in globals.css is what makes this worth offering: the
- * page drops the shell and keeps the document (§13). Without the button people
- * reach for the PDF export, which is a different artefact with a different
- * layout — fine, but not what someone wants when they only need the page they
- * are looking at.
+ * "Unduh PDF" on the print page. The browser's print dialog is the PDF
+ * renderer now: "Simpan sebagai PDF" is in every desktop and mobile browser,
+ * and the file it saves is named after the page title.
+ *
+ * `auto` opens the dialog once the page has its fonts, for someone who came
+ * from the report's "Unduh PDF" and should not have to press it twice. Fonts
+ * first: printing before the webfont lands prints the fallback face.
  */
-export function PrintButton() {
+export function PrintButton({ auto = false }: { auto?: boolean }) {
+  const printed = useRef(false)
+
+  useEffect(() => {
+    if (!auto || printed.current) return
+    // A ref, not a cleanup flag: Strict Mode mounts twice, and a cancelled
+    // first run plus a guarded second one would never print at all.
+    printed.current = true
+    void document.fonts.ready.then(() => window.print())
+  }, [auto])
+
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      onClick={() => window.print()}
-      data-print="hide"
-    >
-      <Printer aria-hidden />
-      Cetak
+    <Button type="button" size="sm" onClick={() => window.print()}>
+      <FileText aria-hidden />
+      Unduh PDF
     </Button>
   )
 }

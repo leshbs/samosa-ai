@@ -19,6 +19,30 @@ export const batchAnalysisSchema = z.object({
 })
 export type BatchAnalysis = z.infer<typeof batchAnalysisSchema>
 
+/**
+ * From analysis.v2: the model may say a response holds no aspiration at all
+ * ("tidak ada sih kak"). Nothing else about it is worth keeping, so anything
+ * the model adds besides the index is dropped.
+ */
+export const noContentItemSchema = z.object({
+  index: z.number().int().nonnegative(),
+  sentiment: z.literal('no_content'),
+})
+export type NoContentItem = z.infer<typeof noContentItemSchema>
+
+export const batchAnalysisV2Schema = z.object({
+  items: z.array(z.union([analyzedItemSchema, noContentItemSchema])),
+})
+
+/** What any analysis prompt version may return, before the split. */
+export type RawBatchAnalysis = { items: Array<AnalyzedItem | NoContentItem> }
+
+export function isNoContentItem(
+  item: AnalyzedItem | NoContentItem,
+): item is NoContentItem {
+  return item.sentiment === 'no_content'
+}
+
 export type BatchInput = {
   /** Sanitized response texts; batch-local order is meaningful. */
   texts: string[]
@@ -44,6 +68,11 @@ export type SummaryOutput = NormalizedSummary & {
 
 export type BatchOutput = {
   items: AnalyzedItem[]
+  /**
+   * Batch-local indexes the model judged to hold no aspiration. Absent means
+   * none: prompts before analysis.v2 cannot say so.
+   */
+  noContentIndexes?: number[]
   modelId: string
   usage: AdapterUsage
   /** Estimated spend for this call, in millionths of IDR. */
