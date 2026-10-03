@@ -104,9 +104,14 @@ export default async function PrivacyPage({
           <strong className="text-foreground">
             Teks aspirasi yang kamu unggah dikirim ke OpenAI di Amerika Serikat
           </strong>{' '}
-          untuk dianalisis. Tanpa itu, aplikasi ini tidak bisa bekerja. Metadata responden
-          (nama, kelas, dan kolom lain) <em>tidak</em> ikut dikirim — hanya teks
-          aspirasinya.
+          untuk dianalisis. Tanpa itu, aplikasi ini tidak bisa bekerja. Isi kolom lain
+          (nama, kelas, email, dan sebagainya) <em>tidak</em> ikut dikirim — hanya jawaban
+          di kolom yang kamu pilih untuk dianalisis, bersama judul kolomnya.
+        </p>
+        <p>
+          Saat file diunggah, <em>judul</em> setiap kolom ikut dikirim sekali supaya jenis
+          tiap kolom bisa ditebak, bersama gambaran isinya: berapa sel yang terisi dan
+          seberapa panjang. Isi selnya tidak dikirim pada langkah ini.
         </p>
         <ul className="list-disc space-y-1 pl-5">
           {PROCESSORS.map((processor) => (
@@ -272,8 +277,16 @@ export default async function PrivacyPage({
           <strong className="text-foreground">
             The aspiration text you upload is sent to OpenAI in the United States
           </strong>{' '}
-          to be analysed. The application cannot work without it. Respondent metadata
-          (names, classes, other columns) is <em>not</em> sent — only the aspiration text.
+          to be analysed. The application cannot work without it. The contents of other
+          columns (names, classes, email addresses and so on) are <em>not</em> sent — only
+          the answers in the columns you choose to analyse, with those columns&apos;
+          headers.
+        </p>
+        <p>
+          When a file is uploaded, the <em>header</em> of every column is sent once so
+          that the kind of each column can be guessed, together with a description of its
+          cells: how many are filled and how long they run. The cells themselves are not
+          sent at this step.
         </p>
         <ul className="list-disc space-y-1 pl-5">
           {PROCESSORS.map((processor) => (

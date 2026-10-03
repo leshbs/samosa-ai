@@ -13,6 +13,7 @@ import type {
   CountedTerm,
   PrintableSection,
   ReportPdfPayload,
+  ScaleSummary,
   SentimentDistribution,
 } from '@/modules/reporting'
 import { mapStrings, printableText } from './printable-text'
@@ -266,7 +267,8 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
  * Every bar carries its own value: paper has no hover.
  */
 function BarList({ terms, total }: { terms: CountedTerm[]; total: number }) {
-  const max = terms[0]?.count ?? 0
+  // Not the first term's: a scale's bars are in value order, not count order.
+  const max = Math.max(0, ...terms.map((term) => term.count))
 
   return (
     <View>
@@ -360,6 +362,33 @@ function SentimentBlock({
   )
 }
 
+/** A `scale` question: its two figures as a line, then a bar per value. */
+function ScaleBlock({
+  title,
+  scale,
+  line,
+  total,
+}: {
+  title: string
+  scale: ScaleSummary
+  /** The mean and most common value, already worded by the server. */
+  line: string | null
+  total: number
+}) {
+  return (
+    <>
+      <Heading>{title}</Heading>
+      {line ? <Text style={styles.paragraph}>{line}</Text> : null}
+      <BarList terms={scale.values} total={total} />
+      {scale.otherCount > 0 ? (
+        <Text style={[styles.small, styles.muted, { marginTop: 4 }]}>
+          {scale.otherCount} jawaban dengan nilai yang jarang muncul tidak digambar.
+        </Text>
+      ) : null}
+    </>
+  )
+}
+
 /**
  * Everything the report says about one question, as blocks that sit directly
  * on the page — a fragment adds no box, so the page's gap spaces them like any
@@ -379,7 +408,12 @@ function QuestionBlocks({
   position: number
   count: number
 }) {
-  const total = section.sentiment.total
+  const total = section.answers
+  const evaluative = section.mode === 'evaluative'
+  const choices = section.mode === 'categorical'
+  // The block that shares the heading's box, so a question never ends a page
+  // as a bare title: its sentiment, or else the first thing it has to show.
+  const lead = evaluative ? 'sentiment' : section.scale ? 'scale' : 'terms'
   // Two columns, so a long tail costs half the pages; read down, then across.
   const half = Math.ceil(section.tail.length / 2)
   const tailRows = section.tail.slice(0, half).map((term, index) => ({
@@ -405,16 +439,30 @@ function QuestionBlocks({
 
         {total === 0 ? (
           <Text style={styles.muted}>
-            Tidak ada aspirasi untuk pertanyaan ini: jawabannya kosong, “tidak ada”, atau
-            gagal dianalisis.
+            {evaluative
+              ? 'Tidak ada aspirasi untuk pertanyaan ini: jawabannya kosong, “tidak ada”, atau gagal dianalisis.'
+              : 'Tidak ada jawaban yang bisa dipakai untuk pertanyaan ini: jawabannya kosong atau gagal dianalisis.'}
           </Text>
-        ) : (
+        ) : lead === 'sentiment' ? (
+          // Only a question that asks for a judgement has a sentiment to print.
           <SentimentBlock sentiment={section.sentiment} noContent={section.noContent} />
-        )}
+        ) : lead === 'scale' && section.scale ? (
+          <ScaleBlock
+            title={section.termsTitle}
+            scale={section.scale}
+            line={section.scaleLine}
+            total={total}
+          />
+        ) : section.topics.length > 0 ? (
+          <>
+            <Heading>{section.termsTitle}</Heading>
+            <BarList terms={section.topics} total={total} />
+          </>
+        ) : null}
       </View>
 
-      {total > 0 && section.topics.length > 0 ? (
-        <Block title="Topik teratas">
+      {total > 0 && evaluative && section.topics.length > 0 ? (
+        <Block title={section.termsTitle}>
           <BarList terms={section.topics} total={total} />
         </Block>
       ) : null}
@@ -422,9 +470,10 @@ function QuestionBlocks({
       {total > 0 && tailRows.length > 0 ? (
         <View>
           <View wrap={false}>
-            <Heading>{`Topik lainnya (${section.tail.length})`}</Heading>
+            <Heading>{`${choices ? 'Pilihan' : 'Topik'} lainnya (${section.tail.length})`}</Heading>
             <Text style={[styles.muted, { marginBottom: 6 }]}>
-              Topik di luar sepuluh besar, dengan jumlah aspirasi yang menyebutnya.
+              {choices ? 'Pilihan' : 'Topik'} di luar sepuluh besar, dengan jumlah{' '}
+              {evaluative ? 'aspirasi' : 'jawaban'} yang menyebutnya.
             </Text>
           </View>
           {tailRows.map((row) => (
@@ -446,7 +495,7 @@ function QuestionBlocks({
       {total > 0 && firstQuoted ? (
         <View>
           <View wrap={false}>
-            <Heading>Contoh aspirasi per topik</Heading>
+            <Heading>{`Contoh ${evaluative ? 'aspirasi' : 'jawaban'} per topik`}</Heading>
             <QuoteGroup group={firstQuoted} />
           </View>
           {otherQuoted.map((group) => (
@@ -522,6 +571,11 @@ export function ReportPdf({ report }: { report: ReportPdfPayload }) {
           {report.insights.map((insight) => (
             <View key={insight.title} style={styles.insight} wrap={false}>
               <Text style={styles.insightTitle}>{insight.title}</Text>
+              {insight.origin ? (
+                <Text style={[styles.small, styles.muted]}>
+                  Dari pertanyaan: {insight.origin}
+                </Text>
+              ) : null}
               <Text style={styles.muted}>{insight.detail}</Text>
               {insight.quotes.map((text, index) => (
                 <Text key={index} style={[styles.quote, styles.italic]}>
@@ -551,7 +605,8 @@ export function ReportPdf({ report }: { report: ReportPdfPayload }) {
             ))}
             <Text style={[styles.small, styles.muted, { marginTop: 8 }]}>
               Sentimen, topik, dan kata kunci dihasilkan model bahasa dan bisa salah.
-              Setiap angka bisa dilacak ke aspirasi aslinya di SAMOSA.
+              Setiap angka bisa dilacak ke {view.aspirations ? 'aspirasi' : 'jawaban'}{' '}
+              aslinya di SAMOSA.
             </Text>
           </Block>
         ) : null}
@@ -572,7 +627,8 @@ function QuoteGroup({ group }: { group: PrintableSection['quoted'][number] }) {
       <Text style={styles.insightTitle}>{group.topic}</Text>
       {group.responses.map((response, index) => (
         <Text key={index} style={styles.quote}>
-          {response.text} ({SENTIMENT_LABELS[response.sentiment]})
+          {response.text}
+          {response.sentiment ? ` (${SENTIMENT_LABELS[response.sentiment]})` : ''}
         </Text>
       ))}
     </View>

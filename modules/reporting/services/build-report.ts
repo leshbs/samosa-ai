@@ -42,8 +42,9 @@ export async function buildReport(
   const aggregate = aggregateResults(
     rows.map((row) => ({
       responseId: String(row.response_id),
-      sentiment: row.sentiment as Sentiment,
-      confidence: Number(row.sentiment_confidence),
+      sentiment: (row.sentiment ?? null) as Sentiment | null,
+      confidence:
+        row.sentiment_confidence === null ? null : Number(row.sentiment_confidence),
       topics: (row.topics as string[]) ?? [],
       summary: row.summary === null ? null : String(row.summary),
     })),

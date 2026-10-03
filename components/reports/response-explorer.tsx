@@ -36,8 +36,9 @@ export type ExplorerRow = {
   responseId: string
   questionId: string
   responseText: string
-  sentiment: Sentiment
-  confidence: number
+  /** Null where the question was not read for sentiment. */
+  sentiment: Sentiment | null
+  confidence: number | null
   topics: string[]
   keywords: string[]
   summary: string | null
@@ -68,6 +69,7 @@ export function ResponseExplorer({
   rows,
   topics,
   questions = [],
+  noun = 'aspirasi',
 }: {
   rows: ExplorerRow[]
   /** Topic vocabulary for the filter, already normalized and ranked. */
@@ -78,6 +80,11 @@ export function ResponseExplorer({
    * is nothing to choose between and neither appears.
    */
   questions?: ReadonlyArray<{ id: string; text: string }>
+  /**
+   * What a row is called. An aspiration only while every question asks for a
+   * judgement; a choice or a number is an answer.
+   */
+  noun?: 'aspirasi' | 'jawaban'
 }) {
   const context = useExplorerFocus()
   const [localFocus, setLocalFocus] = useState<ExplorerFocus>(NO_FOCUS)
@@ -111,7 +118,11 @@ export function ResponseExplorer({
 
     const matched = rows.filter((row) => {
       if (focus.questionId !== null && row.questionId !== focus.questionId) return false
-      if (focus.sentiments.length > 0 && !focus.sentiments.includes(row.sentiment)) {
+      if (
+        focus.sentiments.length > 0 &&
+        // A row with no sentiment matches no sentiment filter.
+        (row.sentiment === null || !focus.sentiments.includes(row.sentiment))
+      ) {
         return false
       }
       if (
@@ -135,11 +146,15 @@ export function ResponseExplorer({
     // Sorting copies first: mutating `rows` in place would reorder the
     // caller's array and make "Urutan dataset" mean something different the
     // second time it is picked.
-    return [...matched].sort((a, b) =>
-      sort === 'confidence-desc'
+    // Rows with no confidence — no sentiment was judged — go last either way.
+    return [...matched].sort((a, b) => {
+      if (a.confidence === null || b.confidence === null) {
+        return Number(a.confidence === null) - Number(b.confidence === null)
+      }
+      return sort === 'confidence-desc'
         ? b.confidence - a.confidence
-        : a.confidence - b.confidence,
-    )
+        : a.confidence - b.confidence
+    })
   }, [rows, deferredQuery, focus, sort])
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
@@ -155,6 +170,9 @@ export function ResponseExplorer({
     focus.questionId !== null
 
   const manyQuestions = questions.length > 1
+  // Nothing to filter by where no row was read for sentiment.
+  const hasSentiment = rows.some((row) => row.sentiment !== null)
+  const Noun = noun === 'aspirasi' ? 'Aspirasi' : 'Jawaban'
   const questionText = (id: string) =>
     questions.find((question) => question.id === id)?.text ?? null
 
@@ -166,7 +184,7 @@ export function ResponseExplorer({
   return (
     <Card id={EXPLORER_ANCHOR_ID} className="scroll-mt-40">
       <CardHeader className="gap-1">
-        <CardTitle className="text-base">Jelajah aspirasi</CardTitle>
+        <CardTitle className="text-base">Jelajah {noun}</CardTitle>
         <p className="text-sm text-muted-foreground">
           Setiap angka di laporan ini berasal dari baris-baris di bawah. Klik satu baris
           untuk melihat teks lengkapnya.
@@ -188,7 +206,7 @@ export function ResponseExplorer({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Cari teks, topik, atau kata kunci"
-              aria-label="Cari aspirasi"
+              aria-label={`Cari ${noun}`}
               className="pl-9"
             />
           </div>
@@ -234,29 +252,31 @@ export function ResponseExplorer({
           </label>
         ) : null}
 
-        <div className="flex flex-wrap items-center gap-2" data-print="hide">
-          <span className="text-xs uppercase tracking-wide text-muted-foreground">
-            Sentimen
-          </span>
-          {SENTIMENT_ORDER.map((sentiment) => (
-            <button
-              key={sentiment}
-              type="button"
-              aria-pressed={focus.sentiments.includes(sentiment)}
-              onClick={() =>
-                setFocus((current) => ({
-                  ...current,
-                  sentiments: toggle(current.sentiments, sentiment),
-                }))
-              }
-              className={filterChipVariants({
-                active: focus.sentiments.includes(sentiment),
-              })}
-            >
-              {SENTIMENT_LABELS[sentiment]}
-            </button>
-          ))}
-        </div>
+        {hasSentiment ? (
+          <div className="flex flex-wrap items-center gap-2" data-print="hide">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">
+              Sentimen
+            </span>
+            {SENTIMENT_ORDER.map((sentiment) => (
+              <button
+                key={sentiment}
+                type="button"
+                aria-pressed={focus.sentiments.includes(sentiment)}
+                onClick={() =>
+                  setFocus((current) => ({
+                    ...current,
+                    sentiments: toggle(current.sentiments, sentiment),
+                  }))
+                }
+                className={filterChipVariants({
+                  active: focus.sentiments.includes(sentiment),
+                })}
+              >
+                {SENTIMENT_LABELS[sentiment]}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         {topics.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2" data-print="hide">
@@ -284,7 +304,7 @@ export function ResponseExplorer({
 
         <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
           <p aria-live="polite" className={cn(stale && 'opacity-60')}>
-            {filtered.length} dari {rows.length} aspirasi
+            {filtered.length} dari {rows.length} {noun}
           </p>
           {hasFilters ? (
             <Button variant="ghost" size="sm" onClick={reset} data-print="hide">
@@ -298,7 +318,7 @@ export function ResponseExplorer({
           /* §10: an empty result teaches the way out of it. */
           <div className="space-y-3 py-10 text-center">
             <p className="text-sm text-muted-foreground">
-              Tidak ada aspirasi yang cocok dengan filter ini.
+              Tidak ada {noun} yang cocok dengan filter ini.
             </p>
             <Button variant="outline" size="sm" onClick={reset}>
               Hapus semua filter
@@ -310,8 +330,10 @@ export function ResponseExplorer({
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-28">Sentimen</TableHead>
-                  <TableHead>Aspirasi</TableHead>
-                  <TableHead className="hidden w-48 md:table-cell">Topik</TableHead>
+                  <TableHead>{Noun}</TableHead>
+                  <TableHead className="hidden w-48 md:table-cell">
+                    {noun === 'aspirasi' ? 'Topik' : 'Topik atau pilihan'}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               {/* Keyed on the page so a page turn fades rather than swapping
@@ -340,12 +362,14 @@ export function ResponseExplorer({
                   >
                     <TableCell className="align-top">
                       <SentimentBadge sentiment={row.sentiment} />
-                      <span className="mt-1 block text-xs tabular-nums text-muted-foreground">
-                        {formatPercent(row.confidence)}
-                        {row.confidence < LOW_CONFIDENCE ? (
-                          <span className="block text-notice">keyakinan rendah</span>
-                        ) : null}
-                      </span>
+                      {row.confidence === null ? null : (
+                        <span className="mt-1 block text-xs tabular-nums text-muted-foreground">
+                          {formatPercent(row.confidence)}
+                          {row.confidence < LOW_CONFIDENCE ? (
+                            <span className="block text-notice">keyakinan rendah</span>
+                          ) : null}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="align-top">
                       <span className="line-clamp-2">{row.responseText}</span>
@@ -396,13 +420,17 @@ export function ResponseExplorer({
           {open ? (
             <>
               <DialogHeader>
-                <DialogTitle>Detail aspirasi</DialogTitle>
+                <DialogTitle>Detail {noun}</DialogTitle>
                 <DialogDescription>
-                  {SENTIMENT_LABELS[open.sentiment]} · keyakinan{' '}
-                  {formatPercent(open.confidence)}
-                  {open.confidence < LOW_CONFIDENCE
-                    ? ' · keyakinan rendah, periksa manual'
-                    : ''}
+                  {open.sentiment === null || open.confidence === null
+                    ? 'Pertanyaan ini tidak dinilai sentimennya.'
+                    : `${SENTIMENT_LABELS[open.sentiment]} · keyakinan ${formatPercent(
+                        open.confidence,
+                      )}${
+                        open.confidence < LOW_CONFIDENCE
+                          ? ' · keyakinan rendah, periksa manual'
+                          : ''
+                      }`}
                 </DialogDescription>
               </DialogHeader>
               {manyQuestions && questionText(open.questionId) ? (
@@ -422,7 +450,12 @@ export function ResponseExplorer({
                   <p className="mt-1 text-sm italic">{open.summary}</p>
                 </div>
               ) : null}
-              <DetailTerms title="Topik" terms={open.topics} />
+              <DetailTerms
+                title={
+                  open.sentiment === null && !open.summary ? 'Terbaca sebagai' : 'Topik'
+                }
+                terms={open.topics}
+              />
               <DetailTerms title="Kata kunci" terms={open.keywords} />
             </>
           ) : null}

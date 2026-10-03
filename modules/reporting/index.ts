@@ -15,6 +15,8 @@ export type {
   LatestReport,
   RecentAnalysis,
 } from './aggregators/home'
+export { aggregateScale, DEFAULT_SCALE_VALUES } from './aggregators/scale'
+export type { ScaleSummary } from './aggregators/scale'
 export { aggregateSentiment } from './aggregators/sentiment'
 export type { SentimentDistribution } from './aggregators/sentiment'
 export { aggregateTopics, DEFAULT_TOP_TOPICS } from './aggregators/topics'
@@ -41,13 +43,16 @@ export type {
 export { exportReportToCsv, exportResponsesToCsv } from './exporters/csv-exporter'
 export type { ExportableQuestion, ExportableResponse } from './exporters/csv-exporter'
 export {
+  formatMean,
   printableReport,
   reportCountLine,
   reportFileStem,
   reportPdfPayload,
+  sectionCountLine,
   truncateQuote,
 } from './exporters/report-document'
 export type {
+  PrintableInsight,
   PrintableReport,
   PrintableSection,
   ReportDocumentData,

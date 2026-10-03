@@ -2,6 +2,7 @@ import {
   formatIdr,
   getJob,
   listJobResults,
+  questionMode,
   questionNoContent,
   separatesNoContent,
 } from '@/modules/analysis'
@@ -15,6 +16,7 @@ import {
 import { getDataset, listQuestions } from '@/modules/ingestion'
 import {
   aggregateKeywords,
+  aggregateScale,
   aggregateTopics,
   aggregateSentiment,
   getStoredSummary,
@@ -157,6 +159,8 @@ export async function loadReportExport(
   const questions = (storedQuestions.ok ? storedQuestions.value : []).map((question) => ({
     id: question.id,
     text: question.questionText,
+    // The mode the job read it with, not the one the question has now.
+    mode: questionMode(job.value, question.id),
   }))
   // Aggregated per question and never across them: one topic list over two
   // questions describes neither (pilot 01, §4.4).
@@ -165,7 +169,11 @@ export async function loadReportExport(
     const allTopics = aggregateTopics(section.rows, ALL_TOPICS)
     const topics = allTopics.slice(0, TOPICS_IN_EXPORT)
     return {
+      questionId: section.question.id,
       questionText: section.question.text,
+      mode: section.question.mode,
+      answers: section.rows.length,
+      scale: section.question.mode === 'scale' ? aggregateScale(section.rows) : null,
       sentiment: aggregateSentiment(section.rows),
       noContent: questionNoContent(job.value, section.question.id, grouped.length),
       topics,
@@ -189,7 +197,7 @@ export async function loadReportExport(
       promptVersion: job.value.promptVersion,
       summary: summary?.summary ?? null,
       insights: summary?.insights ?? [],
-      sentiment: aggregateSentiment(rows),
+      answers: rows.length,
       noContent: separatesNoContent(job.value.promptVersion)
         ? job.value.noContentCount
         : null,

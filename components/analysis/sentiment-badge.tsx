@@ -26,7 +26,23 @@ const TOKENS: Record<Sentiment, { bg: string; fg: string }> = {
   },
 }
 
-export function SentimentBadge({ sentiment }: { sentiment: Sentiment }) {
+/**
+ * A null sentiment is an answer to a question that was not read for one — a
+ * choice, a number, a reflection. It gets a dash, not "Netral": neutral is a
+ * judgement, and none was made.
+ */
+export function SentimentBadge({ sentiment }: { sentiment: Sentiment | null }) {
+  if (sentiment === null) {
+    return (
+      <span
+        className="text-xs text-muted-foreground"
+        title="Pertanyaan ini tidak dinilai sentimennya"
+      >
+        —
+      </span>
+    )
+  }
+
   const token = TOKENS[sentiment]
 
   return (

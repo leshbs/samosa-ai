@@ -1,11 +1,23 @@
-import type { AnalysisJob, QuestionCounts } from '@/types/domain'
+import {
+  isQuestionMode,
+  type AnalysisJob,
+  type QuestionCounts,
+  type QuestionMode,
+} from '@/types/domain'
 import { separatesNoContent } from '../prompts'
 
 /**
  * `analysis_jobs.question_counts` on disk:
- *   { "<question id>": { "analyzed": 127, "no_content": 54, "failed": 0 } }
+ *   { "<question id>": { "analyzed": 127, "no_content": 54, "failed": 0, "mode": "evaluative" } }
+ *
+ * `mode` is absent on a job from before modes.
  */
-type StoredCounts = { analyzed: number; no_content: number; failed: number }
+type StoredCounts = {
+  analyzed: number
+  no_content: number
+  failed: number
+  mode?: QuestionMode
+}
 
 export function toStoredQuestionCounts(
   counts: Readonly<Record<string, QuestionCounts>>,
@@ -13,7 +25,12 @@ export function toStoredQuestionCounts(
   return Object.fromEntries(
     Object.entries(counts).map(([questionId, value]) => [
       questionId,
-      { analyzed: value.analyzed, no_content: value.noContent, failed: value.failed },
+      {
+        analyzed: value.analyzed,
+        no_content: value.noContent,
+        failed: value.failed,
+        ...(value.mode ? { mode: value.mode } : {}),
+      },
     ]),
   )
 }
@@ -39,9 +56,37 @@ export function readQuestionCounts(value: unknown): Record<string, QuestionCount
       analyzed: count(stored.analyzed),
       noContent: count(stored.no_content),
       failed: count(stored.failed),
+      mode: isQuestionMode(stored.mode) ? stored.mode : null,
     }
   }
   return counts
+}
+
+/**
+ * How a job read one question. A job from before modes recorded none, and read
+ * every question as `evaluative`.
+ */
+export function questionMode(
+  job: Pick<AnalysisJob, 'questionCounts'>,
+  questionId: string,
+): QuestionMode {
+  return job.questionCounts[questionId]?.mode ?? 'evaluative'
+}
+
+/**
+ * How many of a job's results carry a sentiment: the denominator of every
+ * sentiment share drawn outside the report, where the rows are not at hand.
+ * A job from before modes gave every result one.
+ */
+export function evaluatedCount(
+  job: Pick<AnalysisJob, 'questionCounts' | 'processedCount'>,
+): number {
+  const counts = Object.values(job.questionCounts)
+  if (counts.every((entry) => entry.mode === null)) return job.processedCount
+
+  return counts
+    .filter((entry) => entry.mode === 'evaluative')
+    .reduce((sum, entry) => sum + entry.analyzed, 0)
 }
 
 /**

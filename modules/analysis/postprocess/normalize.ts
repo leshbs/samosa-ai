@@ -11,19 +11,24 @@ export function normalizeTopic(topic: string): string {
   return topic.toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
+/** A result with no sentiment — its question had none to find — is not counted. */
 export function countSentiments(
-  sentiments: readonly Sentiment[],
+  sentiments: ReadonlyArray<Sentiment | null>,
 ): Record<Sentiment, number> {
   return sentiments.reduce<Record<Sentiment, number>>(
-    (counts, sentiment) => ({ ...counts, [sentiment]: counts[sentiment] + 1 }),
+    (counts, sentiment) =>
+      sentiment === null ? counts : { ...counts, [sentiment]: counts[sentiment] + 1 },
     { ...EMPTY_SENTIMENT_COUNTS },
   )
 }
 
 export function buildTopicBreakdown(
-  entries: ReadonlyArray<{ topics: readonly string[]; sentiment: Sentiment }>,
+  entries: ReadonlyArray<{ topics: readonly string[]; sentiment: Sentiment | null }>,
 ): TopicBreakdown[] {
-  const byTopic = new Map<string, { count: number; sentiments: Sentiment[] }>()
+  const byTopic = new Map<
+    string,
+    { count: number; sentiments: Array<Sentiment | null> }
+  >()
 
   for (const entry of entries) {
     for (const rawTopic of entry.topics) {

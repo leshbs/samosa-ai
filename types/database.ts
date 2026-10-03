@@ -125,8 +125,8 @@ type AnalysisResultsRow = {
   organization_id: string
   job_id: string
   response_id: string
-  sentiment: Sentiment
-  sentiment_confidence: number
+  sentiment: Sentiment | null
+  sentiment_confidence: number | null
   topics: string[]
   keywords: string[]
   summary: string | null

@@ -5,17 +5,25 @@ import { readAll } from '@/lib/supabase/read-all'
 import {
   DEFAULT_SUMMARY_VERSION,
   createOpenAiAdapter,
+  questionMode,
+  questionNoContent,
+  readQuestionCounts,
   type LlmAdapter,
+  type QuestionDigest,
 } from '@/modules/analysis'
 import { ERROR_CODES, appError, err, logger, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
-import type { ReportInsight, Sentiment } from '@/types/domain'
+import type { QuestionMode, ReportInsight, Sentiment } from '@/types/domain'
 import { aggregateKeywords } from '../aggregators/keywords'
+import { aggregateScale } from '../aggregators/scale'
+import { groupByQuestion, type ReportQuestion } from '../aggregators/sections'
 import { aggregateSentiment } from '../aggregators/sentiment'
 import { aggregateTopics } from '../aggregators/topics'
 
 /** Enough quotes for the model to ground insights in, few enough to stay cheap. */
 const MAX_QUOTES = 18
+/** With several questions each still needs a few to cite. */
+const MIN_QUOTES_PER_QUESTION = 3
 const QUOTES_PER_TOPIC = 2
 const TOPICS_TO_SAMPLE = 6
 /** A single rambling aspiration should not crowd out seventeen others. */
@@ -23,6 +31,11 @@ const MAX_QUOTE_LENGTH = 240
 
 const TOP_TOPICS_IN_PROMPT = 5
 const TOP_KEYWORDS_IN_PROMPT = 10
+/** A question that asks for a choice is described by its choices: more of them. */
+const TOP_CHOICES_IN_PROMPT = 10
+
+/** The question of a job that has no questions on record: one pool, as before. */
+const UNNAMED_QUESTION: ReportQuestion = { id: '', text: 'Aspirasi', mode: 'evaluative' }
 
 export type GenerateSummaryInput = {
   organizationId: string
@@ -41,16 +54,19 @@ export type GeneratedSummary = {
 /** What the embedded select returns; the database types declare no relationships. */
 type SummaryRow = {
   response_id: string
-  sentiment: string
+  sentiment: string | null
   topics: string[] | null
   keywords: string[] | null
-  responses: { text?: string } | { text?: string }[] | null
+  responses: JoinedResponse | JoinedResponse[] | null
 }
+
+type JoinedResponse = { text?: string; question_id?: string }
 
 type SampledRow = {
   responseId: string
+  questionId: string
   text: string
-  sentiment: Sentiment
+  sentiment: Sentiment | null
   topics: string[]
   keywords: string[]
 }
@@ -60,9 +76,12 @@ type SampledRow = {
  * taken off the top of the table: the first twenty rows of a dataset are an
  * accident of upload order, not a cross-section of what people said.
  */
-export function selectQuotes(rows: readonly SampledRow[]): SampledRow[] {
+export function selectQuotes<Row extends Omit<SampledRow, 'questionId'>>(
+  rows: readonly Row[],
+  limit: number = MAX_QUOTES,
+): Row[] {
   const byTopic = aggregateTopics(rows, TOPICS_TO_SAMPLE)
-  const picked = new Map<string, SampledRow>()
+  const picked = new Map<string, Row>()
 
   for (const { term } of byTopic) {
     const matching = rows.filter((row) =>
@@ -75,17 +94,105 @@ export function selectQuotes(rows: readonly SampledRow[]): SampledRow[] {
       ...matching.filter((row) => row.sentiment !== 'negative'),
     ]
     for (const row of ordered.slice(0, QUOTES_PER_TOPIC)) {
-      if (picked.size >= MAX_QUOTES) break
+      if (picked.size >= limit) break
       picked.set(row.responseId, row)
     }
   }
 
   for (const row of rows) {
-    if (picked.size >= MAX_QUOTES) break
+    if (picked.size >= limit) break
     if (!picked.has(row.responseId)) picked.set(row.responseId, row)
   }
 
   return [...picked.values()]
+}
+
+/** One question as the summary prompt is told about it. */
+function digestQuestion(
+  question: ReportQuestion,
+  rows: readonly SampledRow[],
+  noContent: number | null,
+): QuestionDigest {
+  const base = {
+    text: question.text,
+    mode: question.mode,
+    answers: rows.length,
+    noContent,
+  }
+  const terms = (limit: number) =>
+    aggregateTopics(rows, limit).map((topic) => ({
+      term: topic.term,
+      count: topic.count,
+    }))
+
+  if (question.mode === 'scale') {
+    const scale = aggregateScale(rows)
+    return {
+      ...base,
+      top: scale.values.map((value) => ({ term: value.term, count: value.count })),
+      scale: { mean: scale.mean, mostCommon: scale.mostCommon },
+    }
+  }
+  if (question.mode === 'categorical') {
+    return { ...base, top: terms(TOP_CHOICES_IN_PROMPT) }
+  }
+
+  return {
+    ...base,
+    ...(question.mode === 'evaluative'
+      ? { sentimentCounts: aggregateSentiment(rows).counts }
+      : {}),
+    top: terms(TOP_TOPICS_IN_PROMPT),
+    topKeywords: aggregateKeywords(rows, TOP_KEYWORDS_IN_PROMPT).map((keyword) => ({
+      term: keyword.term,
+      count: keyword.count,
+    })),
+  }
+}
+
+type SummaryQuestion = ReportQuestion & { noContent: number | null }
+
+/**
+ * The job's questions in sheet order, each with the mode the job read it with
+ * and its count of non-answers. Empty when either read fails: the summary is
+ * then written from one pool, which is what it was before questions existed.
+ */
+async function loadQuestions(
+  organizationId: string,
+  jobId: string,
+): Promise<SummaryQuestion[]> {
+  const supabase = createAdminClient()
+
+  const { data: job } = await supabase
+    .from('analysis_jobs')
+    .select('dataset_id, prompt_version, no_content_count, question_counts')
+    .eq('id', jobId)
+    .eq('organization_id', organizationId)
+    .maybeSingle()
+  if (!job) return []
+
+  const { data: questions } = await supabase
+    .from('dataset_questions')
+    .select('id, question_text, position')
+    .eq('dataset_id', job.dataset_id)
+    .order('position', { ascending: true })
+  if (!questions || questions.length === 0) return []
+
+  const counted = {
+    promptVersion: String(job.prompt_version),
+    noContentCount: Number(job.no_content_count ?? 0),
+    questionCounts: readQuestionCounts(job.question_counts),
+  }
+
+  return questions.map((row) => {
+    const id = String(row.id)
+    return {
+      id,
+      text: String(row.question_text),
+      mode: questionMode(counted, id) satisfies QuestionMode,
+      noContent: questionNoContent(counted, id, questions.length),
+    }
+  })
 }
 
 function truncate(text: string): string {
@@ -141,7 +248,7 @@ export async function generateReportSummary(
     (from, to) =>
       supabase
         .from('analysis_results')
-        .select('response_id, sentiment, topics, keywords, responses (text)')
+        .select('response_id, sentiment, topics, keywords, responses (text, question_id)')
         .eq('job_id', input.jobId)
         .eq('organization_id', input.organizationId)
         .order('id', { ascending: true })
@@ -159,35 +266,75 @@ export async function generateReportSummary(
   }
 
   const rows: SampledRow[] = data.map((row) => {
-    const joined = row.responses
-    const text = Array.isArray(joined) ? (joined[0]?.text ?? '') : (joined?.text ?? '')
+    const joined = Array.isArray(row.responses) ? row.responses[0] : row.responses
     return {
       responseId: String(row.response_id),
-      text,
-      sentiment: row.sentiment as Sentiment,
+      questionId: String(joined?.question_id ?? ''),
+      text: joined?.text ?? '',
+      sentiment: (row.sentiment ?? null) as Sentiment | null,
       topics: (row.topics ?? []) as string[],
       keywords: (row.keywords ?? []) as string[],
     }
   })
 
-  const quotes = selectQuotes(rows)
+  const questions = await loadQuestions(input.organizationId, input.jobId)
+  const noContentOf = new Map(
+    questions.map((question) => [question.id, question.noContent]),
+  )
+  const sections = groupByQuestion(rows, questions)
+  // A job with no questions on record leaves every row a stray: one pool.
+  const digestible =
+    sections.length === 1 && sections[0]?.question.id === ''
+      ? [{ question: UNNAMED_QUESTION, rows, noContent: null }]
+      : sections.map((section) => ({
+          ...section,
+          noContent: noContentOf.get(section.question.id) ?? null,
+        }))
+
+  // Only prose is quoted: a choice or a number is already its own count.
+  const prose = digestible.filter(
+    (section) =>
+      section.question.mode === 'evaluative' || section.question.mode === 'thematic',
+  )
+  const perQuestion = Math.max(
+    MIN_QUOTES_PER_QUESTION,
+    Math.floor(MAX_QUOTES / Math.max(1, prose.length)),
+  )
+  const quotes: SampledRow[] = []
+  const quoteQuestions: number[] = []
+  digestible.forEach((section, index) => {
+    if (!prose.includes(section)) return
+    for (const quote of selectQuotes(section.rows, perQuestion)) {
+      quotes.push(quote)
+      quoteQuestions.push(index + 1)
+    }
+  })
+
+  const proseRows = prose.flatMap((section) => section.rows)
   const adapter = input.adapter ?? createOpenAiAdapter()
   const promptVersion = input.promptVersion ?? DEFAULT_SUMMARY_VERSION
 
   const request = {
     promptVersion,
     data: {
+      // The pooled figures are what summary.v1 and v2 read; v3 reads `questions`.
       totalResponses: rows.length,
       sentimentCounts: aggregateSentiment(rows).counts,
-      topTopics: aggregateTopics(rows, TOP_TOPICS_IN_PROMPT).map((topic) => ({
+      topTopics: aggregateTopics(proseRows, TOP_TOPICS_IN_PROMPT).map((topic) => ({
         topic: topic.term,
         count: topic.count,
       })),
-      topKeywords: aggregateKeywords(rows, TOP_KEYWORDS_IN_PROMPT).map((keyword) => ({
-        term: keyword.term,
-        count: keyword.count,
-      })),
+      topKeywords: aggregateKeywords(proseRows, TOP_KEYWORDS_IN_PROMPT).map(
+        (keyword) => ({
+          term: keyword.term,
+          count: keyword.count,
+        }),
+      ),
       sampleQuotes: quotes.map((quote) => truncate(quote.text)),
+      questions: digestible.map((section) =>
+        digestQuestion(section.question, section.rows, section.noContent),
+      ),
+      quoteQuestions,
     },
   }
 
@@ -214,12 +361,23 @@ export async function generateReportSummary(
   // The model cites quote numbers; only positions that exist become evidence.
   // A hallucinated "[9]" against three quotes silently drops rather than
   // pointing a reader at a response that was never shown to the model.
+  const { citesQuestions } = result.value
   const insights: ReportInsight[] = result.value.insights.map((insight) => ({
     title: insight.title,
     detail: insight.detail,
     evidenceResponseIds: insight.evidence
       .map((position) => quotes[position - 1]?.responseId)
       .filter((id): id is string => Boolean(id)),
+    // A number past the last question is read as "several", like 0: an origin
+    // the reader cannot open is worse than none.
+    ...(citesQuestions
+      ? {
+          questionId:
+            (insight.question
+              ? digestible[insight.question - 1]?.question.id
+              : undefined) || null,
+        }
+      : {}),
   }))
 
   const { error: upsertError } = await supabase.from('reports').upsert(

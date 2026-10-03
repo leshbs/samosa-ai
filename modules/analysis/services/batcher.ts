@@ -1,5 +1,8 @@
+import type { QuestionMode } from '@/types/domain'
 import { sanitizeResponseText } from '../postprocess/sanitize'
+import type { PromptedMode } from '../prompts'
 import { isNonAnswer } from './no-content'
+import { scaleValue } from './scale'
 
 /** 30 fits comfortably in one request while keeping the 2-minute/500-row budget. */
 export const BATCH_SIZE = 30
@@ -11,7 +14,11 @@ export const BATCH_SIZE = 30
  */
 export const MAX_ANALYZED_LENGTH = 2_000
 
-/** Below this there is nothing to classify — punctuation or a stray keystroke. */
+/**
+ * Below this there is nothing to classify — punctuation or a stray keystroke.
+ * Only where the answer is prose: "ya", "A" and "5" are whole answers to a
+ * question that asks for a choice or a number.
+ */
 const MIN_ANALYZED_LENGTH = 3
 
 export type Analyzable = {
@@ -24,9 +31,14 @@ export type Analyzable = {
 export type PreparedBatch = {
   /** The one question every item answers; null when the caller named none. */
   questionId: string | null
+  /** How that question is read, and so which prompt the batch is sent with. */
+  mode: PromptedMode
   /** Batch-local order is meaningful: the model answers by index. */
   items: Array<{ id: string; text: string }>
 }
+
+/** An answer to a `scale` question, read here: it never reaches a model. */
+export type ReadValue = { id: string; value: string }
 
 export type BatchPlan = {
   batches: PreparedBatch[]
@@ -38,6 +50,8 @@ export type BatchPlan = {
   skippedIds: string[]
   truncatedIds: string[]
   flaggedIds: string[]
+  /** Answers to `scale` questions with the value each gives. */
+  values: ReadValue[]
 }
 
 export function chunk<T>(items: readonly T[], size: number): T[][] {
@@ -60,10 +74,16 @@ export function chunk<T>(items: readonly T[], size: number): T[][] {
  * paling berkesan?" set different expectations for the same words, and a batch
  * is the unit a prompt speaks to: once prompts differ by question, a mixed
  * batch could not be given either one.
+ *
+ * `modeOf` says how each question is read (ADR-0016). It decides what counts
+ * as a non-answer — "tidak" is one under "Ada saran?", and an answer under
+ * "Apakah kamu ikut lagi?" — and it takes `scale` answers out of the batches
+ * altogether: a number is read here, not by a model.
  */
 export function planBatches(
   responses: ReadonlyArray<Analyzable>,
   batchSize: number = BATCH_SIZE,
+  modeOf: (questionId: string | null) => QuestionMode = () => 'evaluative',
 ): BatchPlan {
   // Insertion order of a Map is first-seen order, so questions keep the order
   // their answers arrive in.
@@ -71,11 +91,24 @@ export function planBatches(
   const skippedIds: string[] = []
   const truncatedIds: string[] = []
   const flaggedIds: string[] = []
+  const values: ReadValue[] = []
 
   for (const response of responses) {
     const sanitized = sanitizeResponseText(response.text)
+    const mode = modeOf(response.questionId ?? null)
 
-    if (sanitized.text.length < MIN_ANALYZED_LENGTH || isNonAnswer(sanitized.text)) {
+    if (mode === 'scale') {
+      const value = scaleValue(sanitized.text)
+      if (value === null) skippedIds.push(response.id)
+      else values.push({ id: response.id, value })
+      continue
+    }
+
+    const prose = mode === 'evaluative' || mode === 'thematic'
+    if (
+      (prose && sanitized.text.length < MIN_ANALYZED_LENGTH) ||
+      isNonAnswer(sanitized.text, mode)
+    ) {
       skippedIds.push(response.id)
       continue
     }
@@ -98,11 +131,19 @@ export function planBatches(
   }
 
   return {
-    batches: [...byQuestion].flatMap(([questionId, items]) =>
-      chunk(items, batchSize).map((batch) => ({ questionId, items: batch })),
-    ),
+    batches: [...byQuestion].flatMap(([questionId, items]) => {
+      const mode = modeOf(questionId)
+      return chunk(items, batchSize).map((batch) => ({
+        questionId,
+        // `scale` answers were taken out above, so this is only ever one of
+        // the three prompted modes.
+        mode: mode === 'scale' ? 'evaluative' : mode,
+        items: batch,
+      }))
+    }),
     skippedIds,
     truncatedIds,
     flaggedIds,
+    values,
   }
 }

@@ -16,15 +16,19 @@ import {
   formatIdr,
   getJob,
   listJobResults,
+  questionMode,
   questionNoContent,
   separatesNoContent,
 } from '@/modules/analysis'
 import { can, getPeople, getSessionUser } from '@/modules/auth'
 import { getDataset, listQuestions } from '@/modules/ingestion'
 import {
+  aggregateTopics,
   buildDashboardData,
   getStoredSummary,
   groupByQuestion,
+  reportCountLine,
+  sectionCountLine,
 } from '@/modules/reporting'
 
 export const metadata: Metadata = { title: 'Laporan' }
@@ -41,7 +45,8 @@ const FILTERABLE_TOPICS = 12
  *
  * A dataset with several questions repeats 5 and 6 once per question, under
  * the question as its heading: answers to different questions are never drawn
- * into one chart (pilot 01, §4.4).
+ * into one chart (pilot 01, §4.4). What 5 draws depends on how the question
+ * was read: only an `evaluative` one has a sentiment chart (ADR-0016).
  *
  * The reasoning behind it is worth keeping visible: the reader is told what the
  * data cannot support (2) *before* being told what it means (3, 4), and the raw
@@ -79,9 +84,23 @@ export default async function ReportDetailPage({
     (questions.ok ? questions.value : []).map((question) => ({
       id: question.id,
       text: question.questionText,
+      // As the job read it, which is what its results are.
+      mode: questionMode(job.value, question.id),
     })),
   )
   const manyQuestions = sections.length > 1
+  /**
+   * Whether every answer here is an aspiration. Once a question asks for a
+   * choice or a number it is not, and the page says "jawaban" instead.
+   */
+  const aspirations = sections.every((section) => section.question.mode === 'evaluative')
+  // Topic chips for the explorer come from prose only: a "pilihan" question's
+  // choices and a scale's numbers are not topics to filter the report by.
+  const proseRows = sections
+    .filter(
+      ({ question }) => question.mode === 'evaluative' || question.mode === 'thematic',
+    )
+    .flatMap((section) => section.rows)
 
   const canExport = can(session.value.role, 'report:export')
   // Regenerating spends the organization's OpenAI budget, so it is gated on the
@@ -119,7 +138,8 @@ export default async function ReportDetailPage({
    * would serialise the dataset into the page payload a second time to satisfy
    * at most a dozen lookups.
    */
-  const citedIds = new Set((stored?.insights ?? []).flatMap((i) => i.evidenceResponseIds))
+  const insights = stored?.insights ?? []
+  const citedIds = new Set(insights.flatMap((i) => i.evidenceResponseIds))
   const citedQuotes: Record<string, string> = {}
   for (const row of rows) {
     if (citedIds.has(row.responseId)) citedQuotes[row.responseId] = row.responseText
@@ -144,20 +164,19 @@ export default async function ReportDetailPage({
         datasetId={job.value.datasetId}
         datasetName={datasetName}
         status={job.value.status}
-        totalResponses={data.sentiment.total}
-        noContent={noContent}
-        questionCount={sections.length}
+        countLine={reportCountLine(rows.length, noContent, sections.length, aspirations)}
         canExport={canExport}
       />
 
       <div className="mx-auto max-w-wide space-y-12 pt-8">
         {/* ── 2. Data condition strip ───────────────────────────────── */}
         <DataConditionStrip
-          analyzed={data.sentiment.total}
+          analyzed={rows.length}
           failed={job.value.failedCount}
           untagged={data.untaggedCount}
           noContent={noContent}
           isPartial={job.value.status === 'partial'}
+          aspirations={aspirations}
         />
 
         {/* ── 3. Executive summary ──────────────────────────────────── */}
@@ -168,12 +187,22 @@ export default async function ReportDetailPage({
             generatedAt={stored?.createdAt ?? null}
             canRegenerate={canRegenerate}
             timeZone={timezone}
-            questionCount={sections.length}
+            // A summary whose insights name no question was written from one
+            // pool of every question, and says so.
+            pooledQuestions={
+              manyQuestions && !insights.some((i) => i.questionId !== undefined)
+                ? sections.length
+                : 0
+            }
           />
         </Reveal>
 
         {/* ── 4. Insight cards ──────────────────────────────────────── */}
-        <InsightCards insights={stored?.insights ?? []} quotes={citedQuotes} />
+        <InsightCards
+          insights={insights}
+          quotes={citedQuotes}
+          questions={manyQuestions ? sections.map((section) => section.question) : []}
+        />
 
         {/* ── 5 and 6. Charts and topic disclosure, per question ────── */}
         {manyQuestions ? (
@@ -199,20 +228,26 @@ export default async function ReportDetailPage({
                     {section.question.text}
                   </h2>
                   <p className="text-sm text-muted-foreground">
-                    {sectionNoContent
-                      ? `${section.rows.length} dari ${section.rows.length + sectionNoContent} jawaban berisi aspirasi`
-                      : `${section.rows.length} jawaban dianalisis`}
+                    {sectionCountLine(
+                      section.rows.length,
+                      sectionNoContent,
+                      section.question.mode,
+                    )}
                   </p>
                 </header>
 
                 {section.rows.length === 0 ? (
                   <p className="rounded-card border bg-card px-4 py-6 text-sm text-muted-foreground">
-                    Tidak ada aspirasi untuk pertanyaan ini: jawabannya kosong, “tidak
-                    ada”, atau gagal dianalisis.
+                    {section.question.mode === 'evaluative'
+                      ? 'Tidak ada aspirasi untuk pertanyaan ini: jawabannya kosong, “tidak ada”, atau gagal dianalisis.'
+                      : 'Tidak ada jawaban yang bisa dipakai untuk pertanyaan ini: jawabannya kosong atau gagal dianalisis.'}
                   </p>
                 ) : (
                   <ExplorerScope questionId={section.question.id}>
-                    <QuestionCharts data={buildDashboardData(section.rows)} />
+                    <QuestionCharts
+                      data={buildDashboardData(section.rows)}
+                      mode={section.question.mode}
+                    />
                   </ExplorerScope>
                 )}
               </section>
@@ -223,15 +258,18 @@ export default async function ReportDetailPage({
             <h2 id="charts-heading" className="sr-only">
               Grafik
             </h2>
-            <QuestionCharts data={data} />
+            <QuestionCharts data={data} mode={sections[0]?.question.mode} />
           </section>
         )}
 
         {/* ── 7. Response explorer ──────────────────────────────────── */}
         <ResponseExplorer
           rows={rows}
-          topics={data.topics.slice(0, FILTERABLE_TOPICS).map((topic) => topic.term)}
+          topics={aggregateTopics(proseRows, FILTERABLE_TOPICS).map(
+            (topic) => topic.term,
+          )}
           questions={sections.map((section) => section.question)}
+          noun={aspirations ? 'aspirasi' : 'jawaban'}
         />
 
         {/* ── 8. Provenance strip ───────────────────────────────────── */}
@@ -242,7 +280,7 @@ export default async function ReportDetailPage({
           analyzedAt={job.value.createdAt}
           runBy={runBy}
           timeZone={timezone}
-          analyzed={data.sentiment.total}
+          analyzed={rows.length}
           cost={job.value.costMicroIdr > 0 ? formatIdr(job.value.costMicroIdr) : null}
           datasetName={datasetName}
         />

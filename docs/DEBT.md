@@ -5,6 +5,91 @@ Tambahkan baris baru lewat PR yang menciptakan utangnya, jangan belakangan.
 
 ## Terbuka
 
+### Migrasi `sentiment_optional` harus ditempel sebelum PR-nya di-merge
+
+**Lunas 2026-10-03.** Ditempel sebelum merge; `scripts/check-rls.mjs` 65/65
+tanpa SKIP. Catatan aslinya:
+
+`20261006000100_sentiment_optional.sql` membuat `analysis_results.sentiment`
+dan `sentiment_confidence` boleh kosong. Kode baru menyimpan baris tanpa
+sentimen untuk pertanyaan `thematic`, `categorical`, dan `scale`: tanpa migrasi,
+job pada dataset yang punya pertanyaan seperti itu gagal di "Hasil analisis
+tidak bisa disimpan". Dataset yang semua pertanyaannya `evaluative` tidak
+terpengaruh. Aman ditempel selagi kode lama masih live — kode itu selalu menulis
+kedua kolom (ADR-0016).
+
+**Pemicu:** sebelum merge. **Bayar dengan:** tempel di SQL Editor, lalu
+`scripts/check-rls.mjs` (61 cek; cek "a result can be stored without a
+sentiment" gagal sampai ditempel).
+
+### Mode pertanyaan tidak bisa diubah setelah unggah
+
+Wizard menampilkan tebakan mode dan pengunggah bisa mengubahnya, tapi hanya di
+situ. Tebakan keliru yang lolos — "Harapan untuk OSIS" terbaca `thematic`
+padahal isinya kritik — berarti unggah ulang. Laporan sudah siap untuk
+perubahan itu: ia menggambar sesuai mode yang dicatat job
+(`question_counts[<id>].mode`), bukan mode pertanyaan saat ini.
+
+**Pemicu:** pengguna pilot 02 mengunggah ulang hanya untuk mengganti mode.
+**Bayar dengan:** pilihan mode di halaman dataset, satu route `PATCH`, lalu
+"Analisis ulang" seperti biasa.
+
+### Tebakan mode dibuat tanpa melihat isi sel
+
+`modes.v1` hanya diberi judul kolom dan gambaran isinya (ADR-0016), supaya
+tidak ada nama atau email yang terkirim sebelum pengunggah memilih kolom.
+Akibatnya `evaluative` dan `thematic` hanya bisa dibedakan dari judul. Akurasinya
+belum diukur. Bahan ukurnya sudah disimpan: `datasets.metadata.column_modes`
+(`detected` dan `chosen` untuk setiap kolom).
+
+Satu kelemahan sudah terukur dan ditambal. Judul yang hanya berupa label —
+"Aspirasi", "Saran", "Komentar", "Jawaban" — dibaca model sebagai `thematic`:
+6 dari 8 saat ada di satu sheet, dan satu kolom "Aspirasi" sendirian juga,
+sehingga laporannya kehilangan sentimen. Prompt sekarang menyuruh memilih
+`evaluative` bila ragu (14 dari 14 di set uji yang sama), dan judul yang
+menyebut masukan secara langsung dipaksa `evaluative` oleh aturan
+(`asksForJudgement`), apa pun kata model. Set uji itu 14 judul buatan sendiri,
+bukan data pilot.
+
+Catatan untuk yang mengukur: `segment` belum bisa dipilih di wizard, jadi
+`detected: segment` → `chosen: ignore` bukan koreksi pengguna.
+
+**Pemicu:** pilot 02 (C.7 meminta angka koreksi), atau pengguna sering mengubah
+tebakan antara dua mode itu. **Bayar dengan:** hitung dari `column_modes`; kalau
+lemah, kirim contoh isi **hanya** untuk kolom yang bentuknya teks panjang dan
+judulnya bukan identitas, dan tulis itu di halaman privasi.
+
+### Batch `categorical` berjalan satu per satu
+
+Supaya satu pilihan punya satu ejaan, batch satu pertanyaan `categorical`
+berurutan dan tiap batch membawa daftar pilihan dari batch sebelumnya
+(ADR-0016). 228 jawaban = 8 panggilan berurutan, kira-kira 20–30 detik;
+5.000 jawaban = 167 panggilan dan bisa melewati batas waktu fungsi.
+
+**Pemicu:** dataset `categorical` di atas ±1.500 jawaban, atau job seperti itu
+disapu sweeper. **Bayar dengan:** satu panggilan pembuat daftar pilihan di awal,
+lalu batch paralel yang memakai daftar itu.
+
+### Biaya tebakan mode tidak tercatat
+
+Panggilan `modes.v1` terjadi saat pratinjau, sebelum ada dataset atau job, jadi
+biayanya hanya masuk log (`analysis.modes.detected`). Angkanya kecil — beberapa
+ratus token per unggahan — tapi "Perkiraan biaya" di laporan dan total pemakaian
+tidak memuatnya.
+
+**Pemicu:** pemakaian dihitung untuk tagihan. **Bayar dengan:** catat di
+`datasets.metadata` saat unggah, atau tabel pemakaian tersendiri.
+
+### `topics` bermakna tiga hal
+
+Untuk `evaluative` dan `thematic` isinya topik; untuk `categorical` pilihan yang
+disebut; untuk `scale` nilai yang diberikan (ADR-0016). Agregasi, filter, dan
+ekspor jadi tidak bercabang, tapi nama kolomnya menyesatkan. CSV menambah kolom
+`mode` untuk itu.
+
+**Pemicu:** mode kelima, atau pembaca CSV salah membaca kolom itu. **Bayar
+dengan:** kolom `values` dengan backfill, dan `topics` kembali hanya topik.
+
 ### Migrasi `dataset_questions` harus ditempel sebelum PR-nya di-merge
 
 **Lunas 2026-10-03.** Ditempel sebelum merge; `scripts/check-rls.mjs` 60/60
@@ -21,7 +106,10 @@ trigger-nya mengisi kedua kolom untuk baris yang tidak menyebut pertanyaan
 **Pemicu:** sebelum merge. **Bayar dengan:** tempel di SQL Editor, lalu
 `scripts/check-rls.mjs`.
 
-### Semua pertanyaan dianalisis sebagai `evaluative`
+### ~~Semua pertanyaan dianalisis sebagai `evaluative`~~ — lunas 2026-10-03
+
+Dibayar di putaran 2 (ADR-0016): deteksi mode di wizard, `analysis.v3` dengan
+satu prompt per mode, dan bagian laporan per mode. Catatan aslinya:
 
 Putaran 1 dari C.2 (ADR-0015) memberi dataset beberapa pertanyaan, tapi setiap
 pertanyaan masih melewati `analysis.v2` — sentimen, topik, kata kunci. Kolom
@@ -32,7 +120,12 @@ kolom.
 **Pemicu:** putaran 2 (mode analisis dan `analysis.v3`). **Bayar dengan:**
 deteksi mode saat mapping, prompt per mode, bagian laporan per mode.
 
-### Ringkasan eksekutif digabung lintas pertanyaan
+### ~~Ringkasan eksekutif digabung lintas pertanyaan~~ — lunas 2026-10-03
+
+Dibayar di putaran 2: `summary.v3` diberi tiap pertanyaan terpisah dan tiap
+insight menyebut asalnya, di layar, di halaman cetak, dan di PDF. Laporan yang
+ringkasannya ditulis sebelum itu tetap menampilkan catatan "gabungan" sampai
+ringkasannya disusun ulang. Catatan aslinya:
 
 Untuk laporan dengan beberapa pertanyaan, grafik, topik, dan kutipan sudah
 dipisah per pertanyaan, tapi `generateReportSummary` masih menyusun ringkasan
@@ -43,7 +136,11 @@ menyatakannya di bawah ringkasan. PDF dan halaman cetak tidak.
 yang tidak punya sentimen, jadi `summary.v3` dibuat sekali, bersama mode.
 **Bayar dengan:** prompt `summary.v3` dengan masukan per pertanyaan.
 
-### Batch analisis tidak diulang saat balasan model rusak
+### ~~Batch analisis tidak diulang saat balasan model rusak~~ — lunas 2026-10-03
+
+Dibayar di putaran 2: orchestrator meminta sekali lagi untuk batch yang
+balasannya melanggar format (`analysis.batch.retrying`), dan batas keluaran
+`analysis.v3` dan `summary.v3` dipotong, bukan ditolak. Catatan aslinya:
 
 Diukur 2026-10-03: kira-kira satu dari seratus balasan ringkasan melanggar
 format keluaran (1 dari 105 di data uji dua pertanyaan, dan sekali di uji nyata).
@@ -67,9 +164,14 @@ panjang atau berakhiran "(opsional)", dan belum ada tempat untuk merapikannya.
 Kolomnya sudah terpisah dari `column_name` supaya itu bisa ditambahkan tanpa
 migrasi.
 
-**Pemicu:** keluhan soal judul bagian, atau wizard mode di putaran 2 (tempat
-yang wajar untuk mengeditnya). **Bayar dengan:** kolom teks di wizard dan satu
-route `PATCH`.
+Putaran 2 tidak menambahkannya: wizard sudah memuat satu keputusan per kolom,
+dan menambah kolom teks di tiap baris membuatnya lebih berat untuk hal yang
+belum ada yang minta. Sejak `analysis.v3` teks ini juga dikirim ke model sebagai
+konteks, jadi mengubahnya setelah analisis berarti laporan lama dibuat dengan
+kalimat yang berbeda.
+
+**Pemicu:** keluhan soal judul bagian. **Bayar dengan:** kolom teks di halaman
+dataset dan satu route `PATCH` — bersama pengubah mode di atas.
 
 ### Migrasi `no_content_count` harus ditempel sebelum PR-nya di-merge
 

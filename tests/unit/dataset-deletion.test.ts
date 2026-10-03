@@ -242,5 +242,102 @@ describe('uploadDataset rollback', () => {
       response_count: 3,
       metadata: { text_column_name: 'Kritik', respondent_count: 2 },
     })
+    // Named only as text columns, as before modes: read as every column was.
+    expect(questionsInsert.mock.calls[0]?.[0]).toMatchObject([
+      { analysis_mode: 'evaluative', detected_mode: null },
+      { analysis_mode: 'evaluative', detected_mode: null },
+    ])
+  })
+
+  it('stores each question with its mode, and every column with its guess', async () => {
+    const questionsInsert = vi.fn((_rows: unknown) => ({
+      select: async () => ({
+        data: [
+          { id: 'q-seru', position: 0 },
+          { id: 'q-kritik', position: 1 },
+        ],
+        error: null,
+      }),
+    }))
+    const responsesInsert = vi.fn(async (_rows: unknown) => ({ error: null }))
+    const datasetInsert = vi.fn((_row: unknown) => ({
+      select: () => ({
+        single: async () => ({ data: { id: 'dataset-1' }, error: null }),
+      }),
+    }))
+    adminFrom.mockImplementation((table: string) =>
+      table === 'datasets'
+        ? { insert: datasetInsert }
+        : table === 'dataset_questions'
+          ? { insert: questionsInsert }
+          : { insert: responsesInsert },
+    )
+
+    const file = new File(
+      ['Nama,Kelas,Paling seru?,Kritik\nRani Putri,XI IPA 2,Outbound,Konsumsi telat\n'],
+      'aspirasi.csv',
+      { type: 'text/csv' },
+    )
+    const result = await uploadDataset({
+      ...input,
+      textColumns: undefined,
+      columnModes: [
+        { column: 'Nama', mode: 'ignore', detectedMode: 'ignore' },
+        // Guessed a segment, which the wizard does not offer yet.
+        { column: 'Kelas', mode: 'ignore', detectedMode: 'segment' },
+        { column: 'Paling seru?', mode: 'categorical', detectedMode: 'categorical' },
+        // The uploader overruled this one.
+        { column: 'Kritik', mode: 'evaluative', detectedMode: 'thematic' },
+      ],
+      modeDetection: { promptVersion: 'modes.v1', modelId: 'gpt-4o-mini' },
+      file,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(questionsInsert.mock.calls[0]?.[0]).toMatchObject([
+      {
+        column_name: 'Paling seru?',
+        analysis_mode: 'categorical',
+        detected_mode: 'categorical',
+        position: 0,
+      },
+      {
+        column_name: 'Kritik',
+        analysis_mode: 'evaluative',
+        detected_mode: 'thematic',
+        position: 1,
+      },
+    ])
+    // Only the two questions are stored; the name never is.
+    const stored = responsesInsert.mock.calls[0]?.[0] as Array<{ text: string }>
+    expect(stored.map((response) => response.text)).toEqual([
+      'Outbound',
+      'Konsumsi telat',
+    ])
+
+    const metadata = (datasetInsert.mock.calls[0]?.[0] as { metadata: unknown }).metadata
+    expect(metadata).toMatchObject({
+      mode_detection: { prompt_version: 'modes.v1', model_id: 'gpt-4o-mini' },
+      column_modes: [
+        { column: 'Nama', detected: 'ignore', chosen: 'ignore' },
+        { column: 'Kelas', detected: 'segment', chosen: 'ignore' },
+        { column: 'Paling seru?', detected: 'categorical', chosen: 'categorical' },
+        { column: 'Kritik', detected: 'thematic', chosen: 'evaluative' },
+      ],
+    })
+    // Headers and modes are recorded; no cell of an unused column is.
+    expect(JSON.stringify(metadata)).not.toContain('Rani')
+  })
+
+  it('refuses an upload whose every column is left out', async () => {
+    const result = await uploadDataset({
+      ...input,
+      textColumns: undefined,
+      columnModes: [{ column: 'Kritik', mode: 'ignore', detectedMode: null }],
+      file: csv(),
+    })
+
+    expect(result.ok).toBe(false)
+    expect(adminFrom).not.toHaveBeenCalled()
   })
 })

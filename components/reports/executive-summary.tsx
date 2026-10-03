@@ -11,11 +11,12 @@ export type ExecutiveSummaryProps = {
   canRegenerate: boolean
   timeZone?: OrgTimeZone
   /**
-   * More than one when the report has several questions. The narrative is
-   * still written from all of them pooled (the per-question summary comes with
-   * analysis modes), and a reader should not have to guess that.
+   * How many questions the narrative pooled into one, or 0 when it did not. A
+   * summary from before summary.v3 was written from every question together,
+   * and a reader should not have to guess that; from v3 it is told the
+   * questions apart and its insights name theirs.
    */
-  questionCount?: number
+  pooledQuestions?: number
 }
 
 /**
@@ -34,7 +35,7 @@ export function ExecutiveSummary({
   generatedAt,
   canRegenerate,
   timeZone,
-  questionCount = 1,
+  pooledQuestions = 0,
 }: ExecutiveSummaryProps) {
   return (
     <Card data-print="keep-together">
@@ -58,10 +59,11 @@ export function ExecutiveSummary({
         {summary ? (
           <div className="max-w-narrative space-y-3">
             <p className="text-sm leading-relaxed">{summary}</p>
-            {questionCount > 1 ? (
+            {pooledQuestions > 1 ? (
               <p className="text-xs text-muted-foreground">
-                Ringkasan ini disusun dari gabungan {questionCount} pertanyaan. Angka dan
-                topik per pertanyaan ada di bagian masing-masing di bawah.
+                Ringkasan ini disusun dari gabungan {pooledQuestions} pertanyaan. Susun
+                ulang untuk ringkasan yang membedakan tiap pertanyaan; angka dan topik per
+                pertanyaan ada di bagian masing-masing di bawah.
               </p>
             ) : null}
           </div>

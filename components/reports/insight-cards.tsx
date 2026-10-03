@@ -28,11 +28,23 @@ import type { ReportInsight } from '@/types/domain'
 export function InsightCards({
   insights,
   quotes,
+  questions = [],
 }: {
   insights: ReportInsight[]
   quotes: Record<string, string>
+  /**
+   * The report's questions, when it has several: a card then says which one
+   * its finding comes from (pilot 01, §4.4). Empty for a one-question report,
+   * where there is nothing to tell apart.
+   */
+  questions?: ReadonlyArray<{ id: string; text: string }>
 }) {
   if (insights.length === 0) return null
+
+  const originOf = (insight: ReportInsight) =>
+    insight.questionId
+      ? (questions.find((question) => question.id === insight.questionId)?.text ?? null)
+      : null
 
   return (
     <section aria-labelledby="insights-heading" className="space-y-4">
@@ -49,7 +61,12 @@ export function InsightCards({
       <Stagger className="grid gap-4 lg:grid-cols-2">
         {insights.map((insight, index) => (
           <StaggerItem key={`${insight.title}-${index}`}>
-            <InsightCard insight={insight} quotes={quotes} index={index} />
+            <InsightCard
+              insight={insight}
+              quotes={quotes}
+              index={index}
+              origin={originOf(insight)}
+            />
           </StaggerItem>
         ))}
       </Stagger>
@@ -61,10 +78,13 @@ function InsightCard({
   insight,
   quotes,
   index,
+  origin,
 }: {
   insight: ReportInsight
   quotes: Record<string, string>
   index: number
+  /** The question the finding comes from; null when none is named. */
+  origin: string | null
 }) {
   // Only ids that still resolve to a response are offered; an insight whose
   // evidence was deleted loses the quote, not the insight.
@@ -91,6 +111,12 @@ function InsightCard({
           </span>
           <h3 className="text-sm font-semibold leading-snug">{insight.title}</h3>
         </div>
+
+        {origin ? (
+          <p className="line-clamp-2 text-xs text-muted-foreground" title={origin}>
+            <span className="font-medium">Dari pertanyaan:</span> {origin}
+          </p>
+        ) : null}
 
         <p className="flex-1 text-sm leading-relaxed text-muted-foreground">
           {insight.detail}

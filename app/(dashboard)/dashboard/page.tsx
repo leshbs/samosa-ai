@@ -11,7 +11,12 @@ import {
 } from '@/components/dashboard/recent-analyses'
 import { EmptyState } from '@/components/layout/empty-state'
 import { InlineError } from '@/components/layout/inline-error'
-import { MAX_COUNTED_JOBS, countResultsBySentiment, listJobs } from '@/modules/analysis'
+import {
+  MAX_COUNTED_JOBS,
+  countResultsBySentiment,
+  evaluatedCount,
+  listJobs,
+} from '@/modules/analysis'
 import { can, getSessionUser } from '@/modules/auth'
 import {
   buildHomeSummary,
@@ -112,7 +117,9 @@ export default async function DashboardHomePage() {
 
   const summary = jobs.ok
     ? buildHomeSummary({
-        jobs: items,
+        // Shares are of the results read for sentiment, which is fewer than
+        // all of them once a dataset has questions that are not.
+        jobs: items.map((job) => ({ ...job, evaluatedCount: evaluatedCount(job) })),
         positiveCounts: positive.ok ? positive.value : {},
         negativeCounts: negative.ok ? negative.value : {},
         now: new Date(),

@@ -73,8 +73,8 @@ export const LIMITS = [
 ] as const
 
 export const DATA_PROMISES = [
-  'Hanya kolom teks aspirasi yang disimpan. Nama, kelas, dan email dibuang kecuali kamu memilih menyimpannya.',
-  'Teks aspirasi dikirim ke OpenAI di Amerika Serikat untuk dianalisis — tanpa nama atau kolom lain.',
+  'Hanya kolom yang kamu pilih untuk dianalisis yang disimpan. Nama, kelas, dan email dibuang kecuali kamu memilih menyimpannya.',
+  'Jawaban di kolom itu dikirim ke OpenAI di Amerika Serikat untuk dianalisis — tanpa isi kolom lain seperti nama atau email.',
   'File asli ikut terhapus saat datasetnya kamu hapus.',
   'Data setiap organisasi terisolasi di tingkat basis data.',
 ] as const

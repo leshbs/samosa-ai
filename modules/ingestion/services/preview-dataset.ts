@@ -4,6 +4,7 @@ import { validateFileSignature, validateUploadFile } from '../validators/file-si
 import { ERROR_CODES, appError, err, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
 import type { DatasetSource } from '@/types/domain'
+import { profileColumns, type ColumnProfile } from './column-profile'
 
 /** Enough rows for the uploader to recognise the right column, not a data dump. */
 export const PREVIEW_ROW_COUNT = 5
@@ -14,6 +15,11 @@ export type DatasetPreview = {
   totalRows: number
   /** Best guess at the aspiration column, pre-selected in the wizard. */
   suggestedColumn: string | null
+  /**
+   * What each column's cells look like, in `columns` order: counts and a kind,
+   * never a value. What the mode guess is made from.
+   */
+  profiles: ColumnProfile[]
 }
 
 /** Headers a Google Forms aspiration column tends to use. */
@@ -79,5 +85,6 @@ export async function previewDataset(
     sampleRows,
     totalRows: parsed.value.rows.length,
     suggestedColumn: suggestColumn(parsed.value.columns, sampleRows),
+    profiles: profileColumns(parsed.value),
   })
 }

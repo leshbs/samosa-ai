@@ -23,6 +23,7 @@ export function DataConditionStrip({
   untagged,
   noContent,
   isPartial,
+  aspirations = true,
   className,
 }: {
   analyzed: number
@@ -31,8 +32,14 @@ export function DataConditionStrip({
   /** Null when the job predates the count (analysis.v1): unknown, not zero. */
   noContent: number | null
   isPartial: boolean
+  /**
+   * False when a question of the report is not read for sentiment: its
+   * answers are not aspirations, and they are not in a sentiment chart.
+   */
+  aspirations?: boolean
   className?: string
 }) {
+  const noun = aspirations ? 'aspirasi' : 'jawaban'
   const hasCaveat = failed > 0 || untagged > 0 || isPartial
 
   return (
@@ -49,13 +56,17 @@ export function DataConditionStrip({
         <Row
           icon={<Info aria-hidden className="text-muted-foreground" />}
           label="Dianalisis"
-          value={`${analyzed} aspirasi`}
-          detail="Punya sentimen dan masuk ke seluruh grafik."
+          value={`${analyzed} ${noun}`}
+          detail={
+            aspirations
+              ? 'Punya sentimen dan masuk ke seluruh grafik.'
+              : 'Masuk ke grafik pertanyaannya masing-masing.'
+          }
         />
 
         <Row
           icon={<MessageSquareOff aria-hidden className="text-muted-foreground" />}
-          label="Tanpa aspirasi"
+          label={aspirations ? 'Tanpa aspirasi' : 'Tanpa jawaban'}
           value={
             noContent === null
               ? 'Tidak dihitung'
@@ -78,11 +89,13 @@ export function DataConditionStrip({
             />
           }
           label="Tanpa topik"
-          value={untagged === 0 ? 'Tidak ada' : `${untagged} aspirasi`}
+          value={untagged === 0 ? 'Tidak ada' : `${untagged} ${noun}`}
           detail={
             untagged === 0
-              ? 'Semua aspirasi mendapat setidaknya satu topik.'
-              : 'Terhitung di grafik sentimen, tidak di grafik topik.'
+              ? `Semua ${noun} mendapat setidaknya satu topik.`
+              : aspirations
+                ? 'Terhitung di grafik sentimen, tidak di grafik topik.'
+                : 'Terhitung di jumlah jawaban, tidak di grafik topik.'
           }
         />
 
@@ -94,7 +107,7 @@ export function DataConditionStrip({
             />
           }
           label="Gagal dianalisis"
-          value={failed === 0 ? 'Tidak ada' : `${failed} aspirasi`}
+          value={failed === 0 ? 'Tidak ada' : `${failed} ${noun}`}
           detail={
             failed === 0
               ? 'Tidak ada batch yang gagal.'
@@ -108,7 +121,7 @@ export function DataConditionStrip({
           <Badge variant="notice">Selesai sebagian</Badge>
           <span className="text-muted-foreground">
             Sebagian batch gagal dan hasil yang berhasil tetap disimpan. Angka di bawah
-            menggambarkan {analyzed} aspirasi, bukan seluruh dataset.
+            menggambarkan {analyzed} {noun}, bukan seluruh dataset.
           </span>
         </p>
       ) : null}

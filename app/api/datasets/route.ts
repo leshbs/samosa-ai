@@ -7,6 +7,16 @@ import { createDatasetSchema } from '@/types/api'
 import { requestLog } from '@/app/api/_lib/request-log'
 import { failure, success } from '@/app/api/_lib/respond'
 
+/** A form field holding JSON; anything unreadable is left for the schema to refuse. */
+function jsonField(value: FormDataEntryValue | null): unknown {
+  if (typeof value !== 'string') return undefined
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
+
 export async function POST(request: NextRequest) {
   const log = requestLog(request, 'POST /api/datasets')
 
@@ -27,9 +37,10 @@ export async function POST(request: NextRequest) {
     return failure(appError(ERROR_CODES.VALIDATION, 'File wajib dipilih'))
   }
 
-  // One `textColumns` entry per question. `textColumn` is the single-column
-  // form this endpoint took before questions existed, still honoured for a
-  // wizard that was loaded before the deploy.
+  // `columnModes` is the wizard's whole answer: every column and its mode, as
+  // one JSON field. The two older forms are still honoured for a wizard that
+  // was loaded before a deploy: one `textColumns` entry per question, and
+  // before that a single `textColumn`.
   const textColumns = form.getAll('textColumns').filter((v) => typeof v === 'string')
   const legacy = form.get('textColumn')
 
@@ -38,6 +49,8 @@ export async function POST(request: NextRequest) {
     source: form.get('source'),
     textColumns:
       textColumns.length === 0 && typeof legacy === 'string' ? [legacy] : textColumns,
+    columnModes: jsonField(form.get('columnModes')),
+    modeDetection: jsonField(form.get('modeDetection')),
     // Repeated form field, one entry per column the uploader chose to keep.
     // `getAll` returns [] when the field is absent, which is the safe default.
     keepColumns: form.getAll('keepColumns').filter((v) => typeof v === 'string'),
