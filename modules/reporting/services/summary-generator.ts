@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { readAll } from '@/lib/supabase/read-all'
 import {
   DEFAULT_SUMMARY_VERSION,
   createOpenAiAdapter,
@@ -35,6 +36,15 @@ export type GeneratedSummary = {
   summary: string
   insights: ReportInsight[]
   costMicroIdr: number
+}
+
+/** What the embedded select returns; the database types declare no relationships. */
+type SummaryRow = {
+  response_id: string
+  sentiment: string
+  topics: string[] | null
+  keywords: string[] | null
+  responses: { text?: string } | { text?: string }[] | null
 }
 
 type SampledRow = {
@@ -125,21 +135,31 @@ export async function generateReportSummary(
   const supabase = createAdminClient()
   const log = logger.child({ jobId: input.jobId })
 
-  const { data, error } = await supabase
-    .from('analysis_results')
-    .select('response_id, sentiment, topics, keywords, responses (text)')
-    .eq('job_id', input.jobId)
-    .eq('organization_id', input.organizationId)
+  // Paged: a single select stops at 1,000 rows, and a summary written from
+  // the first thousand would quote counts the charts below it contradict.
+  const { data, error } = await readAll<SummaryRow>(
+    (from, to) =>
+      supabase
+        .from('analysis_results')
+        .select('response_id, sentiment, topics, keywords, responses (text)')
+        .eq('job_id', input.jobId)
+        .eq('organization_id', input.organizationId)
+        .order('id', { ascending: true })
+        .range(from, to) as unknown as PromiseLike<{
+        data: SummaryRow[] | null
+        error: unknown
+      }>,
+  )
 
   if (error) {
     return err(appError(ERROR_CODES.INTERNAL, 'Hasil analisis tidak bisa dimuat'))
   }
-  if (!data || data.length === 0) {
+  if (data.length === 0) {
     return err(appError(ERROR_CODES.NOT_FOUND, 'Analisis ini belum punya hasil'))
   }
 
   const rows: SampledRow[] = data.map((row) => {
-    const joined = row.responses as { text?: string } | { text?: string }[] | null
+    const joined = row.responses
     const text = Array.isArray(joined) ? (joined[0]?.text ?? '') : (joined?.text ?? '')
     return {
       responseId: String(row.response_id),
@@ -154,7 +174,7 @@ export async function generateReportSummary(
   const adapter = input.adapter ?? createOpenAiAdapter()
   const promptVersion = input.promptVersion ?? DEFAULT_SUMMARY_VERSION
 
-  const result = await adapter.summarize({
+  const request = {
     promptVersion,
     data: {
       totalResponses: rows.length,
@@ -169,7 +189,25 @@ export async function generateReportSummary(
       })),
       sampleQuotes: quotes.map((quote) => truncate(quote.text)),
     },
-  })
+  }
+
+  let result = await adapter.summarize(request)
+
+  /**
+   * One more ask when the model's reply broke the output format. Measured on a
+   * two-question dataset: about one reply in a hundred fails the schema, and a
+   * job that hits it finishes with an empty summary. The same request again is
+   * a fresh draw — the failures were not repeatable. Only this kind of failure
+   * is retried: an unreachable provider has already been retried inside the
+   * adapter, and asking again would only hold the job open longer.
+   */
+  if (!result.ok && result.error.details?.malformedReply === true) {
+    log.warn('reporting.summary.retrying', {
+      reason: result.error.message,
+      ...result.error.details,
+    })
+    result = await adapter.summarize(request)
+  }
 
   if (!result.ok) return result
 

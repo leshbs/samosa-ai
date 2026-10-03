@@ -4,13 +4,20 @@ import {
   SENTIMENT_ORDER,
 } from '@/components/charts/palette'
 import { printableReport, truncateQuote } from '@/modules/reporting'
-import type { CountedTerm, ReportDocumentData } from '@/modules/reporting'
+import type {
+  CountedTerm,
+  PrintableSection,
+  ReportDocumentData,
+} from '@/modules/reporting'
 import type { SentimentDistribution } from '@/modules/reporting'
 
 /**
- * The report as a document: what "Unduh PDF" prints (pilot 01, §2.2). The
- * browser makes the PDF, so it is exactly this page, it costs the server
- * nothing, and there is no timeout left to hit.
+ * The report as a document: what "Cetak" prints (pilot 01, §2.2). The browser
+ * makes the paper, so it is exactly this page and it costs the server nothing.
+ *
+ * It is one of two paper layouts — components/reports/pdf/report-pdf.tsx draws
+ * the downloaded PDF. Both lay out a `printableReport()`, so they cannot
+ * disagree about what a report contains; a change to a section belongs in both.
  *
  * Plain HTML on purpose. No Recharts: a canvas or an animated SVG prints at
  * whatever frame it was on, and a bar that is a sized <div> prints exactly.
@@ -29,7 +36,6 @@ export function PrintDocument({
   quotes: Record<string, string>
 }) {
   const view = printableReport(data)
-  const total = data.sentiment.total
   const prepared = data.preparedBy?.name
     ? `Disiapkan oleh ${data.preparedBy.name}${data.preparedBy.title ? ` · ${data.preparedBy.title}` : ''}`
     : null
@@ -73,8 +79,7 @@ export function PrintDocument({
                     {data.datasetName}
                   </h1>
                   <p className="text-[9pt] text-muted-foreground">
-                    {respondentLine(total, data.noContent)} · {data.generatedAt} · prompt{' '}
-                    {data.promptVersion}
+                    {view.countLine} · {data.generatedAt} · prompt {data.promptVersion}
                   </p>
                 </div>
               </header>
@@ -115,55 +120,14 @@ export function PrintDocument({
                 ) : null}
               </Section>
 
-              <SentimentSection sentiment={data.sentiment} noContent={data.noContent} />
-
-              {view.topics.length > 0 ? (
-                <Section title="Topik teratas" keepTogether>
-                  <BarList terms={view.topics} total={total} />
-                </Section>
-              ) : null}
-
-              {view.tail.length > 0 ? (
-                <Section title={`Topik lainnya (${view.tail.length})`}>
-                  <p className="mb-2 text-muted-foreground">
-                    Topik di luar sepuluh besar, dengan jumlah aspirasi yang menyebutnya.
-                  </p>
-                  <ul className="columns-2 gap-6 text-[9pt]">
-                    {view.tail.map((term) => (
-                      <li key={term.term} className="flex justify-between gap-2">
-                        <span>{term.term}</span>
-                        <span className="tabular-nums">{term.count}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </Section>
-              ) : null}
-
-              {view.keywords.length > 0 ? (
-                <Section title="Kata kunci teratas" keepTogether>
-                  <BarList terms={view.keywords} total={total} />
-                </Section>
-              ) : null}
-
-              {view.quoted.length > 0 ? (
-                <Section title="Contoh aspirasi per topik">
-                  <div className="space-y-4">
-                    {view.quoted.map((group) => (
-                      <div key={group.topic} className="keep-together">
-                        <p className="mb-1 font-semibold">{group.topic}</p>
-                        {group.responses.map((response, index) => (
-                          <blockquote
-                            key={index}
-                            className="mb-1 border-l-2 pl-2 text-[9pt] text-muted-foreground"
-                          >
-                            {response.text} ({SENTIMENT_LABELS[response.sentiment]})
-                          </blockquote>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </Section>
-              ) : null}
+              {view.sections.map((section, index) => (
+                <QuestionSections
+                  key={index}
+                  section={section}
+                  position={index + 1}
+                  count={view.sections.length}
+                />
+              ))}
 
               {view.provenance ? (
                 <Section title="Asal data" keepTogether>
@@ -189,11 +153,98 @@ export function PrintDocument({
   )
 }
 
-/** "128 dari 140 responden memberikan aspirasi", or the plain count when unknown. */
-function respondentLine(analyzed: number, noContent: number | null): string {
-  return noContent
-    ? `${analyzed} dari ${analyzed + noContent} responden memberikan aspirasi`
-    : `${analyzed} aspirasi`
+/**
+ * Everything the report says about one question. With one question there is
+ * no heading over it, and the document reads as it did before questions
+ * existed; with several, each opens with what the respondent was asked.
+ */
+function QuestionSections({
+  section,
+  position,
+  count,
+}: {
+  section: PrintableSection
+  position: number
+  count: number
+}) {
+  const total = section.sentiment.total
+
+  return (
+    <>
+      {section.title ? (
+        // The rule and the eyebrow mark a new question, not a new chart; kept
+        // with the first chart so a question never ends a page as a bare title.
+        <header className="print-heading space-y-1 border-t pt-6">
+          <p className="font-mono text-[8pt] uppercase tracking-widest text-muted-foreground">
+            Pertanyaan {position} dari {count}
+          </p>
+          <h2 className="text-[15pt] font-semibold leading-snug">{section.title}</h2>
+          {section.countLine ? (
+            <p className="text-[9pt] text-muted-foreground">{section.countLine}</p>
+          ) : null}
+        </header>
+      ) : null}
+
+      {total === 0 ? (
+        <p className="text-muted-foreground">
+          Tidak ada aspirasi untuk pertanyaan ini: jawabannya kosong, “tidak ada”, atau
+          gagal dianalisis.
+        </p>
+      ) : (
+        <>
+          <SentimentSection sentiment={section.sentiment} noContent={section.noContent} />
+
+          {section.topics.length > 0 ? (
+            <Section title="Topik teratas" keepTogether>
+              <BarList terms={section.topics} total={total} />
+            </Section>
+          ) : null}
+
+          {section.tail.length > 0 ? (
+            <Section title={`Topik lainnya (${section.tail.length})`}>
+              <p className="mb-2 text-muted-foreground">
+                Topik di luar sepuluh besar, dengan jumlah aspirasi yang menyebutnya.
+              </p>
+              <ul className="columns-2 gap-6 text-[9pt]">
+                {section.tail.map((term) => (
+                  <li key={term.term} className="flex justify-between gap-2">
+                    <span>{term.term}</span>
+                    <span className="tabular-nums">{term.count}</span>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          ) : null}
+
+          {section.keywords.length > 0 ? (
+            <Section title="Kata kunci teratas" keepTogether>
+              <BarList terms={section.keywords} total={total} />
+            </Section>
+          ) : null}
+
+          {section.quoted.length > 0 ? (
+            <Section title="Contoh aspirasi per topik">
+              <div className="space-y-4">
+                {section.quoted.map((group) => (
+                  <div key={group.topic} className="keep-together">
+                    <p className="mb-1 font-semibold">{group.topic}</p>
+                    {group.responses.map((response, index) => (
+                      <blockquote
+                        key={index}
+                        className="mb-1 border-l-2 pl-2 text-[9pt] text-muted-foreground"
+                      >
+                        {response.text} ({SENTIMENT_LABELS[response.sentiment]})
+                      </blockquote>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </Section>
+          ) : null}
+        </>
+      )}
+    </>
+  )
 }
 
 function Section({

@@ -1,6 +1,6 @@
 import { listJobs } from '@/modules/analysis'
 import { listMembers, type SessionUser } from '@/modules/auth'
-import { listAllResponses, listDatasets } from '@/modules/ingestion'
+import { listAllResponses, listDatasets, listQuestions } from '@/modules/ingestion'
 import {
   archiveSlug,
   buildArchive,
@@ -59,7 +59,10 @@ export async function buildOrganizationArchive(
   const datasetFiles = new Map<string, string>()
 
   for (const dataset of datasets.value) {
-    const responses = await listAllResponses(session.organizationId, dataset.id)
+    const [responses, questions] = await Promise.all([
+      listAllResponses(session.organizationId, dataset.id),
+      listQuestions(session.organizationId, dataset.id),
+    ])
     if (!responses.ok) {
       return err(
         appError(ERROR_CODES.INTERNAL, `Dataset "${dataset.name}" tidak bisa dibaca`),
@@ -67,7 +70,17 @@ export async function buildOrganizationArchive(
     }
     const path = `datasets/${archiveSlug(dataset.name, 'dataset')}-${shortId(dataset.id)}.csv`
     datasetFiles.set(dataset.id, path)
-    entries.push({ path, content: exportDatasetToCsv(responses.value) })
+    entries.push({
+      path,
+      content: exportDatasetToCsv(
+        responses.value,
+        // Without the questions a row still exports; its question cell is empty.
+        (questions.ok ? questions.value : []).map((question) => ({
+          id: question.id,
+          text: question.questionText,
+        })),
+      ),
+    })
   }
 
   const reportFiles = new Map<string, { csv: string }>()
@@ -84,7 +97,7 @@ export async function buildOrganizationArchive(
 
     entries.push({
       path: `${stem}.csv`,
-      content: exportResponsesToCsv(bundle.value.rows),
+      content: exportResponsesToCsv(bundle.value.rows, bundle.value.questions),
     })
     reportFiles.set(job.id, { csv: `${stem}.csv` })
   }

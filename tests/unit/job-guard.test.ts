@@ -52,6 +52,15 @@ function builderFor(table: string, resolve: () => { data: unknown; error: unknow
       maybeSingle(table)
       return Promise.resolve(resolve())
     },
+    order: () => builder,
+    // The paged read of a dataset's responses. It fails here on purpose: a run
+    // that got past the guard must stop before it reaches the model.
+    range: () =>
+      Promise.resolve(
+        table === 'responses'
+          ? { data: null, error: { message: 'responses unavailable' } }
+          : resolve(),
+      ),
   }
   return builder
 }

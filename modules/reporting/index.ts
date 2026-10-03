@@ -4,6 +4,8 @@ export type { BuildReportInput } from './services/build-report'
 export { aggregateResults } from './aggregators/report-aggregator'
 export type { AggregateInput, ReportAggregate } from './aggregators/report-aggregator'
 export { buildDashboardData } from './aggregators/dashboard'
+export { groupByQuestion, UNKNOWN_QUESTION_TEXT } from './aggregators/sections'
+export type { QuestionSection, ReportQuestion } from './aggregators/sections'
 export type { DashboardData, DashboardOptions } from './aggregators/dashboard'
 export { buildHomeSummary, RECENT_LIMIT, TREND_POINTS } from './aggregators/home'
 export type {
@@ -37,16 +39,19 @@ export type {
   StoredSummary,
 } from './services/summary-generator'
 export { exportReportToCsv, exportResponsesToCsv } from './exporters/csv-exporter'
-export type { ExportableResponse } from './exporters/csv-exporter'
+export type { ExportableQuestion, ExportableResponse } from './exporters/csv-exporter'
 export {
   printableReport,
+  reportCountLine,
   reportFileStem,
   reportPdfPayload,
   truncateQuote,
 } from './exporters/report-document'
 export type {
   PrintableReport,
+  PrintableSection,
   ReportDocumentData,
+  ReportDocumentSection,
   ReportPdfPayload,
   ReportProvenance,
 } from './exporters/report-document'

@@ -4,7 +4,14 @@ import { createClient } from '@/lib/supabase/server'
 import { removeDatasetObject } from './dataset-storage'
 import { ERROR_CODES, appError, err, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
-import type { Dataset, DatasetSource, ResponseRecord } from '@/types/domain'
+import { readAll } from '@/lib/supabase/read-all'
+import type {
+  AnalysisMode,
+  Dataset,
+  DatasetQuestion,
+  DatasetSource,
+  ResponseRecord,
+} from '@/types/domain'
 
 /**
  * Reads go through the request-scoped client, so RLS keeps other tenants out
@@ -61,6 +68,16 @@ function keptColumnsOf(metadata: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === 'string')
 }
 
+/**
+ * Written at upload since questions existed. A dataset from before has one
+ * question, so every stored answer is its own respondent.
+ */
+function respondentCountOf(metadata: unknown, responseCount: number): number {
+  if (typeof metadata !== 'object' || metadata === null) return responseCount
+  const value = (metadata as Record<string, unknown>).respondent_count
+  return typeof value === 'number' && value >= 0 ? value : responseCount
+}
+
 function toDataset(row: DatasetRow): Dataset {
   return {
     id: row.id,
@@ -69,6 +86,7 @@ function toDataset(row: DatasetRow): Dataset {
     source: row.source,
     storagePath: row.storage_path,
     responseCount: row.response_count,
+    respondentCount: respondentCountOf(row.metadata, row.response_count),
     uploaderId: row.uploader_id,
     textColumnName: textColumnOf(row.metadata),
     keptColumns: keptColumnsOf(row.metadata),
@@ -154,6 +172,69 @@ export async function getDataset(
   return ok(toDataset(data as DatasetRow))
 }
 
+/**
+ * A dataset's questions in sheet order. Every dataset has at least one: the
+ * migration gave each old dataset the question its text column was.
+ */
+export async function listQuestions(
+  organizationId: string,
+  datasetId: string,
+): Promise<Result<DatasetQuestion[], AppError>> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('dataset_questions')
+    .select(
+      'id, dataset_id, column_name, question_text, analysis_mode, detected_mode, position',
+    )
+    .eq('dataset_id', datasetId)
+    .eq('organization_id', organizationId)
+    .order('position', { ascending: true })
+
+  if (error) {
+    return err(appError(ERROR_CODES.INTERNAL, 'Pertanyaan dataset tidak bisa dimuat'))
+  }
+
+  return ok(
+    (data ?? []).map((row) => ({
+      id: String(row.id),
+      datasetId: String(row.dataset_id),
+      columnName: String(row.column_name),
+      questionText: String(row.question_text),
+      analysisMode: row.analysis_mode as AnalysisMode,
+      detectedMode: (row.detected_mode ?? null) as AnalysisMode | null,
+      position: Number(row.position),
+    })),
+  )
+}
+
+const RESPONSE_COLUMNS =
+  'id, dataset_id, organization_id, question_id, respondent_index, text, respondent_meta, created_at'
+
+type ResponseRow = {
+  id: string
+  dataset_id: string
+  organization_id: string
+  question_id: string
+  respondent_index: number
+  text: string
+  respondent_meta: unknown
+  created_at: string
+}
+
+function toResponse(row: ResponseRow): ResponseRecord {
+  return {
+    id: String(row.id),
+    datasetId: String(row.dataset_id),
+    organizationId: String(row.organization_id),
+    questionId: String(row.question_id),
+    respondentIndex: Number(row.respondent_index),
+    text: String(row.text),
+    respondentMeta: (row.respondent_meta ?? {}) as ResponseRecord['respondentMeta'],
+    createdAt: String(row.created_at),
+  }
+}
+
 export type ResponsePage = {
   responses: ResponseRecord[]
   total: number
@@ -171,14 +252,15 @@ export async function listResponses(
   const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1
   const from = (safePage - 1) * RESPONSES_PAGE_SIZE
 
+  // Sheet order: one respondent's answers stay together, and the unique id
+  // last keeps a page boundary from repeating or skipping a row.
   const { data, error, count } = await supabase
     .from('responses')
-    .select('id, dataset_id, organization_id, text, respondent_meta, created_at', {
-      count: 'exact',
-    })
+    .select(RESPONSE_COLUMNS, { count: 'exact' })
     .eq('dataset_id', datasetId)
     .eq('organization_id', organizationId)
-    .order('created_at', { ascending: true })
+    .order('respondent_index', { ascending: true })
+    .order('id', { ascending: true })
     .range(from, from + RESPONSES_PAGE_SIZE - 1)
 
   if (error) {
@@ -188,14 +270,7 @@ export async function listResponses(
   const total = count ?? 0
 
   return ok({
-    responses: (data ?? []).map((row) => ({
-      id: String(row.id),
-      datasetId: String(row.dataset_id),
-      organizationId: String(row.organization_id),
-      text: String(row.text),
-      respondentMeta: (row.respondent_meta ?? {}) as ResponseRecord['respondentMeta'],
-      createdAt: String(row.created_at),
-    })),
+    responses: ((data ?? []) as ResponseRow[]).map(toResponse),
     total,
     page: safePage,
     pageCount: Math.max(1, Math.ceil(total / RESPONSES_PAGE_SIZE)),
@@ -250,11 +325,6 @@ export async function deleteDataset(
   return ok(undefined)
 }
 
-/** PostgREST's default ceiling on rows per response. */
-const EXPORT_PAGE_SIZE = 1000
-/** 4,000 characters × 50,000 rows is already a 200 MB archive; stop there. */
-const MAX_EXPORT_ROWS = 50_000
-
 /**
  * Every response in a dataset, for the organization archive. Paged, because a
  * single select stops silently at 1,000 rows and an export that quietly drops
@@ -265,32 +335,19 @@ export async function listAllResponses(
   datasetId: string,
 ): Promise<Result<ResponseRecord[], AppError>> {
   const supabase = await createClient()
-  const rows: ResponseRecord[] = []
 
-  for (let from = 0; from < MAX_EXPORT_ROWS; from += EXPORT_PAGE_SIZE) {
-    const { data, error } = await supabase
+  const { data, error } = await readAll<ResponseRow>((from, to) =>
+    supabase
       .from('responses')
-      .select('id, dataset_id, organization_id, text, respondent_meta, created_at')
+      .select(RESPONSE_COLUMNS)
       .eq('dataset_id', datasetId)
       .eq('organization_id', organizationId)
-      .order('created_at', { ascending: true })
+      .order('respondent_index', { ascending: true })
       .order('id', { ascending: true })
-      .range(from, from + EXPORT_PAGE_SIZE - 1)
+      .range(from, to),
+  )
 
-    if (error) return err(appError(ERROR_CODES.INTERNAL, 'Aspirasi tidak bisa dimuat'))
+  if (error) return err(appError(ERROR_CODES.INTERNAL, 'Aspirasi tidak bisa dimuat'))
 
-    for (const row of data ?? []) {
-      rows.push({
-        id: String(row.id),
-        datasetId: String(row.dataset_id),
-        organizationId: String(row.organization_id),
-        text: String(row.text),
-        respondentMeta: (row.respondent_meta ?? {}) as ResponseRecord['respondentMeta'],
-        createdAt: String(row.created_at),
-      })
-    }
-    if ((data ?? []).length < EXPORT_PAGE_SIZE) break
-  }
-
-  return ok(rows)
+  return ok(data.map(toResponse))
 }
