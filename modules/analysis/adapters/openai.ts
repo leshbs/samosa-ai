@@ -4,11 +4,11 @@ import OpenAI from 'openai'
 import { serverEnv } from '@/lib/env'
 import { ERROR_CODES, appError, err, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
-import { analysisPrompt, summaryPrompt } from '../prompts'
+import { analysisPrompt, summaryPrompt, type AnalysisPrompt } from '../prompts'
 import { estimateCostMicroIdr } from './pricing'
 import { MAX_ATTEMPTS, backoffDelayMs, isRetryableError, retryAfterMs } from './retry'
 import {
-  batchAnalysisSchema,
+  isNoContentItem,
   type BatchInput,
   type BatchOutput,
   type LlmAdapter,
@@ -125,7 +125,12 @@ function stripCodeFence(text: string): string {
     .trim()
 }
 
-function parseBatch(raw: string): Result<BatchOutput['items'], AppError> {
+type ParsedBatch = Pick<BatchOutput, 'items' | 'noContentIndexes'>
+
+function parseBatch(
+  raw: string,
+  schema: AnalysisPrompt['OUTPUT_SCHEMA'],
+): Result<ParsedBatch, AppError> {
   let parsed: unknown
   try {
     parsed = JSON.parse(stripCodeFence(raw))
@@ -141,7 +146,7 @@ function parseBatch(raw: string): Result<BatchOutput['items'], AppError> {
     )
   }
 
-  const result = batchAnalysisSchema.safeParse(parsed)
+  const result = schema.safeParse(parsed)
   if (!result.success) {
     return err(
       appError(
@@ -154,7 +159,13 @@ function parseBatch(raw: string): Result<BatchOutput['items'], AppError> {
     )
   }
 
-  return ok(result.data.items)
+  const items: BatchOutput['items'] = []
+  const noContentIndexes: number[] = []
+  for (const item of result.data.items) {
+    if (isNoContentItem(item)) noContentIndexes.push(item.index)
+    else items.push(item)
+  }
+  return ok({ items, noContentIndexes })
 }
 
 /** The narrative is prose, not a per-response table, so it needs far less room. */
@@ -193,8 +204,8 @@ export function createOpenAiAdapter(options: AdapterOptions = {}): LlmAdapter {
         return err(appError(ERROR_CODES.UPSTREAM, 'Penyedia AI membalas tanpa isi'))
       }
 
-      const items = parseBatch(content)
-      if (!items.ok) return items
+      const parsed = parseBatch(content, prompt.OUTPUT_SCHEMA)
+      if (!parsed.ok) return parsed
 
       const usage = {
         inputTokens: response.value.usage?.prompt_tokens ?? 0,
@@ -202,7 +213,7 @@ export function createOpenAiAdapter(options: AdapterOptions = {}): LlmAdapter {
       }
 
       return ok({
-        items: items.value,
+        ...parsed.value,
         modelId,
         usage,
         costMicroIdr: estimateCostMicroIdr(modelId, usage),

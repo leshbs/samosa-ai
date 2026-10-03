@@ -46,7 +46,11 @@ export {
   normalizeTopic,
 } from './postprocess/normalize'
 export { sanitizeResponseText } from './postprocess/sanitize'
-export { DEFAULT_PROMPT_VERSION, DEFAULT_SUMMARY_VERSION } from './prompts'
+export {
+  DEFAULT_PROMPT_VERSION,
+  DEFAULT_SUMMARY_VERSION,
+  separatesNoContent,
+} from './prompts'
 export type { SummaryPromptInput, NormalizedSummary } from './prompts'
 /** Exported so the reporting module can compose a summary call without owning an SDK. */
 export { createOpenAiAdapter } from './adapters/openai'
