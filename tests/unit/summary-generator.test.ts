@@ -283,6 +283,30 @@ describe('generateReportSummary', () => {
       }
     })
 
+    it('counts topics as the report does: through the merges the job recorded', async () => {
+      jobFromDb = {
+        ...jobFromDb,
+        topic_merges: {
+          prompt_version: 'merge.v1',
+          questions: {
+            q1: { kantin: 'makanan kantin' },
+            q2: { 'api unggun': 'outbound' },
+          },
+        },
+      }
+      rowsFromDb.data?.push(
+        row('r3', 'negative', ['makanan kantin'], 'Makanannya dingin.', 'q1'),
+      )
+      const { adapter, seen } = stubAdapter([{ evidence: [] }], true)
+
+      await generateReportSummary({ organizationId: 'org-1', jobId: 'job-1', adapter })
+
+      const [kritik, pilihan] = seen[0]?.data.questions ?? []
+      // Two labels, one topic, three answers: the number the chart shows.
+      expect(kritik?.top).toEqual([{ term: 'makanan kantin', count: 3 }])
+      expect(pilihan?.top).toEqual([{ term: 'outbound', count: 3 }])
+    })
+
     it('hands the model each question as the report draws it', async () => {
       const { adapter, seen } = stubAdapter([{ evidence: [] }], true)
 

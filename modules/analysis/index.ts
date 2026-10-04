@@ -47,6 +47,7 @@ export {
 } from './postprocess/normalize'
 export { sanitizeResponseText } from './postprocess/sanitize'
 export {
+  DEFAULT_MERGE_VERSION,
   DEFAULT_MODE_VERSION,
   DEFAULT_PROMPT_VERSION,
   DEFAULT_SUMMARY_VERSION,
@@ -74,6 +75,7 @@ export {
   questionNoContent,
   readQuestionCounts,
 } from './services/question-counts'
+export { applyTopicMerge, mergedLabels, readTopicMerges } from './services/topic-merge'
 export { detectModes, DETECTION_TIMEOUT_MS } from './services/mode-detection'
 export type { ModeDetection, ModeGuess } from './services/mode-detection'
 export { guessModeByRule } from './services/mode-rules'

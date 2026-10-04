@@ -242,7 +242,7 @@ describe('exportResponsesToCsv', () => {
     keywords: ['telat'],
   }
 
-  it('appends the question, the respondent and the mode, leaving the first five columns alone', () => {
+  it('appends the question, the respondent, the mode and the raw labels, leaving the first five columns alone', () => {
     const csv = exportResponsesToCsv(
       [
         { ...base, responseText: 'Konsumsi telat', questionId: 'q1', respondentIndex: 0 },
@@ -256,12 +256,27 @@ describe('exportResponsesToCsv', () => {
     const lines = csv.replace(/^﻿/, '').split('\n')
 
     expect(lines[0]).toBe(
-      'response,sentiment,sentiment_score,topics,keywords,question,respondent,mode',
+      'response,sentiment,sentiment_score,topics,keywords,question,respondent,mode,topics_raw',
     )
     expect(lines[1]).toBe(
-      'Konsumsi telat,negative,0.90,konsumsi,telat,Kritik,1,evaluative',
+      'Konsumsi telat,negative,0.90,konsumsi,telat,Kritik,1,evaluative,konsumsi',
     )
-    expect(lines[2]).toBe('Tambah vendor,negative,0.90,konsumsi,telat,Saran,1,')
+    expect(lines[2]).toBe('Tambah vendor,negative,0.90,konsumsi,telat,Saran,1,,konsumsi')
+  })
+
+  it('writes the topic the report counts, and beside it the labels the model gave', () => {
+    const csv = exportResponsesToCsv([
+      {
+        ...base,
+        responseText: 'Jadi lebih pede',
+        topics: ['kepercayaan diri'],
+        rawTopics: ['percaya diri', 'kepercayaan diri'],
+      },
+    ])
+
+    expect(csv.replace(/^\uFEFF/, '').split('\n')[1]).toBe(
+      'Jadi lebih pede,negative,0.90,kepercayaan diri,telat,,,,percaya diri; kepercayaan diri',
+    )
   })
 
   it('leaves sentiment and its score empty where none was judged', () => {
@@ -282,7 +297,7 @@ describe('exportResponsesToCsv', () => {
 
     // "null" in a spreadsheet cell would read as an answer.
     expect(csv.replace(/^\uFEFF/, '').split('\n')[1]).toBe(
-      'Outbond nya seru,,,outbound,,Kegiatan paling seru?,5,categorical',
+      'Outbond nya seru,,,outbound,,Kegiatan paling seru?,5,categorical,outbound',
     )
   })
 
@@ -290,7 +305,7 @@ describe('exportResponsesToCsv', () => {
     const csv = exportResponsesToCsv([{ ...base, responseText: 'Konsumsi telat' }])
 
     expect(csv.replace(/^﻿/, '').split('\n')[1]).toBe(
-      'Konsumsi telat,negative,0.90,konsumsi,telat,,,',
+      'Konsumsi telat,negative,0.90,konsumsi,telat,,,,konsumsi',
     )
   })
 })

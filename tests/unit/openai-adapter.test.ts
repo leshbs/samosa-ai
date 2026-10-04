@@ -340,6 +340,130 @@ describe('createOpenAiAdapter', () => {
     expect(sent?.content).toContain('isi="teks panjang"')
   })
 
+  const reply = (
+    body: unknown,
+    usage = { prompt_tokens: 400, completion_tokens: 60 },
+  ) => ({
+    choices: [{ message: { content: JSON.stringify(body) } }],
+    usage,
+  })
+
+  it('asks which topic labels might name one thing, sending the labels and the question', async () => {
+    create.mockResolvedValue(reply({ groups: [['kualitas audio', 'kualitas sound']] }))
+
+    const result = await createOpenAiAdapter(noWait).mergeTopics({
+      promptVersion: 'merge.v1',
+      question: 'Kritik dan saran',
+      topics: ['kualitas audio', 'kualitas sound', 'dekorasi'],
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.value.groups).toEqual([['kualitas audio', 'kualitas sound']])
+    expect(result.value.usage).toEqual({ inputTokens: 400, outputTokens: 60 })
+    expect(result.value.costMicroIdr).toBeGreaterThan(0)
+
+    const request = create.mock.calls[0]?.[0]
+    expect(request.temperature).toBe(0)
+    expect(request.response_format).toEqual({ type: 'json_object' })
+    const messages = request.messages as Array<{ role: string; content: string }>
+    // System, the example exchange, then the real list.
+    expect(messages.map((message) => message.role)).toEqual([
+      'system',
+      'user',
+      'assistant',
+      'user',
+    ])
+    expect(messages.at(-1)?.content).toContain('- kualitas sound')
+    expect(messages.at(-1)?.content).toContain('"Kritik dan saran"')
+  })
+
+  it('asks about each proposed pair on its own', async () => {
+    create.mockResolvedValue(
+      reply({
+        pairs: [
+          { a: 'kualitas audio', b: 'kualitas sound', same: true },
+          { a: 'tanggung jawab', b: 'komitmen', same: false },
+        ],
+      }),
+    )
+
+    const result = await createOpenAiAdapter(noWait).confirmMerges({
+      promptVersion: 'merge.v1',
+      question: 'Kritik dan saran',
+      pairs: [
+        ['kualitas audio', 'kualitas sound'],
+        ['tanggung jawab', 'komitmen'],
+      ],
+    })
+
+    expect(result.ok && result.value.verdicts.map((verdict) => verdict.same)).toEqual([
+      true,
+      false,
+    ])
+    const sent = (create.mock.calls[0]?.[0].messages as Array<{ content: string }>).at(-1)
+    expect(sent?.content).toContain('- "tanggung jawab" dan "komitmen"')
+  })
+
+  it.each([
+    ['mergeTopics', { groups: 'kualitas audio' }],
+    ['confirmMerges', { pairs: [{ a: 'x', b: 'y', same: 'ya' }] }],
+  ] as const)(
+    'marks a %s reply that broke its format as worth asking again',
+    async (method, body) => {
+      create.mockResolvedValue(reply(body))
+      const adapter = createOpenAiAdapter(noWait)
+
+      const result =
+        method === 'mergeTopics'
+          ? await adapter.mergeTopics({
+              promptVersion: 'merge.v1',
+              question: 'q',
+              topics: [],
+            })
+          : await adapter.confirmMerges({
+              promptVersion: 'merge.v1',
+              question: 'q',
+              pairs: [],
+            })
+
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.error.details).toMatchObject({ malformedReply: true })
+    },
+  )
+
+  it('fails a merge call the provider did not answer, without the malformed mark', async () => {
+    create.mockRejectedValue(apiError(401))
+
+    const result = await createOpenAiAdapter(noWait).mergeTopics({
+      promptVersion: 'merge.v1',
+      question: 'q',
+      topics: ['a', 'b'],
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.message).toBe('Kunci API OpenAI di server ditolak')
+    expect(result.error.details?.malformedReply).toBeUndefined()
+  })
+
+  it('fails a merge call that came back empty or as something that is not JSON', async () => {
+    const adapter = createOpenAiAdapter(noWait)
+    const ask = () =>
+      adapter.confirmMerges({ promptVersion: 'merge.v1', question: 'q', pairs: [] })
+
+    create.mockResolvedValueOnce({ choices: [{ message: { content: '' } }] })
+    const empty = await ask()
+    expect(!empty.ok && empty.error.message).toBe('Penyedia AI membalas tanpa isi')
+
+    create.mockResolvedValueOnce({
+      choices: [{ message: { content: 'maaf, tidak bisa' } }],
+    })
+    const prose = await ask()
+    expect(!prose.ok && prose.error.details).toMatchObject({ malformedReply: true })
+  })
+
   it('rejects an unknown prompt version instead of silently using another', async () => {
     await expect(
       createOpenAiAdapter(noWait).analyzeBatch({
