@@ -4,16 +4,18 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { readAll } from '@/lib/supabase/read-all'
 import {
   DEFAULT_SUMMARY_VERSION,
+  applyTopicMerge,
   createOpenAiAdapter,
   questionMode,
   questionNoContent,
   readQuestionCounts,
+  readTopicMerges,
   type LlmAdapter,
   type QuestionDigest,
 } from '@/modules/analysis'
 import { ERROR_CODES, appError, err, logger, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
-import type { QuestionMode, ReportInsight, Sentiment } from '@/types/domain'
+import type { QuestionMode, ReportInsight, Sentiment, TopicMerges } from '@/types/domain'
 import { aggregateKeywords } from '../aggregators/keywords'
 import { aggregateScale } from '../aggregators/scale'
 import { groupByQuestion, type ReportQuestion } from '../aggregators/sections'
@@ -154,29 +156,34 @@ type SummaryQuestion = ReportQuestion & { noContent: number | null }
 
 /**
  * The job's questions in sheet order, each with the mode the job read it with
- * and its count of non-answers. Empty when either read fails: the summary is
- * then written from one pool, which is what it was before questions existed.
+ * and its count of non-answers, and the topic labels the job counts as one.
+ * No questions when either read fails: the summary is then written from one
+ * pool, which is what it was before questions existed.
  */
 async function loadQuestions(
   organizationId: string,
   jobId: string,
-): Promise<SummaryQuestion[]> {
+): Promise<{ questions: SummaryQuestion[]; merges: TopicMerges }> {
   const supabase = createAdminClient()
 
-  const { data: job } = await supabase
+  // `*`: naming `topic_merges` would lose the whole row, and with it every
+  // question, on a database that has not had that migration.
+  const { data } = await supabase
     .from('analysis_jobs')
-    .select('dataset_id, prompt_version, no_content_count, question_counts')
+    .select('*')
     .eq('id', jobId)
     .eq('organization_id', organizationId)
     .maybeSingle()
-  if (!job) return []
+  if (!data) return { questions: [], merges: {} }
+  const job = data as Record<string, unknown>
+  const merges = readTopicMerges(job.topic_merges)
 
   const { data: questions } = await supabase
     .from('dataset_questions')
     .select('id, question_text, position')
-    .eq('dataset_id', job.dataset_id)
+    .eq('dataset_id', String(job.dataset_id))
     .order('position', { ascending: true })
-  if (!questions || questions.length === 0) return []
+  if (!questions || questions.length === 0) return { questions: [], merges }
 
   const counted = {
     promptVersion: String(job.prompt_version),
@@ -184,15 +191,18 @@ async function loadQuestions(
     questionCounts: readQuestionCounts(job.question_counts),
   }
 
-  return questions.map((row) => {
-    const id = String(row.id)
-    return {
-      id,
-      text: String(row.question_text),
-      mode: questionMode(counted, id) satisfies QuestionMode,
-      noContent: questionNoContent(counted, id, questions.length),
-    }
-  })
+  return {
+    merges,
+    questions: questions.map((row) => {
+      const id = String(row.id)
+      return {
+        id,
+        text: String(row.question_text),
+        mode: questionMode(counted, id) satisfies QuestionMode,
+        noContent: questionNoContent(counted, id, questions.length),
+      }
+    }),
+  }
 }
 
 function truncate(text: string): string {
@@ -265,19 +275,23 @@ export async function generateReportSummary(
     return err(appError(ERROR_CODES.NOT_FOUND, 'Analisis ini belum punya hasil'))
   }
 
+  const { questions, merges } = await loadQuestions(input.organizationId, input.jobId)
+
+  // Topics as the report counts them, so the summary quotes the same numbers
+  // the charts below it draw.
   const rows: SampledRow[] = data.map((row) => {
     const joined = Array.isArray(row.responses) ? row.responses[0] : row.responses
+    const questionId = String(joined?.question_id ?? '')
     return {
       responseId: String(row.response_id),
-      questionId: String(joined?.question_id ?? ''),
+      questionId,
       text: joined?.text ?? '',
       sentiment: (row.sentiment ?? null) as Sentiment | null,
-      topics: (row.topics ?? []) as string[],
+      topics: applyTopicMerge((row.topics ?? []) as string[], merges[questionId]),
       keywords: (row.keywords ?? []) as string[],
     }
   })
 
-  const questions = await loadQuestions(input.organizationId, input.jobId)
   const noContentOf = new Map(
     questions.map((question) => [question.id, question.noContent]),
   )

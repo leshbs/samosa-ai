@@ -122,6 +122,8 @@ function adapterAnswering(noContentIndexes: (texts: string[]) => number[]): LlmA
     name: 'stub',
     summarize: vi.fn(),
     classifyColumns: vi.fn(),
+    mergeTopics: vi.fn(),
+    confirmMerges: vi.fn(),
     analyzeBatch: vi.fn(async ({ texts }: { texts: string[] }) => {
       const empty = new Set(noContentIndexes(texts))
       return ok({

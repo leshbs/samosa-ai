@@ -5,6 +5,75 @@ Tambahkan baris baru lewat PR yang menciptakan utangnya, jangan belakangan.
 
 ## Terbuka
 
+### Penggabungan topik hanya menyatukan yang sama, bukan yang berkaitan
+
+`merge.v1` (ADR-0018) menggabung label yang menunjuk hal yang sama: ejaan,
+sinonim, kata pembungkus. Diukur di label pilot
+([catatan](research/topic-merge-01.md)): 7–13 label dilipat per pertanyaan, dan
+ekor label yang disebut sekali sebagian besar tetap (54 → 40–47 di pertanyaan
+kritik). "Kursi", "suhu" dan "ruangan" tidak menjadi "kenyamanan": itu tema,
+dan tahap kedua prompt menolaknya dengan sengaja.
+
+**Pemicu:** C.4 — ambang "≥3 sebutan" memberi 5, 7 atau 8 topik di data yang
+sama, karena satu keluhan masih tersebar di label yang berkaitan. **Bayar
+dengan:** tingkat tema di atas topik (satu panggilan lagi yang memberi tiap
+topik satu tema dari daftar pendek), diputuskan saat C.4 dirancang.
+
+### Gabungan topik tidak identik antar jalan, dan tidak bisa dikoreksi
+
+Dua kali jalan atas daftar label yang sama memberi inti gabungan yang sama dan
+pinggiran yang berbeda (6 pasangan per pertanyaan muncul di tiga dari tiga
+jalan, 2–5 di dua, 2 di satu). Dari 20 gabungan di satu jalan, satu kemungkinan
+salah. Laporan menampilkan daftar gabungannya, tetapi pembaca tidak bisa
+membatalkan satu gabungan atau menambah satu.
+
+**Pemicu:** panitia yang menunjuk gabungan yang salah di laporannya, atau E.1
+yang memberi label manusia untuk pasangan. **Bayar dengan:** tombol "pisahkan"
+di daftar gabungan yang menulis ke `topic_merges` (kolomnya sudah berupa
+lapisan, jadi ini hanya UI dan satu endpoint); ukur presisi di E.1.
+
+### Laporan lama tidak punya gabungan topik
+
+`topic_merges` diisi saat job selesai. Job sebelum ADR-0018 berisi `{}` dan
+laporannya tampil dengan label apa adanya, sampai analisisnya dijalankan ulang.
+
+**Pemicu:** permintaan merapikan laporan lama tanpa membayar analisis ulang.
+**Bayar dengan:** aksi "gabungkan topik" yang hanya menjalankan `mergeJobTopics`
+atas hasil tersimpan, lalu menulis ulang ringkasan.
+
+### Paling banyak 300 label per pertanyaan yang ikut digabung
+
+Daftar label dikirim dalam satu panggilan, dari yang paling sering disebut,
+dipotong di 300 (`MAX_MERGE_TOPICS`). Angka itu pengaman, bukan hasil ukur:
+daftar terbesar yang diuji 105 label. Di dataset 5.000 jawaban, label yang
+disebut sekali di luar 300 teratas tidak akan digabung ke mana pun.
+
+**Pemicu:** dataset pertama dengan lebih dari 300 label di satu pertanyaan
+(terlihat dari "N dari M" di judul grafik topik). **Bayar dengan:** panggilan
+kedua yang mencocokkan sisa label ke nama-nama kelompok yang sudah ada.
+
+### `GET /api/reports/[id]` tidak membaca gabungan topik
+
+Endpoint JSON lama (`buildReport`) membaca `analysis_results` langsung,
+menggabung semua pertanyaan dalam satu daftar topik, dan tidak menerapkan
+`topic_merges`. Tidak ada halaman yang memanggilnya: laporan, cetak, PDF dan CSV
+semuanya lewat `listJobResults`.
+
+**Pemicu:** ada yang memakai endpoint itu, atau pembersihan API. **Bayar
+dengan:** hapus endpoint dan `build-report.ts`, atau arahkan ke
+`loadReportExport`.
+
+### Migrasi `topic_merges` harus ditempel sebelum PR-nya di-merge
+
+`20261007000100_topic_merges.sql` menambah satu kolom jsonb ke `analysis_jobs`.
+Idempoten. Kode lama mengabaikannya; kode baru menulisnya dalam pernyataan
+sendiri, jadi tanpa kolom itu job tetap selesai tetapi laporannya tidak punya
+gabungan. `scripts/check-rls.mjs` memeriksanya dan menyebut nama filenya kalau
+belum ada.
+
+**Pemicu:** merge PR C.5. **Bayar dengan:** tempel di SQL Editor, jalankan
+`node --env-file=.env.local scripts/check-rls.mjs`.
+
 ### ~~v3 memberi label `negative` pada "tidak ada" yang ejaannya tidak baku~~ — lunas 2026-10-04
 
 Diukur di dataset pilot ([perbandingan prompt](research/prompt-comparison-01.md)

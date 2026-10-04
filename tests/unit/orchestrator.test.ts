@@ -26,6 +26,8 @@ function stubAdapter(overrides: Partial<LlmAdapter> = {}): LlmAdapter {
       }),
     ),
     classifyColumns: vi.fn(),
+    mergeTopics: vi.fn(),
+    confirmMerges: vi.fn(),
     analyzeBatch: vi.fn(async ({ texts }) =>
       ok({
         items: texts.map((_: string, index: number) => ({

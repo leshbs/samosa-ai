@@ -8,7 +8,13 @@ import {
   type AppError,
   type Result,
 } from '@/modules/shared'
-import type { BatchInput, BatchOutput } from '@/modules/analysis/adapters/types'
+import type {
+  BatchInput,
+  BatchOutput,
+  ConfirmInput,
+  MergeInput,
+  MergeOutput,
+} from '@/modules/analysis/adapters/types'
 
 /**
  * Every way a claimed job can end, and what the job row says afterwards.
@@ -107,11 +113,30 @@ function analyzed(input: BatchInput): Result<BatchOutput, AppError> {
 
 const analyzeBatch = vi.fn(async (input: BatchInput) => analyzed(input))
 
+const MERGE_SPENT = {
+  modelId: 'stub-model',
+  usage: { inputTokens: 30, outputTokens: 5 },
+  costMicroIdr: 90,
+}
+/** Proposes every label of a question as one group; confirms every pair. */
+const mergeTopics = vi.fn(
+  async (input: MergeInput): Promise<Result<MergeOutput, AppError>> =>
+    ok({ groups: [[...input.topics]], ...MERGE_SPENT }),
+)
+const confirmMerges = vi.fn(async (input: ConfirmInput) =>
+  ok({
+    verdicts: input.pairs.map(([a, b]) => ({ a, b, same: true })),
+    ...MERGE_SPENT,
+  }),
+)
+
 vi.mock('@/modules/analysis/adapters/openai', () => ({
   createOpenAiAdapter: () => ({
     name: 'stub',
     summarize: vi.fn(),
     classifyColumns: vi.fn(),
+    mergeTopics,
+    confirmMerges,
     analyzeBatch,
   }),
 }))
@@ -135,6 +160,8 @@ beforeEach(() => {
   inserted = null
   analyzeBatch.mockReset()
   analyzeBatch.mockImplementation(async (input: BatchInput) => analyzed(input))
+  mergeTopics.mockClear()
+  confirmMerges.mockClear()
 })
 
 describe('runJob, when everything works', () => {
@@ -353,6 +380,115 @@ describe('runJob, when the database fails after the model answered', () => {
     expect(result.ok).toBe(true)
     expect(onResultsReady).toHaveBeenCalledWith({ organizationId: 'org-1' })
     expect(lastUpdate().status).toBe('succeeded')
+  })
+})
+
+describe('runJob, merging topic labels', () => {
+  /** The first question's two answers get two labels for one thing. */
+  const twoSpellings = async (input: BatchInput) => {
+    const reply = analyzed(input)
+    if (reply.ok && input.mode === 'evaluative') {
+      reply.value.items.forEach((item, index) => {
+        item.topics = [index === 0 ? 'konsumsi' : 'makanan']
+      })
+    }
+    return reply
+  }
+  const merges = () => jobUpdates.find((values) => 'topic_merges' in values)
+
+  it('asks nothing when every question has one label', async () => {
+    await runJob('job-1')
+
+    expect(mergeTopics).not.toHaveBeenCalled()
+    expect(merges()).toBeUndefined()
+  })
+
+  it('records which labels are counted as one, and leaves the stored results alone', async () => {
+    analyzeBatch.mockImplementation(twoSpellings)
+
+    const result = await runJob('job-1')
+
+    expect(result.ok).toBe(true)
+    // What the model said about each answer is stored as it said it.
+    expect(inserted?.map((row) => row.topics)).toEqual([
+      ['konsumsi'],
+      ['makanan'],
+      ['konsumsi'],
+    ])
+    expect(merges()).toEqual({
+      topic_merges: {
+        prompt_version: 'merge.v1',
+        questions: { 'q-kritik': { makanan: 'konsumsi' } },
+      },
+    })
+    expect(mergeTopics).toHaveBeenCalledTimes(1)
+    expect(mergeTopics.mock.calls[0]?.[0]).toMatchObject({
+      question: 'Kritik dan saran',
+      topics: ['konsumsi', 'makanan'],
+    })
+  })
+
+  it('records the merges before the summary is written', async () => {
+    analyzeBatch.mockImplementation(twoSpellings)
+    let recordedByThen = false
+
+    await runJob('job-1', {
+      onResultsReady: async () => {
+        recordedByThen = merges() !== undefined
+      },
+    })
+
+    // The summary quotes topic counts, and must quote the merged ones.
+    expect(recordedByThen).toBe(true)
+  })
+
+  it('adds what the two merge calls cost to the job', async () => {
+    analyzeBatch.mockImplementation(twoSpellings)
+
+    await runJob('job-1')
+
+    expect(lastUpdate()).toMatchObject({
+      status: 'succeeded',
+      input_tokens: 200 + 60,
+      output_tokens: 80 + 10,
+      cost_micro_idr: 1_400 + 180,
+    })
+  })
+
+  it('finishes the job when the merge fails: unmerged topics are not a failed analysis', async () => {
+    analyzeBatch.mockImplementation(twoSpellings)
+    mergeTopics.mockResolvedValueOnce(err(appError(ERROR_CODES.UPSTREAM, 'down')))
+
+    const result = await runJob('job-1')
+
+    expect(result).toEqual({ ok: true, value: { analyzed: 3 } })
+    expect(merges()).toBeUndefined()
+    expect(lastUpdate()).toMatchObject({ status: 'succeeded', cost_micro_idr: 1_400 })
+  })
+
+  it('finishes the job when the merge call throws', async () => {
+    analyzeBatch.mockImplementation(twoSpellings)
+    mergeTopics.mockRejectedValueOnce(new TypeError('fetch failed'))
+
+    const result = await runJob('job-1')
+
+    expect(result.ok).toBe(true)
+    expect(statuses()).toEqual(['running', 'succeeded'])
+  })
+
+  it('finishes the job on a database that has no column for the merges', async () => {
+    analyzeBatch.mockImplementation(twoSpellings)
+    // Its own statement, so refusing it refuses nothing else.
+    db.update = (values) =>
+      'topic_merges' in values ? { code: 'PGRST204', message: 'no such column' } : null
+    const onResultsReady = vi.fn(async () => undefined)
+
+    const result = await runJob('job-1', { onResultsReady })
+
+    expect(result.ok).toBe(true)
+    expect(onResultsReady).toHaveBeenCalled()
+    expect(lastUpdate()).toMatchObject({ status: 'succeeded', processed_count: 3 })
+    expect('topic_merges' in lastUpdate()).toBe(false)
   })
 })
 

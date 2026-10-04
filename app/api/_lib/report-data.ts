@@ -2,6 +2,7 @@ import {
   formatIdr,
   getJob,
   listJobResults,
+  mergedLabels,
   questionMode,
   questionNoContent,
   separatesNoContent,
@@ -183,6 +184,7 @@ export async function loadReportExport(
         topics.slice(0, TOPICS_WITH_QUOTES),
       ),
       topicTail: allTopics.slice(TOPICS_IN_EXPORT),
+      mergedTopics: mergedLabels(job.value.topicMerges[section.question.id]),
     }
   })
 

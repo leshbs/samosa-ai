@@ -12,6 +12,7 @@ import {
   type Sentiment,
 } from '@/types/domain'
 import { readQuestionCounts } from './question-counts'
+import { applyTopicMerge, readTopicMerges } from './topic-merge'
 
 /**
  * Reads go through the request-scoped client, so RLS keeps other tenants out.
@@ -44,6 +45,7 @@ function toJob(row: JobRow): AnalysisJob {
     failedCount: Number(row.failed_count ?? 0),
     noContentCount: Number(row.no_content_count ?? 0),
     questionCounts: readQuestionCounts(row.question_counts),
+    topicMerges: readTopicMerges(row.topic_merges),
     inputTokens: Number(row.input_tokens ?? 0),
     outputTokens: Number(row.output_tokens ?? 0),
     costMicroIdr: Number(row.cost_micro_idr ?? 0),
@@ -148,8 +150,14 @@ export type AnalysisResultRow = {
   /** Null unless the question was read as `evaluative`. */
   sentiment: Sentiment | null
   confidence: number | null
-  /** Topics, or for a `categorical` or `scale` question the value(s) given. */
+  /**
+   * Topics, or for a `categorical` or `scale` question the value(s) given.
+   * Read through the job's topic merges: labels the job counts as one topic
+   * arrive here as that topic, so every count, filter and export agrees.
+   */
   topics: string[]
+  /** The labels as the model gave them, before any merge. */
+  rawTopics: string[]
   keywords: string[]
   summary: string | null
 }
@@ -183,7 +191,54 @@ export async function listJobResults(
 ): Promise<Result<AnalysisResultRow[], AppError>> {
   const supabase = await createClient()
 
-  const { data, error } = await readAll<ResultRow>(
+  // Both at once. `*` for the same reason as JOB_COLUMNS: naming the column
+  // would fail the read on a database that has not had its migration, and a
+  // report without merges is better than no report.
+  const [{ data, error }, { data: job }] = await Promise.all([
+    readResults(supabase, organizationId, jobId),
+    supabase
+      .from('analysis_jobs')
+      .select(JOB_COLUMNS)
+      .eq('id', jobId)
+      .eq('organization_id', organizationId)
+      .maybeSingle(),
+  ])
+
+  if (error)
+    return err(appError(ERROR_CODES.INTERNAL, 'Hasil analisis tidak bisa dimuat'))
+
+  const merges = readTopicMerges((job as JobRow | null)?.topic_merges)
+
+  const rows = data.map((row) => {
+    const joined = Array.isArray(row.responses) ? row.responses[0] : row.responses
+    const questionId = String(joined?.question_id ?? '')
+    const rawTopics = (row.topics ?? []) as string[]
+    return {
+      responseId: String(row.response_id),
+      questionId,
+      respondentIndex: Number(joined?.respondent_index ?? 0),
+      responseText: String(joined?.text ?? ''),
+      sentiment: (row.sentiment ?? null) as Sentiment | null,
+      confidence:
+        row.sentiment_confidence === null ? null : Number(row.sentiment_confidence),
+      topics: applyTopicMerge(rawTopics, merges[questionId]),
+      rawTopics,
+      keywords: (row.keywords ?? []) as string[],
+      summary: row.summary ? String(row.summary) : null,
+    }
+  })
+
+  // Sheet order, so "urutan dataset" in the explorer means the order of the
+  // file and one respondent's answers sit together.
+  return ok(rows.sort((a, b) => a.respondentIndex - b.respondentIndex))
+}
+
+function readResults(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  organizationId: string,
+  jobId: string,
+) {
+  return readAll<ResultRow>(
     (from, to) =>
       supabase
         .from('analysis_results')
@@ -200,29 +255,6 @@ export async function listJobResults(
         error: unknown
       }>,
   )
-
-  if (error)
-    return err(appError(ERROR_CODES.INTERNAL, 'Hasil analisis tidak bisa dimuat'))
-
-  const rows = data.map((row) => {
-    const joined = Array.isArray(row.responses) ? row.responses[0] : row.responses
-    return {
-      responseId: String(row.response_id),
-      questionId: String(joined?.question_id ?? ''),
-      respondentIndex: Number(joined?.respondent_index ?? 0),
-      responseText: String(joined?.text ?? ''),
-      sentiment: (row.sentiment ?? null) as Sentiment | null,
-      confidence:
-        row.sentiment_confidence === null ? null : Number(row.sentiment_confidence),
-      topics: (row.topics ?? []) as string[],
-      keywords: (row.keywords ?? []) as string[],
-      summary: row.summary ? String(row.summary) : null,
-    }
-  })
-
-  // Sheet order, so "urutan dataset" in the explorer means the order of the
-  // file and one respondent's answers sit together.
-  return ok(rows.sort((a, b) => a.respondentIndex - b.respondentIndex))
 }
 
 /** Latest job for a dataset, so the detail page can link straight to it. */

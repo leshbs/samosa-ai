@@ -225,6 +225,11 @@ function QuestionSections({
           {section.topics.length > 0 ? (
             <Section title={section.termsTitle} keepTogether>
               <BarList terms={section.topics} total={total} />
+              {section.mergeNote ? (
+                <p className="mt-2 text-[9pt] text-muted-foreground">
+                  {section.mergeNote}
+                </p>
+              ) : null}
             </Section>
           ) : null}
 
