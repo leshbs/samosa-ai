@@ -21,4 +21,5 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
-      - run: pnpm test:run
+      # Tests and the coverage gate in one run (ADR-0017).
+      - run: pnpm test:coverage

@@ -123,7 +123,7 @@ pnpm check                      # Runs typecheck + lint + format:check
 pnpm test                       # Vitest watch mode
 pnpm test:run                   # Vitest single run
 pnpm test:e2e                   # Playwright E2E
-pnpm test:coverage              # Coverage report
+pnpm test:coverage              # Tes + gerbang coverage (yang dijalankan CI)
 
 # ─── Database ──────────────────────────────
 pnpm db:migrate:new <name>      # Create new migration
@@ -441,7 +441,7 @@ Semua tabel wajib punya **RLS policy** yang scope ke `organization_id`.
 
 ### Testing standards
 
-- Setiap function di `modules/*/services/` wajib punya unit test — target **80% coverage**
+- Setiap function di `modules/*/services/` wajib punya unit test. Gerbangnya **80% coverage** atas `modules/` dan `lib/`, dijalankan CI; file job (`job-runner`, `job-queries`, `orchestrator`, `stuck-job-sweeper`) punya lantai 90% ([ADR-0017](adr/0017-coverage-gate.md))
 - Setiap API route punya integration test dengan mocked services
 - Critical user flows punya E2E test — upload → analyze → view report
 - LLM adapters di-mock di unit tests; ada satu **golden test** dengan real API (dijalankan manual sebelum release)
