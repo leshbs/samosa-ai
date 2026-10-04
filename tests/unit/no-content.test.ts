@@ -57,6 +57,50 @@ describe('isNonAnswer', () => {
     expect(isNonAnswer('tidak ada sound system yang jelas')).toBe(false)
     expect(isNonAnswer('belum ada jadwal pasti')).toBe(false)
   })
+
+  it('lets go of a final letter held down', () => {
+    // On the pilot data analysis.v3 called the first of these `negative`.
+    for (const text of ['Tidak adaa', 'tidakkk adaaa', 'gaaa', 'nooo', 'ga adaa.']) {
+      expect(isNonAnswer(text), text).toBe(true)
+    }
+    // Only at the end of a word: "gaada" keeps its double letter and still
+    // matches, and a doubled letter inside a word is not touched.
+    expect(isNonAnswer('gaada')).toBe(true)
+    expect(isNonAnswer('saat')).toBe(false)
+  })
+
+  it('looks past a lead-in or a closing particle around a non-answer', () => {
+    const softened = [
+      'Sejauh ini tidak ada',
+      'Jujur, tidak ada',
+      'Tidak ada sih',
+      'untuk saat ini belum ada',
+      'sementara ini ga ada kak',
+      'mungkin tidak ada ya hehe',
+      'kayaknya gaada deh',
+    ]
+    for (const text of softened) expect(isNonAnswer(text), text).toBe(true)
+  })
+
+  it('still leaves anything with content after the softening to the model', () => {
+    const kept = [
+      'sejauh ini sudah bagus',
+      'tidak ada sih, cuma AC-nya panas',
+      'jujur kurang seru',
+      'tidak ada, terima kasih panitia',
+      'sejauh ini aman',
+      // The softening words alone are not a non-answer either.
+      'sih',
+      'mungkin',
+      'sejauh ini',
+    ]
+    for (const text of kept) expect(isNonAnswer(text), text).toBe(false)
+  })
+
+  it('does not apply the softening where "tidak" is itself an answer', () => {
+    expect(isNonAnswer('tidak sih', 'categorical')).toBe(false)
+    expect(isNonAnswer('tidak adaa', 'categorical')).toBe(false)
+  })
 })
 
 describe('planBatches with non-answers', () => {

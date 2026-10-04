@@ -5,6 +5,52 @@ Tambahkan baris baru lewat PR yang menciptakan utangnya, jangan belakangan.
 
 ## Terbuka
 
+### ~~v3 memberi label `negative` pada "tidak ada" yang ejaannya tidak baku~~ — lunas 2026-10-04
+
+Diukur di dataset pilot ([perbandingan prompt](research/prompt-comparison-01.md)
+§4): dua non-jawaban — huruf akhir diulang, dan kata pengantar di depan "tidak
+ada" — lolos dari kamus, diberi `no_content` oleh `analysis.v2`, dan `negative`
+oleh `analysis.v3`. Di laporan, "tidak ada kritik" terhitung sebagai kritik.
+
+Dibayar di kamus, bukan di prompt: huruf akhir yang ditahan dilepas ("adaa" →
+"ada"), dan kata pengantar serta partikel penutup dari daftar tertutup dibuang
+dari ujung jawaban sebelum dicocokkan ("sejauh ini tidak ada", "tidak ada sih").
+Sisanya tetap harus cocok persis. Di 456 jawaban pilot, kamus menangkap empat
+jawaban lagi, keempatnya non-jawaban, dan tidak kehilangan satu pun.
+
+Yang tersisa: laporan yang sudah tersimpan tidak berubah sampai analisisnya
+dijalankan ulang. Dan model masih bisa memberi label `negative` pada varian yang
+tidak ada di daftar — kalau itu terukur lagi, perbaikannya di prompt
+(`analysis.v4`).
+
+### Usulan dan permintaan tidak punya tempat di sumbu sentimen
+
+Di pertanyaan "kritik dan saran", jawaban yang goyah labelnya antara dua kali
+jalan semuanya usulan atau permintaan (14 dari 14 di `analysis.v2`).
+`analysis.v3` menstabilkannya dengan aturan (permintaan yang menunjuk kekurangan
+→ negatif, usulan hal baru → netral), tapi "minta lebih banyak X" masih jatuh
+ke positif atau netral tanpa pola. Akar masalahnya di skema, bukan di prompt:
+usulan bukan pujian dan bukan keluhan
+([perbandingan prompt](research/prompt-comparison-01.md) §2).
+
+**Pemicu:** E.1 — anotator manusia akan menghadapi pertanyaan yang sama, dan
+jawabannya menentukan skema. **Bayar dengan:** label keempat ("usulan") di mode
+`evaluative`, atau field terpisah `is_suggestion`; keduanya `analysis.v4` dan
+perubahan di laporan.
+
+### Selisih kecil antar laporan adalah derau, dan laporan tidak mengatakannya
+
+Dua kali jalan `analysis.v3` atas data yang sama berbeda di 3–6% label sentimen
+pertanyaan `evaluative`; porsi positif bergeser 44–48%
+([perbandingan prompt](research/prompt-comparison-01.md) §2). Laporan
+menampilkan satu angka tanpa rentang, dan menjalankan ulang analisis bisa
+menggeser angka itu tanpa ada data yang berubah.
+
+**Pemicu:** pengguna pertama yang menjalankan ulang dan bertanya kenapa angkanya
+beda, atau fitur perbandingan antar periode. **Bayar dengan:** catatan di
+halaman metodologi laporan; untuk perbandingan antar periode, ambang "berbeda
+nyata" di atas 3 poin.
+
 ### `app/api/_lib` di luar gerbang coverage
 
 Gerbang 80% ([ADR-0017](adr/0017-coverage-gate.md)) hanya mengukur `modules/`
