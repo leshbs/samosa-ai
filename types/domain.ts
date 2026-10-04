@@ -249,6 +249,11 @@ export type AnalysisJob = {
    * before questions existed: their one question reads the job's own counters.
    */
   questionCounts: Record<string, QuestionCounts>
+  /**
+   * Topic labels this job counts as one topic, by question id. Empty for a job
+   * from before merging, and for one whose topics needed none.
+   */
+  topicMerges: TopicMerges
   inputTokens: number
   outputTokens: number
   /** Estimated spend in millionths of IDR; integer to avoid float drift. */
@@ -262,6 +267,15 @@ export type AnalysisJob = {
   archivedAt: string | null
   createdAt: string
 }
+
+/**
+ * For one question: a topic label, and the label it is counted as. Labels are
+ * lowercase. A label that is counted as itself has no entry.
+ */
+export type TopicMerge = Record<string, string>
+
+/** By question id. */
+export type TopicMerges = Record<string, TopicMerge>
 
 /** What happened to one question's answers in one job. */
 export type QuestionCounts = {

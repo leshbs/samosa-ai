@@ -64,6 +64,8 @@ export type ReportDocumentSection = {
   topResponsesByTopic: TopicQuotes[]
   /** Topics past the top ten, printed only when the tail is switched on. */
   topicTail?: CountedTerm[]
+  /** Topic labels the job counts as one topic, by the topic they are read as. */
+  mergedTopics?: ReadonlyArray<{ term: string; from: readonly string[] }>
   /** Only for a `scale` question. */
   scale?: ScaleSummary | null
 }
@@ -81,6 +83,24 @@ export type ReportProvenance = {
   /** "Rani Putri · Sekretaris OSIS 2026/2027", or null when not recorded. */
   runBy: string | null
   cost: string | null
+}
+
+/**
+ * "kepercayaan diri mencakup percaya diri; kualitas audio mencakup kualitas
+ * mic, kualitas sound." Only for topics the page prints: a merge inside a
+ * topic that is not on the page explains no number on it.
+ */
+function mergeNote(
+  merged: ReadonlyArray<{ term: string; from: readonly string[] }>,
+  printed: readonly CountedTerm[],
+): string | null {
+  const shown = new Set(printed.map((topic) => topic.term))
+  const groups = merged.filter((group) => shown.has(group.term))
+  if (groups.length === 0) return null
+
+  return `Label yang menunjuk hal yang sama dihitung sebagai satu topik: ${groups
+    .map((group) => `${group.term} mencakup ${group.from.join(', ')}`)
+    .join('; ')}.`
 }
 
 /** Bounded output: a 50-topic report is unreadable long before it is slow. */
@@ -110,6 +130,12 @@ export type PrintableSection = {
   keywords: CountedTerm[]
   quoted: TopicQuotes[]
   tail: CountedTerm[]
+  /**
+   * Which of the printed topics count more than one label, as one sentence;
+   * null when none does. A bar that adds two labels together says so on paper
+   * too (ADR-0018).
+   */
+  mergeNote: string | null
   /** Only for a `scale` question: its bars are `scale.values`, not `topics`. */
   scale: ScaleSummary | null
   /**
@@ -263,6 +289,11 @@ export function printableReport(data: ReportDocumentData): PrintableReport {
     })),
     sections: data.sections.map((section) => {
       const prose = section.mode === 'evaluative' || section.mode === 'thematic'
+      const tail =
+        section.mode !== 'scale' && preferences.includeTopicTail
+          ? (section.topicTail ?? [])
+          : []
+      const topics = section.mode === 'scale' ? [] : section.topics.slice(0, MAX_TOPICS)
       return {
         title: many ? section.questionText : null,
         countLine: many
@@ -273,7 +304,10 @@ export function printableReport(data: ReportDocumentData): PrintableReport {
         sentiment: section.sentiment,
         noContent: section.noContent,
         termsTitle: TERMS_TITLES[section.mode],
-        topics: section.mode === 'scale' ? [] : section.topics.slice(0, MAX_TOPICS),
+        topics,
+        mergeNote: prose
+          ? mergeNote(section.mergedTopics ?? [], [...topics, ...tail])
+          : null,
         // A choice or a number has no keywords and nothing to quote: the
         // answer is the value already counted above.
         keywords: prose ? section.keywords.slice(0, MAX_KEYWORDS) : [],
@@ -289,10 +323,7 @@ export function printableReport(data: ReportDocumentData): PrintableReport {
                   })),
               }))
             : [],
-        tail:
-          section.mode !== 'scale' && preferences.includeTopicTail
-            ? (section.topicTail ?? [])
-            : [],
+        tail,
         scale: section.mode === 'scale' ? (section.scale ?? null) : null,
         scaleLine:
           section.mode === 'scale' && section.scale ? scaleLine(section.scale) : null,

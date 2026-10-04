@@ -86,6 +86,62 @@ describe('QuestionCharts', () => {
     ).toBeTruthy()
   })
 
+  it('lists the labels a question counts together with another topic', () => {
+    const merged = [
+      { term: 'kepercayaan diri', from: ['pede', 'percaya diri'] },
+      { term: 'disiplin', from: ['kedisiplinan'] },
+    ]
+    for (const mode of ['evaluative', 'thematic'] as const) {
+      const { container, unmount } = render(
+        <MotionProvider>
+          <ExplorerFocusProvider>
+            <QuestionCharts
+              data={buildDashboardData([row('kepercayaan diri', 'positive')])}
+              mode={mode}
+              merged={merged}
+            />
+          </ExplorerFocusProvider>
+        </MotionProvider>,
+      )
+
+      // Three labels, counted under two topics; each named beside its topic.
+      expect(
+        screen.getByText('Lihat 3 label yang dihitung bersama topik lain'),
+      ).toBeTruthy()
+      expect(container.textContent).toContain(
+        'kepercayaan diri mencakup pede, percaya diri',
+      )
+      expect(container.textContent).toContain('disiplin mencakup kedisiplinan')
+      unmount()
+    }
+  })
+
+  it('says nothing about merging on a report that merged nothing', () => {
+    charts('thematic', [row('kerja sama tim'), row('disiplin')])
+
+    expect(screen.queryByText(/dihitung bersama topik lain/)).toBeNull()
+    expect(screen.getByText('Dikelompokkan dari isi jawabannya.')).toBeTruthy()
+  })
+
+  it('does not offer merged labels for choices or numbers', () => {
+    for (const mode of ['categorical', 'scale'] as const) {
+      const { unmount } = render(
+        <MotionProvider>
+          <ExplorerFocusProvider>
+            <QuestionCharts
+              data={buildDashboardData([row('4')])}
+              mode={mode}
+              merged={[{ term: '4', from: ['empat'] }]}
+            />
+          </ExplorerFocusProvider>
+        </MotionProvider>,
+      )
+
+      expect(screen.queryByText(/dihitung bersama topik lain/)).toBeNull()
+      unmount()
+    }
+  })
+
   it('reads a report from before modes as it always did', () => {
     render(
       <MotionProvider>

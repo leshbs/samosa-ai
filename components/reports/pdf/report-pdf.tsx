@@ -457,6 +457,9 @@ function QuestionBlocks({
           <>
             <Heading>{section.termsTitle}</Heading>
             <BarList terms={section.topics} total={total} />
+            {section.mergeNote ? (
+              <Text style={[styles.muted, { marginTop: 6 }]}>{section.mergeNote}</Text>
+            ) : null}
           </>
         ) : null}
       </View>
@@ -464,6 +467,9 @@ function QuestionBlocks({
       {total > 0 && evaluative && section.topics.length > 0 ? (
         <Block title={section.termsTitle}>
           <BarList terms={section.topics} total={total} />
+          {section.mergeNote ? (
+            <Text style={[styles.muted, { marginTop: 6 }]}>{section.mergeNote}</Text>
+          ) : null}
         </Block>
       ) : null}
 

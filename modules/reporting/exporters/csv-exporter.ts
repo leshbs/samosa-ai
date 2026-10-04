@@ -45,6 +45,8 @@ export type ExportableResponse = {
   sentiment: Sentiment | null
   confidence: number | null
   topics: readonly string[]
+  /** The labels before the job's topic merge; absent means the same as `topics`. */
+  rawTopics?: readonly string[]
   keywords: readonly string[]
   questionId?: string
   /** The sheet row, counted from 0. */
@@ -69,6 +71,11 @@ export type ExportableQuestion = { id: string; text: string; mode?: string }
  * question was read, which is what explains an empty `sentiment`: only an
  * `evaluative` question has one, and for a `categorical` or `scale` question
  * `topics` holds the choice or the value the answer gave.
+ *
+ * `topics` is what the report counts: labels the job found to name one thing
+ * are written as that one topic (ADR-0018). `topics_raw`, last for the same
+ * reason as the others, is each answer's labels as the model gave them, so the
+ * merge can be checked or undone in a spreadsheet.
  */
 export function exportResponsesToCsv(
   rows: readonly ExportableResponse[],
@@ -86,6 +93,7 @@ export function exportResponsesToCsv(
       'question',
       'respondent',
       'mode',
+      'topics_raw',
     ],
     ...rows.map((row) => {
       const question = byId.get(row.questionId ?? '')
@@ -98,6 +106,7 @@ export function exportResponsesToCsv(
         question?.text ?? '',
         row.respondentIndex === undefined ? '' : row.respondentIndex + 1,
         question?.mode ?? '',
+        (row.rawTopics ?? row.topics).join('; '),
       ]
     }),
   ]

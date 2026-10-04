@@ -22,6 +22,7 @@ tetap bisa ditelusuri ke prompt yang tepat.
 | [`phase-9-findings.md`](phase-9-findings.md)         | Bundle, Lighthouse, dan tiga kegagalan yang hanya terlihat di browser           |
 | [`pilot-01-findings.md`](pilot-01-findings.md)       | Temuan pilot 01 dan keputusan desain yang lahir darinya                         |
 | [`prompt-comparison-01.md`](prompt-comparison-01.md) | `analysis.v1`, `v2`, `v3` pada dataset pilot 01: stabilitas label, topik, biaya |
+| [`topic-merge-01.md`](topic-merge-01.md)             | `merge.v1` pada label topik pilot 01: apa yang digabung, apa yang tidak         |
 
 ## Baseline
 

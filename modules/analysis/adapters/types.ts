@@ -6,7 +6,14 @@ import {
   type QuestionMode,
   type Sentiment,
 } from '@/types/domain'
-import type { ColumnDescription, NormalizedSummary, SummaryPromptInput } from '../prompts'
+import type {
+  ColumnDescription,
+  ConfirmPromptInput,
+  MergePromptInput,
+  MergeVerdict,
+  NormalizedSummary,
+  SummaryPromptInput,
+} from '../prompts'
 
 /** One answer as analysis.v1 and analysis.v2 return it: always with a sentiment. */
 export const analyzedItemSchema = z.object({
@@ -132,6 +139,29 @@ export type ClassifyOutput = {
   costMicroIdr: number
 }
 
+export type MergeInput = MergePromptInput & { promptVersion: string }
+
+export type MergeOutput = {
+  /**
+   * Groups of labels the model says name one thing, as it wrote them.
+   * Unchecked: a label may be reworded, made up, or sit in two groups.
+   */
+  groups: string[][]
+  modelId: string
+  usage: AdapterUsage
+  costMicroIdr: number
+}
+
+export type ConfirmInput = ConfirmPromptInput & { promptVersion: string }
+
+export type ConfirmOutput = {
+  /** One verdict per pair, as the model wrote them. Unchecked against the pairs sent. */
+  verdicts: MergeVerdict[]
+  modelId: string
+  usage: AdapterUsage
+  costMicroIdr: number
+}
+
 /**
  * Every LLM call in SAMOSA goes through this interface, so swapping OpenAI for
  * a local IndoBERT model is a wiring change rather than a rewrite.
@@ -143,4 +173,8 @@ export type LlmAdapter = {
   summarize(input: SummaryInput): Promise<Result<SummaryOutput, AppError>>
   /** One call per upload: what kind of answers each column of the sheet holds. */
   classifyColumns(input: ClassifyInput): Promise<Result<ClassifyOutput, AppError>>
+  /** One call per prose question of a job: which topic labels might name one thing. */
+  mergeTopics(input: MergeInput): Promise<Result<MergeOutput, AppError>>
+  /** The call after it: each proposed pair, judged on its own. */
+  confirmMerges(input: ConfirmInput): Promise<Result<ConfirmOutput, AppError>>
 }

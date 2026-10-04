@@ -6,7 +6,11 @@ import type {
   BatchOutput,
   ClassifyInput,
   ClassifyOutput,
+  ConfirmInput,
+  ConfirmOutput,
   LlmAdapter,
+  MergeInput,
+  MergeOutput,
   SummaryInput,
   SummaryOutput,
 } from './types'
@@ -115,6 +119,26 @@ export function createLocalAdapter(): LlmAdapter {
     ): Promise<Result<ClassifyOutput, AppError>> {
       return ok({
         modes: input.columns.map(guessModeByRule),
+        modelId: 'local-lexicon-v0',
+        usage: { inputTokens: 0, outputTokens: 0 },
+        costMicroIdr: 0,
+      })
+    },
+
+    /** Nothing is proposed, so this is never asked; it confirms nothing. */
+    async confirmMerges(_input: ConfirmInput): Promise<Result<ConfirmOutput, AppError>> {
+      return ok({
+        verdicts: [],
+        modelId: 'local-lexicon-v0',
+        usage: { inputTokens: 0, outputTokens: 0 },
+        costMicroIdr: 0,
+      })
+    },
+
+    /** Whether two labels mean one thing is not a lexicon's call: nothing merges. */
+    async mergeTopics(_input: MergeInput): Promise<Result<MergeOutput, AppError>> {
+      return ok({
+        groups: [],
         modelId: 'local-lexicon-v0',
         usage: { inputTokens: 0, outputTokens: 0 },
         costMicroIdr: 0,

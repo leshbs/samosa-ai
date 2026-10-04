@@ -276,6 +276,8 @@ function modeAdapter(
     name: 'stub',
     summarize: vi.fn(),
     classifyColumns: vi.fn(),
+    mergeTopics: vi.fn(),
+    confirmMerges: vi.fn(),
     analyzeBatch: vi.fn(async (input: BatchInput) => {
       seen.push(input)
       const custom = reply(input, seen.length)
