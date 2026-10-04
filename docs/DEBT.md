@@ -5,6 +5,20 @@ Tambahkan baris baru lewat PR yang menciptakan utangnya, jangan belakangan.
 
 ## Terbuka
 
+### `app/api/_lib` di luar gerbang coverage
+
+Gerbang 80% ([ADR-0017](adr/0017-coverage-gate.md)) hanya mengukur `modules/`
+dan `lib/`. `app/api/_lib/` — tempat laporan dirakit, arsip organisasi dibuat,
+dan tebakan mode digabung ke pratinjau — tidak ikut. Diukur 4 Oktober dengan
+folder itu ikut: 77,26% keseluruhan, folder itu sendiri 36%.
+`organization-archive.ts` (219 baris), `preview-with-modes.ts` dan
+`image-upload.ts` tidak punya tes sama sekali; `report-data.ts` baru punya sejak
+PR yang sama.
+
+**Pemicu:** perubahan berikutnya di arsip zip atau `preview-with-modes.ts`, atau
+bug pertama yang lolos dari sana. **Bayar dengan:** tes untuk ketiganya, lalu
+tambahkan `app/api/_lib/**/*.ts` ke `coverage.include`.
+
 ### Migrasi `sentiment_optional` harus ditempel sebelum PR-nya di-merge
 
 **Lunas 2026-10-03.** Ditempel sebelum merge; `scripts/check-rls.mjs` 65/65
@@ -223,6 +237,11 @@ ulang analisisnya; tidak ada migrasi data yang bisa memperbaikinya tanpa model.
 Job analisis dipicu `after()` di route handler ([ADR-0006](adr/0006-after-as-job-trigger.md)).
 Kalau invocation mati di tengah jalan, job tertinggal di status `running`
 selamanya dan tidak ada yang mencoba lagi.
+
+Sebagian tertutup 2026-10-04 ([ADR-0017](adr/0017-coverage-gate.md)): error yang
+dilempar di dalam `runJob` sekarang menandai job `failed` saat itu juga. Yang
+tersisa adalah invocation yang dimatikan dari luar (timeout fungsi, deploy di
+tengah job) — tidak ada kode yang sempat berjalan, jadi tetap menunggu sweeper.
 
 **Pemicu:** dataset pertama yang gagal karena timeout, atau job pertama yang
 tersangkut `running` di produksi. **Bayar dengan:** queue sungguhan.

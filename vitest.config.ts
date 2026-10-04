@@ -25,7 +25,17 @@ export default defineConfig({
       reporter: ['text', 'html', 'lcov'],
       include: ['modules/**/*.ts', 'lib/**/*.ts'],
       exclude: ['**/index.ts', '**/*.d.ts'],
-      thresholds: { lines: 80, functions: 80, branches: 70, statements: 80 },
+      // Enforced in CI (ADR-0017). The floor on the job files is higher than
+      // the global one on purpose: that is where a missed failure path leaves
+      // a job hanging, and where coverage was lowest while it mattered most.
+      thresholds: {
+        lines: 80,
+        functions: 80,
+        branches: 70,
+        statements: 80,
+        'modules/analysis/services/{job-runner,job-queries,orchestrator,stuck-job-sweeper}.ts':
+          { lines: 90, functions: 90, branches: 80, statements: 90 },
+      },
     },
   },
 })

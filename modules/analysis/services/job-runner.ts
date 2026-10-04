@@ -159,6 +159,39 @@ export async function runJob(
     return err(appError(ERROR_CODES.CONFLICT, 'Job analisis ini sudah pernah dijalankan'))
   }
 
+  /**
+   * From here the job is ours, so nothing may leave it at `running`. Every
+   * expected failure below ends it as `failed` itself; this catches the rest —
+   * a client that throws instead of answering, a bug — and ends it the same
+   * way. Uncaught, the job would sit at `running` until the sweeper's next
+   * daily pass, with the page showing a progress bar the whole time.
+   */
+  try {
+    return await runClaimedJob(supabase, log, jobId, job, options)
+  } catch (cause) {
+    log.error('analysis.job.crashed', { cause: String(cause) })
+    try {
+      await failJob(jobId, CRASHED_MESSAGE)
+    } catch (failCause) {
+      // Nothing left to try; the sweeper is the backstop for this one.
+      log.error('analysis.job.fail_unrecorded', { cause: String(failCause) })
+    }
+    return err(appError(ERROR_CODES.INTERNAL, CRASHED_MESSAGE, { cause }))
+  }
+}
+
+/** Shown on a job that stopped on an error nobody planned for. */
+export const CRASHED_MESSAGE = 'Analisis berhenti karena kesalahan tak terduga'
+
+type ClaimedJob = { organization_id: string; dataset_id: string; prompt_version: string }
+
+async function runClaimedJob(
+  supabase: ReturnType<typeof createAdminClient>,
+  log: ReturnType<typeof logger.child>,
+  jobId: string,
+  job: ClaimedJob,
+  options: RunJobOptions,
+): Promise<Result<{ analyzed: number }, AppError>> {
   // Paged: one select returns 1,000 rows at most, and a job that read only
   // those would analyse a fifth of a 5,000-answer dataset and call it done.
   const { data: responses, error: responsesError } = await readAll<{
@@ -282,13 +315,16 @@ export async function runJob(
    * model a sentiment split of zeros for a question about numbers, and quoted
    * "4" as evidence (found reading a real report).
    */
-  await supabase
+  const { error: countsError } = await supabase
     .from('analysis_jobs')
     .update({
       no_content_count: outcome.value.noContentResponseIds.length,
       question_counts: toStoredQuestionCounts(questionCounts),
     })
     .eq('id', jobId)
+  // Not fatal: the final update writes the same counts again. But a summary
+  // written without them reads every question as `evaluative`, so say so.
+  if (countsError) log.warn('analysis.job.counts_unrecorded', { code: countsError.code })
 
   if (options.onResultsReady) {
     try {
@@ -305,7 +341,7 @@ export async function runJob(
   const failedCount = outcome.value.failedResponseIds.length
   const status = failedCount > 0 ? 'partial' : 'succeeded'
 
-  await supabase
+  const { error: finishError } = await supabase
     .from('analysis_jobs')
     .update({
       status,
@@ -320,6 +356,17 @@ export async function runJob(
       finished_at: new Date().toISOString(),
     })
     .eq('id', jobId)
+
+  if (finishError) {
+    // The results are stored but the job still says `running`. It is not
+    // marked failed here — the results are good, and `failJob` would be the
+    // same write to the same row — so the sweeper ends it. Returning ok would
+    // claim a finished job that no page can see.
+    log.error('analysis.job.finish_unrecorded', { code: finishError.code })
+    return err(
+      appError(ERROR_CODES.INTERNAL, 'Status akhir analisis tidak bisa disimpan'),
+    )
+  }
 
   log.info('analysis.job.finished', {
     status,

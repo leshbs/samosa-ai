@@ -165,7 +165,26 @@ export async function analyzeResponses(
       knownValues,
     }
 
-    let outcome = await adapter.analyzeBatch(request)
+    /**
+     * An adapter answers with a Result, and a thrown error must still cost one
+     * batch rather than the job: unguarded, it rejects the whole run, every
+     * batch that did land is thrown away, and the job sits at `running` until
+     * the sweeper finds it.
+     */
+    const ask = async (): Promise<Result<BatchOutput, AppError>> => {
+      try {
+        return await adapter.analyzeBatch(request)
+      } catch (cause) {
+        return err(
+          appError(ERROR_CODES.UPSTREAM, 'Adapter analisis berhenti tak terduga', {
+            cause,
+            details: { thrown: String(cause) },
+          }),
+        )
+      }
+    }
+
+    let outcome = await ask()
 
     /**
      * One more ask when the model's reply broke the output format. The request
@@ -179,7 +198,7 @@ export async function analyzeResponses(
         reason: outcome.error.message,
         ...outcome.error.details,
       })
-      outcome = await adapter.analyzeBatch(request)
+      outcome = await ask()
     }
 
     // Progress counts attempted work, so a failing batch still advances the

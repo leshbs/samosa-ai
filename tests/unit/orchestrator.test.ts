@@ -133,6 +133,44 @@ describe('analyzeResponses', () => {
     expect(result.value.results).toHaveLength(2)
   })
 
+  it('loses one batch, not the run, when the adapter throws', async () => {
+    let call = 0
+    const adapter = stubAdapter({
+      analyzeBatch: vi.fn(async ({ texts }) => {
+        call += 1
+        // An adapter is meant to answer with a Result. One that throws anyway
+        // used to reject the whole run and discard the batches that landed.
+        if (call === 1) throw new TypeError('fetch failed')
+        return ok({
+          items: texts.map((_: string, index: number) => ({
+            index,
+            sentiment: 'neutral' as const,
+            confidence: 0.5,
+            topics: [],
+            keywords: [],
+            summary: '',
+          })),
+          modelId: 'stub-model',
+          usage: { inputTokens: 1, outputTokens: 1 },
+          costMicroIdr: 100,
+        })
+      }),
+    })
+
+    const result = await analyzeResponses(adapter, {
+      jobId: 'job-1',
+      promptVersion: 'v1',
+      responses: makeResponses(BATCH_SIZE + 2),
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.value.failedResponseIds).toHaveLength(BATCH_SIZE)
+    expect(result.value.results).toHaveLength(2)
+    // A throw is not a malformed reply, so it is not asked a second time.
+    expect(adapter.analyzeBatch).toHaveBeenCalledTimes(2)
+  })
+
   it('fails when every batch fails', async () => {
     const adapter = stubAdapter({
       analyzeBatch: vi.fn(async () => err(appError(ERROR_CODES.UPSTREAM, 'boom'))),
