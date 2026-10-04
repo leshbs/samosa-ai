@@ -6,6 +6,7 @@ import { ERROR_CODES, appError, err, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
 import {
   analysisPrompt,
+  mergePrompt,
   modePrompt,
   summaryPrompt,
   type AnalysisPrompt,
@@ -14,11 +15,16 @@ import { estimateCostMicroIdr } from './pricing'
 import { MAX_ATTEMPTS, backoffDelayMs, isRetryableError, retryAfterMs } from './retry'
 import {
   isNoContentItem,
+  type AdapterUsage,
   type BatchInput,
   type BatchOutput,
   type ClassifyInput,
   type ClassifyOutput,
+  type ConfirmInput,
+  type ConfirmOutput,
   type LlmAdapter,
+  type MergeInput,
+  type MergeOutput,
   type SummaryInput,
   type SummaryOutput,
 } from './types'
@@ -206,6 +212,9 @@ const MAX_SUMMARY_TOKENS = 1_536
 /** One short object per column of a sheet. */
 const MAX_CLASSIFY_TOKENS = 1_024
 
+/** A few numbers per group; room for a list of several hundred labels. */
+const MAX_MERGE_TOKENS = 2_048
+
 /** Reads a reply as JSON, or says the reply — not the provider — was at fault. */
 function parseJson(content: string): Result<unknown, AppError> {
   try {
@@ -222,6 +231,57 @@ function parseJson(content: string): Result<unknown, AppError> {
       ),
     )
   }
+}
+
+type Spent = { modelId: string; usage: AdapterUsage; costMicroIdr: number }
+
+function malformed(
+  issues: ReadonlyArray<{ path: ReadonlyArray<string | number>; code: string }>,
+): AppError {
+  return appError(
+    ERROR_CODES.UPSTREAM,
+    'Balasan model tidak sesuai format yang diharapkan',
+    { details: describeIssues(issues) },
+  )
+}
+
+/** One JSON-mode call: the reply as parsed JSON, and what it cost. */
+async function askForJson(
+  options: AdapterOptions,
+  maxTokens: number,
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+): Promise<Result<{ json: unknown; spent: Spent }, AppError>> {
+  const modelId = serverEnv().OPENAI_MODEL
+
+  const response = await callWithRetry(
+    () =>
+      getClient().chat.completions.create({
+        model: modelId,
+        max_tokens: maxTokens,
+        temperature: TEMPERATURE,
+        response_format: { type: 'json_object' },
+        messages,
+      }),
+    options,
+  )
+  if (!response.ok) return response
+
+  const content = response.value.choices[0]?.message.content
+  if (!content) {
+    return err(appError(ERROR_CODES.UPSTREAM, 'Penyedia AI membalas tanpa isi'))
+  }
+
+  const parsed = parseJson(content)
+  if (!parsed.ok) return parsed
+
+  const usage = {
+    inputTokens: response.value.usage?.prompt_tokens ?? 0,
+    outputTokens: response.value.usage?.completion_tokens ?? 0,
+  }
+  return ok({
+    json: parsed.value,
+    spent: { modelId, usage, costMicroIdr: estimateCostMicroIdr(modelId, usage) },
+  })
 }
 
 export function createOpenAiAdapter(options: AdapterOptions = {}): LlmAdapter {
@@ -390,6 +450,36 @@ export function createOpenAiAdapter(options: AdapterOptions = {}): LlmAdapter {
         usage,
         costMicroIdr: estimateCostMicroIdr(modelId, usage),
       })
+    },
+
+    async mergeTopics(input: MergeInput): Promise<Result<MergeOutput, AppError>> {
+      const prompt = mergePrompt(input.promptVersion).propose
+      const reply = await askForJson(options, MAX_MERGE_TOKENS, [
+        { role: 'system', content: prompt.SYSTEM },
+        ...prompt.FEW_SHOT_MESSAGES(),
+        { role: 'user', content: prompt.USER_TEMPLATE(input) },
+      ])
+      if (!reply.ok) return reply
+
+      const groups = prompt.parse(reply.value.json)
+      if (!groups.success) return err(malformed(groups.error.issues))
+
+      return ok({ groups: groups.data, ...reply.value.spent })
+    },
+
+    async confirmMerges(input: ConfirmInput): Promise<Result<ConfirmOutput, AppError>> {
+      const prompt = mergePrompt(input.promptVersion).confirm
+      const reply = await askForJson(options, MAX_MERGE_TOKENS, [
+        { role: 'system', content: prompt.SYSTEM },
+        ...prompt.FEW_SHOT_MESSAGES(),
+        { role: 'user', content: prompt.USER_TEMPLATE(input) },
+      ])
+      if (!reply.ok) return reply
+
+      const verdicts = prompt.parse(reply.value.json)
+      if (!verdicts.success) return err(malformed(verdicts.error.issues))
+
+      return ok({ verdicts: verdicts.data, ...reply.value.spent })
     },
   }
 }

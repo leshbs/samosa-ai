@@ -43,6 +43,10 @@ const ROW = {
   question_counts: {
     'q-1': { analyzed: 120, no_content: 8, failed: 12, mode: 'thematic' },
   },
+  topic_merges: {
+    prompt_version: 'merge.v1',
+    questions: { 'q-1': { 'percaya diri': 'kepercayaan diri' } },
+  },
   input_tokens: 9_000,
   output_tokens: 3_000,
   cost_micro_idr: 96_000,
@@ -58,6 +62,19 @@ const ROW = {
 function queue(target: typeof from, ...queries: FakeQuery[]) {
   const pending = [...queries]
   target.mockImplementation(() => pending.shift())
+}
+
+/**
+ * The same for `listJobResults`, which reads the job beside its results: the
+ * job's row is answered by table, the pages of results in order.
+ */
+function queueResults(job: unknown, ...pages: FakeQuery[]) {
+  const pending = [...pages]
+  const jobQuery = fakeQuery({ data: job, error: null })
+  from.mockImplementation((table: string) =>
+    table === 'analysis_jobs' ? jobQuery : pending.shift(),
+  )
+  return jobQuery
 }
 
 const methods = (query: FakeQuery) => query.calls.map((call) => call.method)
@@ -89,6 +106,7 @@ describe('getJob', () => {
         questionCounts: {
           'q-1': { analyzed: 120, noContent: 8, failed: 12, mode: 'thematic' },
         },
+        topicMerges: { 'q-1': { 'percaya diri': 'kepercayaan diri' } },
         inputTokens: 9_000,
         outputTokens: 3_000,
         costMicroIdr: 96_000,
@@ -129,6 +147,7 @@ describe('getJob', () => {
       processedCount: 0,
       noContentCount: 0,
       questionCounts: {},
+      topicMerges: {},
       createdBy: null,
       archivedAt: null,
       startedAt: null,
@@ -245,8 +264,9 @@ describe('listJobResults', () => {
   })
 
   it('puts each result next to the answer it describes, in sheet order', async () => {
-    queue(
-      from,
+    queueResults(
+      // A job from before topics were merged.
+      { ...ROW, topic_merges: {} },
       fakeQuery({
         data: [
           // PostgREST embeds a to-one relation as an object or as an array of
@@ -280,6 +300,7 @@ describe('listJobResults', () => {
           sentiment: 'negative',
           confidence: 0.8,
           topics: ['konsumsi'],
+          rawTopics: ['konsumsi'],
           keywords: ['telat'],
           summary: 'Konsumsi telat.',
         },
@@ -292,6 +313,7 @@ describe('listJobResults', () => {
           sentiment: null,
           confidence: null,
           topics: ['konsumsi'],
+          rawTopics: ['konsumsi'],
           keywords: [],
           summary: null,
         },
@@ -299,8 +321,72 @@ describe('listJobResults', () => {
     })
   })
 
+  it('reads topics through the merges the job recorded, question by question', async () => {
+    const answer = (questionId: string, respondentIndex: number) => ({
+      text: 't',
+      question_id: questionId,
+      respondent_index: respondentIndex,
+    })
+    const jobQuery = queueResults(
+      ROW,
+      fakeQuery({
+        data: [
+          result('r1', answer('q-1', 1), { topics: ['Percaya Diri', 'keberanian'] }),
+          // Both labels of one merged topic on one answer: counted once.
+          result('r2', answer('q-1', 2), {
+            topics: ['kepercayaan diri', 'percaya diri'],
+          }),
+          // The same label under another question is another topic.
+          result('r3', answer('q-2', 3), { topics: ['percaya diri'] }),
+        ],
+        error: null,
+      }),
+    )
+
+    const rows = await listJobResults('org-1', 'job-1')
+
+    expect(rows.ok && rows.value.map((row) => row.topics)).toEqual([
+      ['kepercayaan diri', 'keberanian'],
+      ['kepercayaan diri'],
+      ['percaya diri'],
+    ])
+    // What the model wrote is still there to be read.
+    expect(rows.ok && rows.value.map((row) => row.rawTopics)).toEqual([
+      ['Percaya Diri', 'keberanian'],
+      ['kepercayaan diri', 'percaya diri'],
+      ['percaya diri'],
+    ])
+    expect(argsOf(jobQuery, 'eq')).toEqual(['id', 'job-1'])
+    expect(jobQuery.calls).toContainEqual({
+      method: 'eq',
+      args: ['organization_id', 'org-1'],
+    })
+  })
+
+  it('returns the labels as they are when the job cannot be read', async () => {
+    // A database without the column, or a job row RLS hides: no merges, and
+    // still a report.
+    queueResults(
+      null,
+      fakeQuery({
+        data: [
+          result(
+            'r1',
+            { text: 't', question_id: 'q-1', respondent_index: 1 },
+            { topics: ['percaya diri'] },
+          ),
+        ],
+        error: null,
+      }),
+    )
+
+    const rows = await listJobResults('org-1', 'job-1')
+
+    expect(rows.ok && rows.value[0]?.topics).toEqual(['percaya diri'])
+  })
+
   it('keeps a result whose answer could not be joined, with an empty text', async () => {
-    queue(from, fakeQuery({ data: [result('r1', null)], error: null }))
+    queueResults(ROW, fakeQuery({ data: [result('r1', null)], error: null }))
 
     const rows = await listJobResults('org-1', 'job-1')
 
@@ -322,7 +408,7 @@ describe('listJobResults', () => {
       )
     const first = fakeQuery({ data: page(0, 1_000), error: null })
     const second = fakeQuery({ data: page(1_000, 400), error: null })
-    queue(from, first, second)
+    queueResults(ROW, first, second)
 
     const rows = await listJobResults('org-1', 'job-1')
 
@@ -334,7 +420,7 @@ describe('listJobResults', () => {
   })
 
   it('reports results that could not be read instead of an empty report', async () => {
-    queue(from, fakeQuery({ data: null, error: { message: 'timeout' } }))
+    queueResults(ROW, fakeQuery({ data: null, error: { message: 'timeout' } }))
 
     const rows = await listJobResults('org-1', 'job-1')
 

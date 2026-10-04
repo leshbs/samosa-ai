@@ -252,6 +252,9 @@ enam jalan.
 - **Ambang C.4 perlu dihitung atas jawaban yang punya topik**, bukan atas semua
   hasil: 30% hasil `evaluative` di sini adalah pujian tanpa objek.
 
+> **Lanjutan (4 Oktober):** duplikat topik yang diukur di §2 dan §3 ditangani
+> oleh `merge.v1`. Hasilnya di label yang sama: [`topic-merge-01.md`](topic-merge-01.md).
+
 ## Batasan
 
 - **Tidak ada label manusia.** Semua angka di sini mengukur konsistensi dan arah

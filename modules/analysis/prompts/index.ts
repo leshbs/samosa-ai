@@ -4,6 +4,7 @@ import type { RawBatchAnalysis } from '../adapters/types'
 import * as analysisV1 from './analysis.v1'
 import * as analysisV2 from './analysis.v2'
 import * as analysisV3 from './analysis.v3'
+import * as mergeV1 from './merge.v1'
 import * as modesV1 from './modes.v1'
 import * as sentimentV1 from './sentiment.v1'
 import * as summaryV1 from './summary.v1'
@@ -39,6 +40,7 @@ export const SUMMARY_PROMPTS = {
   v1: summaryV1,
 } as const
 export const MODE_PROMPTS = { 'modes.v1': modesV1 } as const
+export const MERGE_PROMPTS = { 'merge.v1': mergeV1 } as const
 
 /** v3 is what new reports use: it is told the questions and cites them. */
 export const DEFAULT_SUMMARY_VERSION = 'summary.v3'
@@ -46,6 +48,8 @@ export const DEFAULT_SUMMARY_VERSION = 'summary.v3'
 export const DEFAULT_PROMPT_VERSION = 'analysis.v3'
 
 export const DEFAULT_MODE_VERSION = 'modes.v1'
+
+export const DEFAULT_MERGE_VERSION = 'merge.v1'
 
 export type PromptVersion =
   keyof typeof ANALYSIS_PROMPTS | keyof typeof MODE_AWARE_PROMPTS
@@ -263,5 +267,56 @@ export function modePrompt(version: string): ModePrompt {
     USER_TEMPLATE: modesV1.USER_TEMPLATE,
     FEW_SHOT_MESSAGES: modesV1.FEW_SHOT_MESSAGES,
     parse: (value) => modesV1Schema.safeParse(value),
+  }
+}
+
+export type MergePromptInput = mergeV1.MergePromptInput
+export type ConfirmPromptInput = mergeV1.ConfirmPromptInput
+
+/** What the second stage said about one pair, as the model wrote it. */
+export type MergeVerdict = { a: string; b: string; same: boolean }
+
+type Messages = () => Array<{ role: 'user' | 'assistant'; content: string }>
+
+export type MergePrompt = {
+  readonly PROMPT_VERSION: string
+  /** Stage one: which labels of the list might name one thing. */
+  readonly propose: {
+    readonly SYSTEM: string
+    readonly USER_TEMPLATE: (input: MergePromptInput) => string
+    readonly FEW_SHOT_MESSAGES: Messages
+    /** Groups of labels as the model wrote them; not yet checked against the list. */
+    readonly parse: (value: unknown) => z.SafeParseReturnType<unknown, string[][]>
+  }
+  /** Stage two: each proposed pair, judged on its own. */
+  readonly confirm: {
+    readonly SYSTEM: string
+    readonly USER_TEMPLATE: (input: ConfirmPromptInput) => string
+    readonly FEW_SHOT_MESSAGES: Messages
+    readonly parse: (value: unknown) => z.SafeParseReturnType<unknown, MergeVerdict[]>
+  }
+}
+
+const mergeV1Groups = mergeV1.OUTPUT_SCHEMA.transform((value) => value.groups)
+const mergeV1Verdicts = mergeV1.CONFIRM_OUTPUT_SCHEMA.transform((value) => value.pairs)
+
+export function mergePrompt(version: string): MergePrompt {
+  if (!(version in MERGE_PROMPTS)) {
+    throw new Error(`Unknown merge prompt version: ${version}`)
+  }
+  return {
+    PROMPT_VERSION: mergeV1.PROMPT_VERSION,
+    propose: {
+      SYSTEM: mergeV1.SYSTEM,
+      USER_TEMPLATE: mergeV1.USER_TEMPLATE,
+      FEW_SHOT_MESSAGES: mergeV1.FEW_SHOT_MESSAGES,
+      parse: (value) => mergeV1Groups.safeParse(value),
+    },
+    confirm: {
+      SYSTEM: mergeV1.CONFIRM_SYSTEM,
+      USER_TEMPLATE: mergeV1.CONFIRM_USER_TEMPLATE,
+      FEW_SHOT_MESSAGES: mergeV1.CONFIRM_FEW_SHOT_MESSAGES,
+      parse: (value) => mergeV1Verdicts.safeParse(value),
+    },
   }
 }

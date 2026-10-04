@@ -206,6 +206,7 @@ samosa/
 │   │   │   ├── orchestrator.ts
 │   │   │   ├── job-runner.ts
 │   │   │   ├── mode-detection.ts    # Tebakan mode tiap kolom (ADR-0016)
+│   │   │   ├── topic-merge.ts       # Label topik yang sama dihitung satu (ADR-0018)
 │   │   │   └── scale.ts             # Jawaban angka dibaca tanpa model
 │   │   ├── adapters/                # LLM abstraction layer
 │   │   │   ├── openai.ts
@@ -215,6 +216,7 @@ samosa/
 │   │   │   ├── analysis.v3.ts       # Default: satu prompt per mode (ADR-0016)
 │   │   │   ├── analysis.v2.ts       # + label no_content (pilot 01)
 │   │   │   ├── modes.v1.ts          # Tebakan mode dari judul kolom
+│   │   │   ├── merge.v1.ts          # Gabung label topik: usul, lalu periksa
 │   │   │   ├── summary.v3.ts        # Default: per pertanyaan, menyebut asal
 │   │   │   ├── sentiment.v1.ts
 │   │   │   ├── topic.v1.ts
@@ -316,6 +318,10 @@ User confirms the columns
          Jawaban `scale` dibaca tanpa model
        - balasan yang melanggar format diminta sekali lagi
        - save ke analysis_results table; sentimen kosong kecuali `evaluative`
+       - label topik yang menunjuk hal yang sama digabung per pertanyaan
+         (merge.v1, dua panggilan): disimpan di analysis_jobs.topic_merges
+         sebagai lapisan, label asli tiap hasil tidak diubah (ADR-0018).
+         Gagal = laporan dengan label apa adanya, job tetap selesai
   → Client polls /api/analysis/[id]/status atau subscribe Supabase realtime
        - sebelum job jadi terminal: reporting.generateReportSummary()
          menulis ringkasan eksekutif + insight ke tabel reports
@@ -345,9 +351,11 @@ responses          — satu jawaban: satu responden atas satu pertanyaan
                      (dataset_id, question_id, respondent_index, text, respondent_meta)
   ↓
 analysis_jobs      — job tracking (dataset_id, status, prompt_version,
-                     question_counts: hitungan dan mode per pertanyaan)
+                     question_counts: hitungan dan mode per pertanyaan,
+                     topic_merges: label topik yang dihitung sebagai satu)
   ↓
 analysis_results   — per-response hasil (response_id, sentiment, topics[], keywords[]);
+                     topics dibaca lewat topic_merges job-nya saat laporan dibuat;
                      sentiment kosong kecuali pertanyaannya `evaluative`, dan
                      topics memuat pilihan atau nilai untuk `categorical`/`scale`
   ↓

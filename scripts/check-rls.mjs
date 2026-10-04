@@ -910,6 +910,74 @@ try {
     }
   }
 
+  // ── Topic merges (20261007000100) ────────────────────────────────────
+  // Which labels a job counts as one topic. The runner writes it; a member
+  // reads it with the job and cannot change it.
+  const merges = {
+    prompt_version: 'merge.v1',
+    questions: { probe: { 'percaya diri': 'kepercayaan diri' } },
+  }
+  const mergeWritten = await admin
+    .from('analysis_jobs')
+    .update({ topic_merges: merges })
+    .eq('id', a.jobId)
+    .select('id')
+  if (mergeWritten.error) {
+    check(
+      'a job records which topic labels it counts as one',
+      false,
+      `${mergeWritten.error.message} — apply 20261007000100_topic_merges.sql`,
+    )
+  } else {
+    const mergeRead = await asA
+      .from('analysis_jobs')
+      .select('topic_merges')
+      .eq('id', a.jobId)
+      .maybeSingle()
+    check(
+      'a job records which topic labels it counts as one, and user A reads it',
+      mergeRead.data?.topic_merges?.questions?.probe?.['percaya diri'] ===
+        'kepercayaan diri',
+      mergeRead.error ? mergeRead.error.message : JSON.stringify(mergeRead.data),
+    )
+
+    const mergeForeign = await asA
+      .from('analysis_jobs')
+      .select('topic_merges')
+      .eq('id', b.jobId)
+    check(
+      "and never another organization's",
+      (mergeForeign.data ?? []).length === 0,
+      mergeForeign.error
+        ? mergeForeign.error.message
+        : `${(mergeForeign.data ?? []).length} rows`,
+    )
+
+    const mergeRewritten = await asA
+      .from('analysis_jobs')
+      .update({ topic_merges: {} })
+      .eq('id', a.jobId)
+      .select('id')
+    check(
+      'user A cannot rewrite the merges from the browser',
+      (mergeRewritten.data ?? []).length === 0,
+      mergeRewritten.error ? mergeRewritten.error.message : 'no rows updated',
+    )
+
+    const mergeList = await admin
+      .from('analysis_jobs')
+      .update({ topic_merges: [] })
+      .eq('id', a.jobId)
+      .select('id')
+    check(
+      'and the column refuses anything but an object',
+      Boolean(mergeList.error),
+      mergeList.error ? mergeList.error.message : 'accepted',
+    )
+
+    await admin.from('analysis_jobs').update({ topic_merges: {} }).eq('id', a.jobId)
+  }
+
   // ── Handing over moves the bill (20261002000300) ─────────────────────
   // Last, because it changes who owns org A.
   await admin
