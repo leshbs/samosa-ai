@@ -34,7 +34,7 @@ pnpm dev                     # http://localhost:3000
 | `pnpm check`         | typecheck + lint + format:check            |
 | `pnpm test`          | Vitest watch                               |
 | `pnpm test:run`      | Vitest sekali jalan                        |
-| `pnpm test:coverage` | Coverage (target 80%)                      |
+| `pnpm test:coverage` | Tes + gerbang coverage 80% (dijalankan CI) |
 | `pnpm test:e2e`      | Playwright                                 |
 | `pnpm db:types`      | Regenerate `types/database.ts` dari schema |
 | `pnpm build`         | Production build                           |
