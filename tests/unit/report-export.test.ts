@@ -36,6 +36,7 @@ vi.mock('@/modules/auth', () => ({
 }))
 
 const { citedQuotes, loadReportExport } = await import('@/app/api/_lib/report-data')
+const { printableReport } = await import('@/modules/reporting')
 
 const CONTEXT = {
   organizationId: 'org-1',
@@ -61,6 +62,7 @@ const JOB = {
     'q-kritik': { analyzed: 2, noContent: 1, failed: 0, mode: 'evaluative' },
     'q-puas': { analyzed: 2, noContent: 0, failed: 0, mode: 'scale' },
   },
+  topicMerges: {},
   inputTokens: 100,
   outputTokens: 50,
   costMicroIdr: 55_000_000,
@@ -92,6 +94,7 @@ const row = (
   sentiment: null,
   confidence: null,
   topics: [] as string[],
+  rawTopics: [] as string[],
   keywords: [] as string[],
   summary: null,
   ...extra,
@@ -150,6 +153,40 @@ describe('loadReportExport', () => {
       'konsumsi',
       'panitia',
     ])
+  })
+
+  it('says which labels a section counts as one topic, and prints it under the bars', async () => {
+    getJob.mockResolvedValue(
+      ok({
+        ...JOB,
+        topicMerges: {
+          'q-kritik': { makanan: 'konsumsi', katering: 'konsumsi', mc: 'pembawa acara' },
+        },
+      }),
+    )
+
+    const { document } = await load()
+    const [kritik, puas] = document.sections
+
+    expect(kritik?.mergedTopics).toEqual([
+      { term: 'konsumsi', from: ['katering', 'makanan'] },
+      { term: 'pembawa acara', from: ['mc'] },
+    ])
+    expect(puas?.mergedTopics).toEqual([])
+
+    const printable = printableReport(document)
+    // Only the topics on the page: "pembawa acara" is not among this section's.
+    expect(printable.sections[0]?.mergeNote).toBe(
+      'Label yang menunjuk hal yang sama dihitung sebagai satu topik: konsumsi mencakup katering, makanan.',
+    )
+    // A number has no labels to merge.
+    expect(printable.sections[1]?.mergeNote).toBeNull()
+  })
+
+  it('prints no merge note on a report whose job merged nothing', async () => {
+    const { document } = await load()
+
+    expect(printableReport(document).sections[0]?.mergeNote).toBeNull()
   })
 
   it('draws each section in the mode the job read it with', async () => {

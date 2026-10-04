@@ -9,6 +9,7 @@ import { KeywordBar, TopicBar } from '@/components/charts/lazy-charts'
 import { SENTIMENT_LABELS } from '@/components/charts/palette'
 import { SentimentBar } from '@/components/charts/sentiment-bar'
 import { Reveal, Stagger, StaggerItem } from '@/components/motion/primitives'
+import { MergedTopics } from '@/components/reports/merged-topics'
 import { StatTile } from '@/components/reports/stat-tile'
 import { TopicTail } from '@/components/reports/topic-tail'
 import { formatPercent } from '@/lib/utils'
@@ -35,17 +36,28 @@ import type { QuestionMode } from '@/types/domain'
 export function QuestionCharts({
   data,
   mode = 'evaluative',
+  merged = [],
 }: {
   data: DashboardData
   mode?: QuestionMode
+  /** Topic labels this question's job counts as one topic (ADR-0018). */
+  merged?: MergedGroups
 }) {
-  if (mode === 'thematic') return <ThematicCharts data={data} />
+  if (mode === 'thematic') return <ThematicCharts data={data} merged={merged} />
   if (mode === 'categorical') return <CategoricalCharts data={data} />
   if (mode === 'scale') return <ScaleCharts data={data} />
-  return <EvaluativeCharts data={data} />
+  return <EvaluativeCharts data={data} merged={merged} />
 }
 
-function EvaluativeCharts({ data }: { data: DashboardData }) {
+type MergedGroups = ReadonlyArray<{ term: string; from: readonly string[] }>
+
+function EvaluativeCharts({
+  data,
+  merged,
+}: {
+  data: DashboardData
+  merged: MergedGroups
+}) {
   const topThree = data.topics.slice(0, 3)
 
   /**
@@ -131,6 +143,8 @@ function EvaluativeCharts({ data }: { data: DashboardData }) {
       <KeywordChart data={data} noun="Aspirasi" />
 
       <TopicTail topics={data.topicTail} />
+
+      <MergedTopics groups={merged} />
     </div>
   )
 }
@@ -173,7 +187,7 @@ function withOther(top: readonly CountedTerm[], tail: readonly CountedTerm[]) {
 }
 
 /** Topics without a sentiment split: the question never asked for a judgement. */
-function ThematicCharts({ data }: { data: DashboardData }) {
+function ThematicCharts({ data, merged }: { data: DashboardData; merged: MergedGroups }) {
   const lead = data.topics[0]
   const rows = withOther(data.topics, data.topicTail)
 
@@ -187,7 +201,11 @@ function ThematicCharts({ data }: { data: DashboardData }) {
           <StatTile
             label="Topik berbeda"
             value={data.distinctTopicCount}
-            detail="Dikelompokkan dari isi jawabannya."
+            detail={
+              merged.length > 0
+                ? 'Dikelompokkan dari isi jawabannya; label yang bermakna sama dihitung satu.'
+                : 'Dikelompokkan dari isi jawabannya.'
+            }
           />
         </StaggerItem>
         <StaggerItem>
@@ -228,6 +246,8 @@ function ThematicCharts({ data }: { data: DashboardData }) {
       <KeywordChart data={data} noun="Jawaban" />
 
       <TopicTail topics={data.topicTail} />
+
+      <MergedTopics groups={merged} />
     </div>
   )
 }

@@ -1341,5 +1341,63 @@ check(
   r.error ?? `${r.rows.length} rows`,
 )
 
+// ── topic merges (20261007000100) ──
+
+const MERGES = readFileSync(join(MIGRATIONS, '20261007000100_topic_merges.sql'), 'utf8')
+rows = await sql(
+  `select topic_merges from public.analysis_jobs where id = '${MODES_JOB}'`,
+)
+check(
+  'merges: a job starts with nothing merged',
+  rows.length === 1 && JSON.stringify(rows[0].topic_merges) === '{}',
+  JSON.stringify(rows),
+)
+const STORED_MERGES = {
+  prompt_version: 'merge.v1',
+  questions: { probe: { 'percaya diri': 'kepercayaan diri' } },
+}
+await db.exec(
+  `update public.analysis_jobs set topic_merges = '${JSON.stringify(STORED_MERGES)}'::jsonb
+   where id = '${MODES_JOB}'`,
+)
+// Pasting it a second time must not reset what jobs have recorded since.
+await db.exec(MERGES)
+rows = await sql(
+  `select topic_merges from public.analysis_jobs where id = '${MODES_JOB}'`,
+)
+check(
+  'merges: pasting the migration again keeps what a job recorded',
+  rows[0]?.topic_merges?.questions?.probe?.['percaya diri'] === 'kepercayaan diri',
+  JSON.stringify(rows),
+)
+try {
+  await db.exec(
+    `update public.analysis_jobs set topic_merges = '[]'::jsonb where id = '${MODES_JOB}'`,
+  )
+  check('merges: anything but an object is refused', false, 'accepted')
+} catch (error) {
+  check('merges: anything but an object is refused', true, String(error.message))
+}
+r = await as(U.dual, `update public.analysis_jobs set topic_merges = '{}'::jsonb`)
+check(
+  'merges: a member cannot rewrite them',
+  r.affected === 0,
+  r.error ?? `${r.affected} rows`,
+)
+r = await as(
+  U.dual,
+  `select topic_merges from public.analysis_jobs where id = '${MODES_JOB}'`,
+)
+check(
+  'merges: a member reads them with the job',
+  r.rows.length === 1 && r.rows[0].topic_merges?.prompt_version === 'merge.v1',
+  r.error ?? JSON.stringify(r.rows),
+)
+r = await as(
+  U.stranger,
+  `select topic_merges from public.analysis_jobs where id = '${MODES_JOB}'`,
+)
+check('merges: nobody else does', r.rows.length === 0, r.error ?? `${r.rows.length} rows`)
+
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`)
 process.exit(failures === 0 ? 0 : 1)
