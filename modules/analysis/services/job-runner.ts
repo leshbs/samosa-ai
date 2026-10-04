@@ -14,6 +14,7 @@ import {
 } from '@/types/domain'
 import { analyzeResponses } from './orchestrator'
 import { toStoredQuestionCounts } from './question-counts'
+import { mergeJobTopics, toStoredTopicMerges } from './topic-merge'
 
 export type CreateJobInput = {
   organizationId: string
@@ -243,7 +244,8 @@ async function runClaimedJob(
     }
   }
 
-  const outcome = await analyzeResponses(createOpenAiAdapter(), {
+  const adapter = createOpenAiAdapter()
+  const outcome = await analyzeResponses(adapter, {
     jobId,
     promptVersion,
     questions,
@@ -326,6 +328,33 @@ async function runClaimedJob(
   // written without them reads every question as `evaluative`, so say so.
   if (countsError) log.warn('analysis.job.counts_unrecorded', { code: countsError.code })
 
+  /**
+   * Topic labels that name one thing are counted as one (ADR-0018). Also
+   * before the hook: the summary quotes topic counts, and must quote the ones
+   * the report draws. Nothing here can fail the job — a question whose merge
+   * could not be made keeps its labels, and a merge that could not be stored
+   * is a report with the labels as they are, which is every report before this.
+   */
+  const merged = await mergeJobTopics(adapter, {
+    questions,
+    results: outcome.value.results.map((result) => ({
+      questionId: questionOf.get(result.responseId) ?? '',
+      topics: result.topics,
+    })),
+  })
+  if (merged.failedQuestionIds.length > 0) {
+    log.warn('analysis.job.merge_failed', { questions: merged.failedQuestionIds.length })
+  }
+  if (Object.keys(merged.merges).length > 0) {
+    // Its own statement: on a database without the column, naming it beside
+    // the counts would refuse the counts too.
+    const { error: mergeError } = await supabase
+      .from('analysis_jobs')
+      .update({ topic_merges: toStoredTopicMerges(merged.merges) })
+      .eq('id', jobId)
+    if (mergeError) log.warn('analysis.job.merges_unrecorded', { code: mergeError.code })
+  }
+
   if (options.onResultsReady) {
     try {
       await options.onResultsReady({ organizationId: String(job.organization_id) })
@@ -349,9 +378,9 @@ async function runClaimedJob(
       failed_count: failedCount,
       no_content_count: outcome.value.noContentResponseIds.length,
       question_counts: toStoredQuestionCounts(questionCounts),
-      input_tokens: outcome.value.totalInputTokens,
-      output_tokens: outcome.value.totalOutputTokens,
-      cost_micro_idr: outcome.value.costMicroIdr,
+      input_tokens: outcome.value.totalInputTokens + merged.usage.inputTokens,
+      output_tokens: outcome.value.totalOutputTokens + merged.usage.outputTokens,
+      cost_micro_idr: outcome.value.costMicroIdr + merged.costMicroIdr,
       model_id: outcome.value.modelId,
       finished_at: new Date().toISOString(),
     })
@@ -374,9 +403,13 @@ async function runClaimedJob(
     failed: failedCount,
     noContent: outcome.value.noContentResponseIds.length,
     questions: Object.keys(questionCounts).length,
-    inputTokens: outcome.value.totalInputTokens,
-    outputTokens: outcome.value.totalOutputTokens,
-    costMicroIdr: outcome.value.costMicroIdr,
+    mergedLabels: Object.values(merged.merges).reduce(
+      (sum, merge) => sum + Object.keys(merge).length,
+      0,
+    ),
+    inputTokens: outcome.value.totalInputTokens + merged.usage.inputTokens,
+    outputTokens: outcome.value.totalOutputTokens + merged.usage.outputTokens,
+    costMicroIdr: outcome.value.costMicroIdr + merged.costMicroIdr,
   })
 
   return ok({ analyzed: rows.length })

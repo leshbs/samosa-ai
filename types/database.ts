@@ -109,6 +109,7 @@ type AnalysisJobsRow = {
   failed_count: number
   no_content_count: number
   question_counts: Json
+  topic_merges: Json
   input_tokens: number
   output_tokens: number
   cost_micro_idr: number
@@ -230,6 +231,7 @@ export type Database = {
         | 'model_id'
         | 'processed_count'
         | 'question_counts'
+        | 'topic_merges'
         | 'total_count'
         | 'failed_count'
         | 'no_content_count'

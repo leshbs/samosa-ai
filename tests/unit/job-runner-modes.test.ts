@@ -70,6 +70,8 @@ vi.mock('@/modules/analysis/adapters/openai', () => ({
     name: 'stub',
     summarize: vi.fn(),
     classifyColumns: vi.fn(),
+    mergeTopics: vi.fn(),
+    confirmMerges: vi.fn(),
     analyzeBatch: async (input: BatchInput) => {
       seen.push(input)
       return ok({

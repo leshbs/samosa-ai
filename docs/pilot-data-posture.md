@@ -107,6 +107,12 @@ memilih kolom, sehingga contoh itu akan memuat nama dan email. Kolom yang isinya
 tanggal, email, atau nomor telepon bahkan judulnya tidak dikirim. Diuji di
 `tests/unit/mode-detection.test.ts`.
 
+Sejak penggabungan topik (ADR-0018), saat sebuah analisis selesai dikirim juga
+**teks pertanyaan dan daftar label topik** yang dibuat model untuk pertanyaan
+itu, supaya label yang menunjuk hal yang sama bisa dihitung sebagai satu.
+Label itu ringkasan dua-tiga kata buatan model, bukan jawaban responden; tidak
+ada jawaban yang ikut di panggilan ini.
+
 Daftar lengkap pemroses ada di [`lib/legal/controller.ts`](../lib/legal/controller.ts)
 dan tampil di `/privacy`: Supabase (Tokyo), OpenAI (AS), Vercel (CDN global).
 

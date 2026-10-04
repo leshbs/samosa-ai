@@ -16,6 +16,7 @@ import {
   formatIdr,
   getJob,
   listJobResults,
+  mergedLabels,
   questionMode,
   questionNoContent,
   separatesNoContent,
@@ -247,6 +248,7 @@ export default async function ReportDetailPage({
                     <QuestionCharts
                       data={buildDashboardData(section.rows)}
                       mode={section.question.mode}
+                      merged={mergedLabels(job.value.topicMerges[section.question.id])}
                     />
                   </ExplorerScope>
                 )}
@@ -258,13 +260,19 @@ export default async function ReportDetailPage({
             <h2 id="charts-heading" className="sr-only">
               Grafik
             </h2>
-            <QuestionCharts data={data} mode={sections[0]?.question.mode} />
+            <QuestionCharts
+              data={data}
+              mode={sections[0]?.question.mode}
+              merged={mergedLabels(job.value.topicMerges[sections[0]?.question.id ?? ''])}
+            />
           </section>
         )}
 
         {/* ── 7. Response explorer ──────────────────────────────────── */}
         <ResponseExplorer
-          rows={rows}
+          // The labels before the merge stay on the server: the explorer shows
+          // topics as the charts count them, and has no use for a second copy.
+          rows={rows.map(({ rawTopics: _raw, ...row }) => row)}
           topics={aggregateTopics(proseRows, FILTERABLE_TOPICS).map(
             (topic) => topic.term,
           )}
