@@ -99,9 +99,21 @@ Lapis 2 — kategori `no_content` di prompt, untuk varian yang lolos lapis 1.
 - Kamus ditambah ejaan lain dari frasa yang sama (`gak ada`, `gk ada`, `ngga ada`, `enggak ada`, `N/A`). Cocok persis setelah normalisasi, tidak pernah "mengandung": "tidak ada masalah, sudah bagus" tetap sampai ke model.
 - Laporan dari `analysis.v1` menulis "Tidak dihitung", bukan "Tidak ada" — nol di sana berarti tidak diukur.
 - **Ditemukan saat uji nyata:** validator unggahan membuang jawaban di bawah 3 karakter sebelum disimpan, jadi "-", "ga", "no", dan "." hilang dari kedua hitungan — "9 dari 13" untuk 14 responden. Sekarang hanya sel kosong yang dibuang. Dataset yang sudah diunggah tetap kehilangan baris itu; unggah ulang file aslinya untuk angka yang benar.
+- **4 Oktober:** kamus juga melepas huruf akhir yang ditahan ("tidak adaa") dan
+  membuang kata pengantar serta partikel penutup dari ujung jawaban ("sejauh ini
+  tidak ada", "tidak ada sih"). `analysis.v3` memberi dua jawaban seperti itu
+  label `negative` di dataset pilot
+  ([perbandingan prompt](prompt-comparison-01.md) §4). Tetap cocok persis untuk
+  sisanya: "sejauh ini sudah bagus" sampai ke model.
 - Uji nyata `analysis.v2` (14 jawaban): kamus menangkap 3, model melabeli 2 ("belum kepikiran apa-apa sih kak hehe", "ga tau mau nulis apa"), dan "aman", "sudah bagus", "Tidak ada, sudah bagus semua." ketiganya positif. Laporan: "9 dari 14 responden memberikan aspirasi", Positif 56% = 5/9.
 
 ### 3.3 Duplikat semantik topik: ringan
+
+> **Koreksi 4 Oktober** ([perbandingan prompt](prompt-comparison-01.md) §2 dan
+> §3): "ringan" hanya benar untuk sepuluh topik teratas. Di daftar penuh
+> pertanyaan yang sama, 78–84% topik disebut satu kali dan satu keluhan (sound)
+> terpecah menjadi enam label. Kesimpulan di bawah tetap — satu pass merge, bukan
+> clustering — tapi merge itu prasyarat insight (C.4), bukan pelengkap.
 
 2 dari 10 topik ("manajemen waktu" vs "jadwal acara" — kemungkinan besar keluhan yang sama: acara tidak tepat waktu). Jauh lebih baik dari 57-dari-120 pada data sintetis.
 
@@ -286,5 +298,6 @@ Yang tidak berubah: Fase D (tes orkestrasi, coverage gate) dan Fase E (research 
 
 - Dataset pilot ini adalah bahan E.1. Anotasi manual 200 respons dapat dijalankan terhadapnya.
 - `detected_mode` vs `analysis_mode` menghasilkan ukuran yang bisa dilaporkan: akurasi klasifikasi jenis pertanyaan otomatis. Ini kontribusi kecil yang bersih dan belum banyak dibahas untuk konteks survei berbahasa Indonesia.
-- Temuan bahwa data sintetis melebih-lebihkan fragmentasi topik (57/120) sementara data nyata ringan (2/10) layak dilaporkan — ini kritik metodologis terhadap evaluasi berbasis fixture yang relevan di luar SAMOSA.
-- Perbandingan v1 vs v2 vs v3 pada dataset yang sama tetap mungkin karena versi prompt dipin per baris hasil. v1→v2 mengukur pemisahan non-jawaban saja; v2→v3 mengukur prompt per mode.
+- ~~Temuan bahwa data sintetis melebih-lebihkan fragmentasi topik (57/120) sementara data nyata ringan (2/10) layak dilaporkan.~~ **Ditarik 4 Oktober.** Dua angka itu mengukur hal berbeda: topik berbeda per jawaban, lawan duplikat di sepuluh teratas. Dengan ukuran yang sama data nyata sama terpecahnya: 92 topik dari 181 jawaban (v1), 69 dari 129 (v3). Lihat [perbandingan prompt](prompt-comparison-01.md).
+- Yang layak dilaporkan sebagai gantinya: label yang sama tidak stabil antara dua kali jalan pada temperature 0 (89% di v2, 97% di v3 untuk pertanyaan kritik), dan porsi "positif" pertanyaan refleksi berpindah dari 76% ke 94% hanya karena contoh few-shot berubah.
+- Perbandingan v1 vs v2 vs v3 pada dataset yang sama: **dikerjakan 4 Oktober**, di [`prompt-comparison-01.md`](prompt-comparison-01.md). Tanpa label manusia; akurasi tetap menunggu E.1.
