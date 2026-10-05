@@ -9,10 +9,14 @@ import {
 import type {
   ColumnDescription,
   ConfirmPromptInput,
+  InsightPromptInput,
   MergePromptInput,
   MergeVerdict,
   NormalizedSummary,
+  ProposedTheme,
   SummaryPromptInput,
+  ThemePromptInput,
+  WrittenInsight,
 } from '../prompts'
 
 /** One answer as analysis.v1 and analysis.v2 return it: always with a sentiment. */
@@ -162,6 +166,29 @@ export type ConfirmOutput = {
   costMicroIdr: number
 }
 
+export type ThemeInput = ThemePromptInput & { promptVersion: string }
+
+export type ThemeOutput = {
+  /**
+   * Themes as the model wrote them. Unchecked: a label may be reworded, made
+   * up, or sit in two themes.
+   */
+  themes: ProposedTheme[]
+  modelId: string
+  usage: AdapterUsage
+  costMicroIdr: number
+}
+
+export type InsightInput = InsightPromptInput & { promptVersion: string }
+
+export type InsightOutput = {
+  /** One per item, as the model wrote them. Unchecked against the items sent. */
+  insights: WrittenInsight[]
+  modelId: string
+  usage: AdapterUsage
+  costMicroIdr: number
+}
+
 /**
  * Every LLM call in SAMOSA goes through this interface, so swapping OpenAI for
  * a local IndoBERT model is a wiring change rather than a rewrite.
@@ -177,4 +204,8 @@ export type LlmAdapter = {
   mergeTopics(input: MergeInput): Promise<Result<MergeOutput, AppError>>
   /** The call after it: each proposed pair, judged on its own. */
   confirmMerges(input: ConfirmInput): Promise<Result<ConfirmOutput, AppError>>
+  /** One call per critique question of a report: which topics make one theme. */
+  groupThemes(input: ThemeInput): Promise<Result<ThemeOutput, AppError>>
+  /** One call per prose question of a report: a finding for each item picked. */
+  writeInsights(input: InsightInput): Promise<Result<InsightOutput, AppError>>
 }

@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ERROR_CODES, appError, err, ok } from '@/modules/shared'
-import type { LlmAdapter, SummaryInput } from '@/modules/analysis/adapters/types'
+import type {
+  InsightInput,
+  LlmAdapter,
+  SummaryInput,
+} from '@/modules/analysis/adapters/types'
+import { DEFAULT_SUMMARY_VERSION } from '@/modules/analysis/prompts'
 
 const upsert = vi.fn()
 const select = vi.fn()
@@ -108,6 +113,9 @@ beforeEach(() => {
   }
 })
 
+/** The tests below are of summary.v3, whose call writes the insights too. */
+const V3 = { promptVersion: 'summary.v3' }
+
 describe('generateReportSummary', () => {
   it('maps cited quote positions back to response ids', async () => {
     const { adapter, seen } = stubAdapter([{ evidence: [1] }, { evidence: [3] }])
@@ -116,6 +124,7 @@ describe('generateReportSummary', () => {
       organizationId: 'org-1',
       jobId: 'job-1',
       adapter,
+      ...V3,
     })
 
     expect(result.ok).toBe(true)
@@ -137,6 +146,7 @@ describe('generateReportSummary', () => {
       organizationId: 'org-1',
       jobId: 'job-1',
       adapter,
+      ...V3,
     })
 
     expect(result.ok).toBe(true)
@@ -149,7 +159,12 @@ describe('generateReportSummary', () => {
   it('stores the narrative against the job so it is not regenerated per view', async () => {
     const { adapter } = stubAdapter([{ evidence: [] }])
 
-    await generateReportSummary({ organizationId: 'org-1', jobId: 'job-1', adapter })
+    await generateReportSummary({
+      organizationId: 'org-1',
+      jobId: 'job-1',
+      adapter,
+      ...V3,
+    })
 
     expect(upsert).toHaveBeenCalledWith(
       expect.objectContaining({ job_id: 'job-1', organization_id: 'org-1' }),
@@ -165,6 +180,7 @@ describe('generateReportSummary', () => {
       organizationId: 'org-1',
       jobId: 'job-1',
       adapter,
+      ...V3,
     })
 
     expect(result.ok).toBe(false)
@@ -197,6 +213,7 @@ describe('generateReportSummary', () => {
       organizationId: 'org-1',
       jobId: 'job-1',
       adapter,
+      ...V3,
     })
 
     // The second reply is the one stored; the reader never sees the first.
@@ -216,6 +233,7 @@ describe('generateReportSummary', () => {
       organizationId: 'org-1',
       jobId: 'job-1',
       adapter,
+      ...V3,
     })
 
     expect(result.ok).toBe(false)
@@ -235,6 +253,7 @@ describe('generateReportSummary', () => {
       organizationId: 'org-1',
       jobId: 'job-1',
       adapter,
+      ...V3,
     })
 
     expect(result.ok).toBe(false)
@@ -244,7 +263,12 @@ describe('generateReportSummary', () => {
   it('writes from one pool when the job has no questions on record', async () => {
     const { adapter, seen } = stubAdapter([{ evidence: [1] }])
 
-    await generateReportSummary({ organizationId: 'org-1', jobId: 'job-1', adapter })
+    await generateReportSummary({
+      organizationId: 'org-1',
+      jobId: 'job-1',
+      adapter,
+      ...V3,
+    })
 
     expect(seen[0]?.data.questions).toEqual([
       expect.objectContaining({ text: 'Aspirasi', mode: 'evaluative', answers: 3 }),
@@ -299,7 +323,12 @@ describe('generateReportSummary', () => {
       )
       const { adapter, seen } = stubAdapter([{ evidence: [] }], true)
 
-      await generateReportSummary({ organizationId: 'org-1', jobId: 'job-1', adapter })
+      await generateReportSummary({
+        organizationId: 'org-1',
+        jobId: 'job-1',
+        adapter,
+        ...V3,
+      })
 
       const [kritik, pilihan] = seen[0]?.data.questions ?? []
       // Two labels, one topic, three answers: the number the chart shows.
@@ -310,7 +339,12 @@ describe('generateReportSummary', () => {
     it('hands the model each question as the report draws it', async () => {
       const { adapter, seen } = stubAdapter([{ evidence: [] }], true)
 
-      await generateReportSummary({ organizationId: 'org-1', jobId: 'job-1', adapter })
+      await generateReportSummary({
+        organizationId: 'org-1',
+        jobId: 'job-1',
+        adapter,
+        ...V3,
+      })
 
       const [kritik, pilihan, nilai] = seen[0]?.data.questions ?? []
       expect(kritik).toMatchObject({
@@ -346,7 +380,12 @@ describe('generateReportSummary', () => {
     it('quotes only prose, and says which question each quote answers', async () => {
       const { adapter, seen } = stubAdapter([{ evidence: [] }], true)
 
-      await generateReportSummary({ organizationId: 'org-1', jobId: 'job-1', adapter })
+      await generateReportSummary({
+        organizationId: 'org-1',
+        jobId: 'job-1',
+        adapter,
+        ...V3,
+      })
 
       // A choice or a number is already its own count; quoting "4" adds nothing.
       expect(seen[0]?.data.sampleQuotes).toEqual([
@@ -378,6 +417,7 @@ describe('generateReportSummary', () => {
         organizationId: 'org-1',
         jobId: 'job-1',
         adapter,
+        ...V3,
       })
 
       expect(result.ok).toBe(true)
@@ -406,6 +446,164 @@ describe('generateReportSummary', () => {
       // Absent, not null: the page tells a pooled summary by this.
       expect(result.value.insights[0]).not.toHaveProperty('questionId')
     })
+  })
+})
+
+/** summary.v4: the paragraph in one call, the findings of each prose question apart. */
+function v4Adapter(): LlmAdapter {
+  const spent = { modelId: 'stub-model', usage: { inputTokens: 1, outputTokens: 1 } }
+  return {
+    name: 'stub',
+    analyzeBatch: vi.fn(),
+    classifyColumns: vi.fn(),
+    mergeTopics: vi.fn(),
+    confirmMerges: vi.fn(),
+    summarize: vi.fn(async () =>
+      ok({
+        summary: 'ringkasan',
+        insights: [],
+        citesQuestions: true,
+        ...spent,
+        costMicroIdr: 100,
+      }),
+    ),
+    groupThemes: vi.fn(async () => ok({ themes: [], ...spent, costMicroIdr: 10 })),
+    writeInsights: vi.fn(async (input: InsightInput) =>
+      ok({
+        insights: input.candidates.map((candidate) => ({
+          candidate: candidate.number,
+          title: `Temuan ${candidate.name}`,
+          detail: 'detail',
+          evidence: candidate.quotes.map((quote) => quote.number),
+        })),
+        ...spent,
+        costMicroIdr: 20,
+      }),
+    ),
+  }
+}
+
+describe('generateReportSummary on summary.v4', () => {
+  beforeEach(() => {
+    jobFromDb = {
+      dataset_id: 'dataset-1',
+      prompt_version: 'analysis.v3',
+      question_counts: {
+        q1: { analyzed: 3, no_content: 0, failed: 0, mode: 'evaluative' },
+        q2: { analyzed: 3, no_content: 0, failed: 0, mode: 'thematic' },
+        q3: { analyzed: 2, no_content: 0, failed: 0, mode: 'categorical' },
+      },
+    }
+    questionsFromDb = [
+      { id: 'q1', question_text: 'Kritik dan saran', position: 0 },
+      { id: 'q2', question_text: 'Nilai yang dipelajari', position: 1 },
+      { id: 'q3', question_text: 'Kegiatan paling seru?', position: 2 },
+    ]
+    rowsFromDb = {
+      data: [
+        row('r1', 'negative', ['kantin'], 'Kantin antre panjang sekali.', 'q1'),
+        row('r2', 'positive', ['kantin'], 'Kantin sekarang lebih bersih.', 'q1'),
+        row('r3', 'negative', ['parkir'], 'Parkir motor penuh jam tujuh.', 'q1'),
+        row('t1', null, ['keberanian'], 'Aku jadi berani tampil di depan.', 'q2'),
+        row('t2', null, ['keberanian'], 'Berani mencoba hal yang baru.', 'q2'),
+        row('t3', null, ['keberanian'], 'Tidak takut salah lagi sekarang.', 'q2'),
+        row('c1', null, ['outbound'], 'Outbound', 'q3'),
+        row('c2', null, ['outbound'], 'outbound', 'q3'),
+      ],
+      error: null,
+    }
+  })
+
+  it('is what a new report is written with', () => {
+    expect(DEFAULT_SUMMARY_VERSION).toBe('summary.v4')
+  })
+
+  it('writes the paragraph from the figures alone, and the findings of prose apart', async () => {
+    const adapter = v4Adapter()
+
+    const result = await generateReportSummary({
+      organizationId: 'org-1',
+      jobId: 'job-1',
+      adapter,
+    })
+
+    expect(result.ok).toBe(true)
+    // The quotes now sit under the findings that cite them.
+    expect(vi.mocked(adapter.summarize).mock.calls[0]?.[0].data.sampleQuotes).toEqual([])
+    // Themes for the critique only; a finding for each prose question; none
+    // for a choice, which is its own count.
+    expect(adapter.groupThemes).toHaveBeenCalledTimes(1)
+    const written = vi.mocked(adapter.writeInsights).mock.calls.map(([input]) => input)
+    // Side by side, so in no fixed order.
+    expect(written.map((input) => [input.question, input.mode]).sort()).toEqual([
+      ['Kritik dan saran', 'evaluative'],
+      ['Nilai yang dipelajari', 'thematic'],
+    ])
+  })
+
+  it('stores the findings most supported first, each with what it stands on', async () => {
+    const result = await generateReportSummary({
+      organizationId: 'org-1',
+      jobId: 'job-1',
+      adapter: v4Adapter(),
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.value.insights).toEqual([
+      expect.objectContaining({
+        title: 'Temuan keberanian',
+        questionId: 'q2',
+        support: 3,
+        topics: ['keberanian'],
+        signal: 'topic',
+      }),
+      expect.objectContaining({
+        title: 'Temuan kantin',
+        questionId: 'q1',
+        support: 2,
+        signal: 'split',
+        evidenceResponseIds: ['r1', 'r2'],
+      }),
+    ])
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ summary: 'ringkasan', insights: result.value.insights }),
+      { onConflict: 'job_id' },
+    )
+    // The paragraph, one theme call, two writing calls.
+    expect(result.value.costMicroIdr).toBe(100 + 10 + 20 + 20)
+  })
+
+  it('keeps the summary when a question’s findings could not be written', async () => {
+    const adapter = v4Adapter()
+    vi.mocked(adapter.writeInsights).mockResolvedValue(
+      err(appError(ERROR_CODES.UPSTREAM, 'Penyedia AI tidak merespons')),
+    )
+
+    const result = await generateReportSummary({
+      organizationId: 'org-1',
+      jobId: 'job-1',
+      adapter,
+    })
+
+    expect(result.ok && result.value.insights).toEqual([])
+    expect(upsert).toHaveBeenCalledTimes(1)
+  })
+
+  it('fails without the paragraph, whatever the findings did', async () => {
+    const adapter = v4Adapter()
+    vi.mocked(adapter.summarize).mockResolvedValue(
+      err(appError(ERROR_CODES.UPSTREAM, 'Penyedia AI tidak merespons')),
+    )
+
+    const result = await generateReportSummary({
+      organizationId: 'org-1',
+      jobId: 'job-1',
+      adapter,
+    })
+
+    expect(result.ok).toBe(false)
+    expect(upsert).not.toHaveBeenCalled()
   })
 })
 

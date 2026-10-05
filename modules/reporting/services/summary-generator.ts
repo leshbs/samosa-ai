@@ -10,6 +10,7 @@ import {
   questionNoContent,
   readQuestionCounts,
   readTopicMerges,
+  summaryPrompt,
   type LlmAdapter,
   type QuestionDigest,
 } from '@/modules/analysis'
@@ -21,6 +22,7 @@ import { aggregateScale } from '../aggregators/scale'
 import { groupByQuestion, type ReportQuestion } from '../aggregators/sections'
 import { aggregateSentiment } from '../aggregators/sentiment'
 import { aggregateTopics } from '../aggregators/topics'
+import { truncateQuote, writeQuestionFindings } from './insight-writer'
 
 /** Enough quotes for the model to ground insights in, few enough to stay cheap. */
 const MAX_QUOTES = 18
@@ -28,8 +30,6 @@ const MAX_QUOTES = 18
 const MIN_QUOTES_PER_QUESTION = 3
 const QUOTES_PER_TOPIC = 2
 const TOPICS_TO_SAMPLE = 6
-/** A single rambling aspiration should not crowd out seventeen others. */
-const MAX_QUOTE_LENGTH = 240
 
 const TOP_TOPICS_IN_PROMPT = 5
 const TOP_KEYWORDS_IN_PROMPT = 10
@@ -205,11 +205,6 @@ async function loadQuestions(
   }
 }
 
-function truncate(text: string): string {
-  const clean = text.replace(/\s+/g, ' ').trim()
-  return clean.length <= MAX_QUOTE_LENGTH ? clean : `${clean.slice(0, MAX_QUOTE_LENGTH)}…`
-}
-
 export type StoredSummary = {
   summary: string
   insights: ReportInsight[]
@@ -305,28 +300,35 @@ export async function generateReportSummary(
           noContent: noContentOf.get(section.question.id) ?? null,
         }))
 
-  // Only prose is quoted: a choice or a number is already its own count.
+  // Only prose is quoted or has findings: a choice or a number is already its
+  // own count.
   const prose = digestible.filter(
     (section) =>
       section.question.mode === 'evaluative' || section.question.mode === 'thematic',
   )
-  const perQuestion = Math.max(
-    MIN_QUOTES_PER_QUESTION,
-    Math.floor(MAX_QUOTES / Math.max(1, prose.length)),
-  )
-  const quotes: SampledRow[] = []
-  const quoteQuestions: number[] = []
-  digestible.forEach((section, index) => {
-    if (!prose.includes(section)) return
-    for (const quote of selectQuotes(section.rows, perQuestion)) {
-      quotes.push(quote)
-      quoteQuestions.push(index + 1)
-    }
-  })
-
-  const proseRows = prose.flatMap((section) => section.rows)
   const adapter = input.adapter ?? createOpenAiAdapter()
   const promptVersion = input.promptVersion ?? DEFAULT_SUMMARY_VERSION
+  // From summary.v4 the findings are picked from the data and written apart;
+  // the versions before it wrote them in this call, from sampled quotes.
+  const apart = summaryPrompt(promptVersion).writesInsightsApart
+
+  const quotes: SampledRow[] = []
+  const quoteQuestions: number[] = []
+  if (!apart) {
+    const perQuestion = Math.max(
+      MIN_QUOTES_PER_QUESTION,
+      Math.floor(MAX_QUOTES / Math.max(1, prose.length)),
+    )
+    digestible.forEach((section, index) => {
+      if (!prose.includes(section)) return
+      for (const quote of selectQuotes(section.rows, perQuestion)) {
+        quotes.push(quote)
+        quoteQuestions.push(index + 1)
+      }
+    })
+  }
+
+  const proseRows = prose.flatMap((section) => section.rows)
 
   const request = {
     promptVersion,
@@ -344,15 +346,13 @@ export async function generateReportSummary(
           count: keyword.count,
         }),
       ),
-      sampleQuotes: quotes.map((quote) => truncate(quote.text)),
+      sampleQuotes: quotes.map((quote) => truncateQuote(quote.text)),
       questions: digestible.map((section) =>
         digestQuestion(section.question, section.rows, section.noContent),
       ),
       quoteQuestions,
     },
   }
-
-  let result = await adapter.summarize(request)
 
   /**
    * One more ask when the model's reply broke the output format. Measured on a
@@ -362,37 +362,72 @@ export async function generateReportSummary(
    * is retried: an unreachable provider has already been retried inside the
    * adapter, and asking again would only hold the job open longer.
    */
-  if (!result.ok && result.error.details?.malformedReply === true) {
+  const summarize = async () => {
+    const first = await adapter.summarize(request)
+    if (first.ok || first.error.details?.malformedReply !== true) return first
     log.warn('reporting.summary.retrying', {
-      reason: result.error.message,
-      ...result.error.details,
+      reason: first.error.message,
+      ...first.error.details,
     })
-    result = await adapter.summarize(request)
+    return adapter.summarize(request)
   }
 
+  // The paragraph and each question's findings are separate calls; none waits
+  // on another.
+  const [result, findings] = await Promise.all([
+    summarize(),
+    apart
+      ? Promise.all(
+          prose.map((section) =>
+            writeQuestionFindings(adapter, {
+              questionId: section.question.id || null,
+              text: section.question.text,
+              mode: section.question.mode === 'thematic' ? 'thematic' : 'evaluative',
+              rows: section.rows,
+            }),
+          ),
+        )
+      : Promise.resolve([]),
+  ])
+
   if (!result.ok) return result
+
+  findings.forEach((question, index) => {
+    log.info('reporting.insights.written', {
+      question: prose[index]?.question.id || null,
+      ...question.stats,
+    })
+  })
 
   // The model cites quote numbers; only positions that exist become evidence.
   // A hallucinated "[9]" against three quotes silently drops rather than
   // pointing a reader at a response that was never shown to the model.
   const { citesQuestions } = result.value
-  const insights: ReportInsight[] = result.value.insights.map((insight) => ({
-    title: insight.title,
-    detail: insight.detail,
-    evidenceResponseIds: insight.evidence
-      .map((position) => quotes[position - 1]?.responseId)
-      .filter((id): id is string => Boolean(id)),
-    // A number past the last question is read as "several", like 0: an origin
-    // the reader cannot open is worse than none.
-    ...(citesQuestions
-      ? {
-          questionId:
-            (insight.question
-              ? digestible[insight.question - 1]?.question.id
-              : undefined) || null,
-        }
-      : {}),
-  }))
+  const insights: ReportInsight[] = apart
+    ? // Most supported first across questions: the screen shows the first five.
+      findings
+        .flatMap((question) => question.insights)
+        .sort((a, b) => (b.support ?? 0) - (a.support ?? 0))
+    : result.value.insights.map((insight) => ({
+        title: insight.title,
+        detail: insight.detail,
+        evidenceResponseIds: insight.evidence
+          .map((position) => quotes[position - 1]?.responseId)
+          .filter((id): id is string => Boolean(id)),
+        // A number past the last question is read as "several", like 0: an
+        // origin the reader cannot open is worse than none.
+        ...(citesQuestions
+          ? {
+              questionId:
+                (insight.question
+                  ? digestible[insight.question - 1]?.question.id
+                  : undefined) || null,
+            }
+          : {}),
+      }))
+  const costMicroIdr =
+    result.value.costMicroIdr +
+    findings.reduce((sum, question) => sum + question.costMicroIdr, 0)
 
   const { error: upsertError } = await supabase.from('reports').upsert(
     {
@@ -413,12 +448,12 @@ export async function generateReportSummary(
     modelId: result.value.modelId,
     quotes: quotes.length,
     insights: insights.length,
-    costMicroIdr: result.value.costMicroIdr,
+    costMicroIdr,
   })
 
   return ok({
     summary: result.value.summary,
     insights,
-    costMicroIdr: result.value.costMicroIdr,
+    costMicroIdr,
   })
 }

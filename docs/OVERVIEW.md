@@ -207,6 +207,7 @@ samosa/
 │   │   │   ├── job-runner.ts
 │   │   │   ├── mode-detection.ts    # Tebakan mode tiap kolom (ADR-0016)
 │   │   │   ├── topic-merge.ts       # Label topik yang sama dihitung satu (ADR-0018)
+│   │   │   ├── topic-themes.ts      # Tema di atas topik kritik (ADR-0019)
 │   │   │   └── scale.ts             # Jawaban angka dibaca tanpa model
 │   │   ├── adapters/                # LLM abstraction layer
 │   │   │   ├── openai.ts
@@ -217,7 +218,10 @@ samosa/
 │   │   │   ├── analysis.v2.ts       # + label no_content (pilot 01)
 │   │   │   ├── modes.v1.ts          # Tebakan mode dari judul kolom
 │   │   │   ├── merge.v1.ts          # Gabung label topik: usul, lalu periksa
-│   │   │   ├── summary.v3.ts        # Default: per pertanyaan, menyebut asal
+│   │   │   ├── theme.v1.ts          # Tema dari topik pertanyaan kritik
+│   │   │   ├── insight.v1.ts        # Satu temuan per butir yang dipilih kode
+│   │   │   ├── summary.v4.ts        # Default: paragraf saja, tanpa kutipan
+│   │   │   ├── summary.v3.ts        # Per pertanyaan, menyebut asal, + insight
 │   │   │   ├── sentiment.v1.ts
 │   │   │   ├── topic.v1.ts
 │   │   │   └── summary.v1.ts
@@ -324,7 +328,11 @@ User confirms the columns
          Gagal = laporan dengan label apa adanya, job tetap selesai
   → Client polls /api/analysis/[id]/status atau subscribe Supabase realtime
        - sebelum job jadi terminal: reporting.generateReportSummary()
-         menulis ringkasan eksekutif + insight ke tabel reports
+         menulis ringkasan eksekutif (summary.v4) dan temuan ke tabel reports.
+         Temuan (ADR-0019): untuk tiap pertanyaan kritik, topik dikelompokkan
+         jadi tema (theme.v1); tema atau topik yang disebut ≥3 jawaban (atau
+         ≥5% bila lebih rendah) menjadi butir; insight.v1 menulis satu temuan
+         per butir; temuan tanpa dua kutipan dari butirnya sendiri dibuang
   → Ketika done, client fetch /api/reports/[id]
   → reporting.buildReport() → aggregated view untuk dashboard
   → Export: GET /api/reports/[id]/csv

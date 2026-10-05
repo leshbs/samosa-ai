@@ -5,7 +5,82 @@ Tambahkan baris baru lewat PR yang menciptakan utangnya, jangan belakangan.
 
 ## Terbuka
 
-### Penggabungan topik hanya menyatukan yang sama, bukan yang berkaitan
+### Lima temuan teratas diurutkan lintas pertanyaan
+
+Temuan diurutkan menurut jumlah jawaban yang mendukungnya, semua pertanyaan
+bersama (ADR-0019, mengikuti pilot §5 apa adanya). Pertanyaan dengan jawaban
+lebih banyak menguasai lima teratas. Di job pilot, empat dari lima berasal dari
+pertanyaan refleksi, dan satu-satunya temuan "hampir semua negatif" (tata suara,
+11 dari 11) ada di urutan ke-8, di balik "Lihat semua"
+([catatan](research/insight-generation-01.md)).
+
+**Pemicu:** panitia yang melewatkan keluhan karena tidak menekan "Lihat semua",
+atau C.7. **Bayar dengan:** lima teratas per pertanyaan, atau urutan menurut
+porsi jawaban bertopik di pertanyaannya. Keduanya hanya mengubah urutan, bukan
+temuan yang dibuat.
+
+### Tema digambar ulang setiap ringkasan dibuat, dan tidak tampil di grafik
+
+`theme.v1` dipanggil saat temuan ditulis. Hasilnya hanya tersimpan di temuan
+(`topics` per temuan), bukan sebagai lapisan di job seperti `topic_merges`.
+"Buat ulang" memberi pengelompokan yang bisa sedikit berbeda (10 atau 11 butir
+kritik di lima jalan), dan grafik topik tetap per topik, sehingga kartu "Tata
+suara (11)" tidak punya batang yang sama di grafik.
+
+**Pemicu:** pembaca yang mencari tema di grafik, atau kebutuhan memperbaiki satu
+tema. **Bayar dengan:** simpan tema di `analysis_jobs` sebagai lapisan kedua dan
+gambar grafik per tema untuk pertanyaan kritik.
+
+### Label umum menampung label umum lain
+
+`theme.v1` diminta membiarkan label umum sendiri. Di lima dari lima jalan,
+"kualitas acara" tetap menampung "evaluasi acara", "jalannya acara", "kualitas
+alat" dan "masalah teknis". "Audio dan pencahayaan" menyatukan dua hal yang
+biasanya ditangani orang berbeda.
+
+**Pemicu:** temuan wadah yang menutupi keluhan spesifik di dataset berikutnya.
+**Bayar dengan:** tahap konfirmasi per label seperti `merge.v1`, ukur di E.1.
+
+### Temuan belum diperiksa terhadap label manusia
+
+Yang dijamin kode: setiap butir yang lolos ambang ditulis, dan setiap temuan
+mengutip dua jawaban milik butirnya sendiri. Yang tidak dijamin: detailnya benar
+tentang kutipan itu. Satu judul di uji kedua terbaca sebagai salah tafsir label.
+
+**Pemicu:** E.1. **Bayar dengan:** nilai sampel temuan terhadap kutipannya oleh
+manusia, laporkan presisinya.
+
+### Selisih antar segmen belum menjadi temuan
+
+Aturan keempat di pilot §5 (selisih sentimen >25 poin antar nilai segmen)
+belum dibangun. Belum ada segmen di laporan.
+
+**Pemicu:** C.6. **Bayar dengan:** butir tambahan per tema dengan selisih segmen
+di `pickCandidates`, ditulis oleh `insight.v1` dengan tanda baru.
+
+### Paling banyak 40 butir per pertanyaan
+
+`MAX_CANDIDATES` membatasi butir yang ditulis untuk satu pertanyaan. Itu
+pengaman ukuran panggilan, bukan hasil ukur: daftar terpanjang di pilot 21.
+Butir di luar 40 teratas tidak ditulis, tanpa tanda di laporan.
+
+**Pemicu:** dataset dengan lebih dari 40 tema atau topik yang lolos ambang di
+satu pertanyaan (terlihat di log `reporting.insights.written`). **Bayar
+dengan:** sebut di laporan berapa butir yang tidak ditulis.
+
+### Laporan lama tetap memakai insight `summary.v3`
+
+Ringkasan yang ditulis sebelum `summary.v4` menyimpan 3–6 insight pilihan model.
+Kartunya tetap tampil seperti dulu, tanpa hitungan, sampai "Buat ulang" ditekan.
+
+**Pemicu:** permintaan memperbarui laporan lama. **Bayar dengan:** tekan "Buat
+ulang"; tidak perlu analisis ulang.
+
+### ~~Penggabungan topik hanya menyatukan yang sama, bukan yang berkaitan~~ — lunas 2026-10-05 untuk pertanyaan kritik
+
+_Dibayar dengan `theme.v1` (ADR-0019): label yang membicarakan satu pokok
+dikelompokkan saat temuan ditulis. Pertanyaan refleksi tetap per topik, dengan
+sengaja. Utang baru di atas: tema tidak tersimpan dan tidak tampil di grafik._
 
 `merge.v1` (ADR-0018) menggabung label yang menunjuk hal yang sama: ejaan,
 sinonim, kata pembungkus. Diukur di label pilot
