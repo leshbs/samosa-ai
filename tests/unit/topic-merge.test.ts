@@ -50,6 +50,8 @@ function adapterWith(
     classifyColumns: vi.fn(),
     mergeTopics: vi.fn(mergeTopics),
     confirmMerges: vi.fn(confirmMerges),
+    groupThemes: vi.fn(),
+    writeInsights: vi.fn(),
   } satisfies LlmAdapter
 }
 

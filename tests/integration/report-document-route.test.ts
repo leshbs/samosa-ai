@@ -100,6 +100,7 @@ describe('GET /api/reports/[id]/document', () => {
         detail: 'Telat.',
         // One question: there is no other for the insight to be told apart from.
         origin: null,
+        supportLine: null,
         quotes: ['Konsumsi telat dua jam'],
       },
     ])

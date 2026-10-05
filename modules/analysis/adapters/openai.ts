@@ -6,9 +6,11 @@ import { ERROR_CODES, appError, err, ok, type Result } from '@/modules/shared'
 import type { AppError } from '@/modules/shared'
 import {
   analysisPrompt,
+  insightPrompt,
   mergePrompt,
   modePrompt,
   summaryPrompt,
+  themePrompt,
   type AnalysisPrompt,
 } from '../prompts'
 import { estimateCostMicroIdr } from './pricing'
@@ -22,11 +24,15 @@ import {
   type ClassifyOutput,
   type ConfirmInput,
   type ConfirmOutput,
+  type InsightInput,
+  type InsightOutput,
   type LlmAdapter,
   type MergeInput,
   type MergeOutput,
   type SummaryInput,
   type SummaryOutput,
+  type ThemeInput,
+  type ThemeOutput,
 } from './types'
 
 const MAX_OUTPUT_TOKENS = 4_096
@@ -214,6 +220,12 @@ const MAX_CLASSIFY_TOKENS = 1_024
 
 /** A few numbers per group; room for a list of several hundred labels. */
 const MAX_MERGE_TOKENS = 2_048
+
+/**
+ * A title and two sentences per finding. The pilot's reflection question had
+ * 21 items; at about 90 tokens each this leaves room for twice that.
+ */
+const MAX_INSIGHT_TOKENS = 4_096
 
 /** Reads a reply as JSON, or says the reply — not the provider — was at fault. */
 function parseJson(content: string): Result<unknown, AppError> {
@@ -480,6 +492,36 @@ export function createOpenAiAdapter(options: AdapterOptions = {}): LlmAdapter {
       if (!verdicts.success) return err(malformed(verdicts.error.issues))
 
       return ok({ verdicts: verdicts.data, ...reply.value.spent })
+    },
+
+    async groupThemes(input: ThemeInput): Promise<Result<ThemeOutput, AppError>> {
+      const prompt = themePrompt(input.promptVersion)
+      const reply = await askForJson(options, MAX_MERGE_TOKENS, [
+        { role: 'system', content: prompt.SYSTEM },
+        ...prompt.FEW_SHOT_MESSAGES(),
+        { role: 'user', content: prompt.USER_TEMPLATE(input) },
+      ])
+      if (!reply.ok) return reply
+
+      const themes = prompt.parse(reply.value.json)
+      if (!themes.success) return err(malformed(themes.error.issues))
+
+      return ok({ themes: themes.data, ...reply.value.spent })
+    },
+
+    async writeInsights(input: InsightInput): Promise<Result<InsightOutput, AppError>> {
+      const prompt = insightPrompt(input.promptVersion)
+      const reply = await askForJson(options, MAX_INSIGHT_TOKENS, [
+        { role: 'system', content: prompt.SYSTEM },
+        ...prompt.FEW_SHOT_MESSAGES(),
+        { role: 'user', content: prompt.USER_TEMPLATE(input) },
+      ])
+      if (!reply.ok) return reply
+
+      const insights = prompt.parse(reply.value.json)
+      if (!insights.success) return err(malformed(insights.error.issues))
+
+      return ok({ insights: insights.data, ...reply.value.spent })
     },
   }
 }
