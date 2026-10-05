@@ -433,6 +433,122 @@ describe('createOpenAiAdapter', () => {
     },
   )
 
+  it('asks which topics make one theme, sending the labels and the question', async () => {
+    create.mockResolvedValue(
+      reply({
+        themes: [{ name: 'Tata suara', topics: ['kualitas audio', 'teknis suara'] }],
+      }),
+    )
+
+    const result = await createOpenAiAdapter(noWait).groupThemes({
+      promptVersion: 'theme.v1',
+      question: 'Kritik dan saran',
+      topics: ['kualitas audio', 'teknis suara', 'dekorasi'],
+    })
+
+    expect(result.ok && result.value.themes).toEqual([
+      { name: 'Tata suara', topics: ['kualitas audio', 'teknis suara'] },
+    ])
+    const messages = create.mock.calls[0]?.[0].messages as Array<{ content: string }>
+    expect(messages.at(-1)?.content).toContain('- teknis suara')
+    expect(messages.at(-1)?.content).toContain('"Kritik dan saran"')
+  })
+
+  it('asks for a finding per item, sending each item with its numbered quotes', async () => {
+    create.mockResolvedValue(
+      reply({
+        insights: [
+          {
+            candidate: 1,
+            title: 'Suara tidak jelas',
+            detail: 'Detail.',
+            evidence: [1, 2],
+          },
+        ],
+      }),
+    )
+
+    const result = await createOpenAiAdapter(noWait).writeInsights({
+      promptVersion: 'insight.v1',
+      question: 'Kritik dan saran',
+      mode: 'evaluative',
+      answers: 40,
+      candidates: [
+        {
+          number: 1,
+          name: 'Tata suara',
+          topics: [{ term: 'kualitas audio', count: 3 }],
+          support: 3,
+          sentimentCounts: { positive: 0, neutral: 0, negative: 3 },
+          signal: 'topic',
+          quotes: [
+            { number: 1, text: 'Mic mati' },
+            { number: 2, text: 'Suara pecah' },
+          ],
+        },
+      ],
+    })
+
+    expect(result.ok && result.value.insights).toEqual([
+      { candidate: 1, title: 'Suara tidak jelas', detail: 'Detail.', evidence: [1, 2] },
+    ])
+    const sent = (create.mock.calls[0]?.[0].messages as Array<{ content: string }>).at(-1)
+    expect(sent?.content).toContain('Pokok 1: "Tata suara" — disebut di 3 jawaban')
+    expect(sent?.content).toContain('[2] Suara pecah')
+  })
+
+  it.each([
+    ['groupThemes', { themes: 'Tata suara' }],
+    ['writeInsights', { insights: [{ candidate: 'satu', title: 't', detail: 'd' }] }],
+  ] as const)(
+    'marks a %s reply that broke its format as worth asking again',
+    async (method, body) => {
+      create.mockResolvedValue(reply(body))
+      const adapter = createOpenAiAdapter(noWait)
+
+      const result =
+        method === 'groupThemes'
+          ? await adapter.groupThemes({
+              promptVersion: 'theme.v1',
+              question: 'q',
+              topics: ['a', 'b'],
+            })
+          : await adapter.writeInsights({
+              promptVersion: 'insight.v1',
+              question: 'q',
+              mode: 'thematic',
+              answers: 1,
+              candidates: [],
+            })
+
+      expect(result.ok).toBe(false)
+      expect(!result.ok && result.error.details).toMatchObject({ malformedReply: true })
+    },
+  )
+
+  it('fails a theme or insight call the provider did not answer', async () => {
+    create.mockRejectedValue(apiError(401))
+    const adapter = createOpenAiAdapter(noWait)
+
+    const themes = await adapter.groupThemes({
+      promptVersion: 'theme.v1',
+      question: 'q',
+      topics: ['a', 'b'],
+    })
+    const insights = await adapter.writeInsights({
+      promptVersion: 'insight.v1',
+      question: 'q',
+      mode: 'thematic',
+      answers: 1,
+      candidates: [],
+    })
+
+    expect(!themes.ok && themes.error.details?.malformedReply).toBeUndefined()
+    expect(!insights.ok && insights.error.message).toBe(
+      'Kunci API OpenAI di server ditolak',
+    )
+  })
+
   it('fails a merge call the provider did not answer, without the malformed mark', async () => {
     create.mockRejectedValue(apiError(401))
 

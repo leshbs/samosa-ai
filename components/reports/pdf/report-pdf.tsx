@@ -582,6 +582,9 @@ export function ReportPdf({ report }: { report: ReportPdfPayload }) {
                   Dari pertanyaan: {insight.origin}
                 </Text>
               ) : null}
+              {insight.supportLine ? (
+                <Text style={[styles.small, styles.muted]}>{insight.supportLine}</Text>
+              ) : null}
               <Text style={styles.muted}>{insight.detail}</Text>
               {insight.quotes.map((text, index) => (
                 <Text key={index} style={[styles.quote, styles.italic]}>
@@ -590,6 +593,25 @@ export function ReportPdf({ report }: { report: ReportPdfPayload }) {
               ))}
             </View>
           ))}
+
+          {view.moreInsights.length > 0 ? (
+            // A long list may run onto the next page; only its heading stays
+            // with its first line.
+            <View style={styles.insight}>
+              <Text style={styles.insightTitle} minPresenceAhead={24}>
+                Temuan lain ({view.moreInsights.length})
+              </Text>
+              {view.moreInsights.map((insight, index) => (
+                <Text key={index} style={[styles.small, styles.muted]}>
+                  • {insight.title}
+                  {insight.support !== null
+                    ? ` — disebut di ${insight.support} jawaban`
+                    : ''}
+                  {insight.origin ? ` (${insight.origin})` : ''}
+                </Text>
+              ))}
+            </View>
+          ) : null}
         </View>
 
         {view.sections.map((section, index) => (

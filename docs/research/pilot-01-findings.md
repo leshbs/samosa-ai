@@ -249,6 +249,8 @@ Dua opsi yang dipertimbangkan — skala mengikuti volume data, atau maksimum yan
 
 **Tampilan:** 5 teratas berdasarkan jumlah respons pendukung, dengan "Lihat semua (N)". User mengendalikan **apa yang terlihat**, bukan **apa yang dibuat**.
 
+_Dibangun 5 Okt (C.4, [ADR-0019](../adr/0019-insights-from-data.md)). Ambang per topik ternyata melewatkan keluhan yang tersebar di label berkaitan, jadi pertanyaan kritik dihitung per tema. Pengukuran: [`insight-generation-01.md`](insight-generation-01.md)._
+
 ---
 
 ## 6. Revisi terhadap `SAMOSA-TODO-V2.md` Fase C

@@ -122,7 +122,7 @@ export type QuestionMergeOutput = {
 const NO_USAGE: AdapterUsage = { inputTokens: 0, outputTokens: 0 }
 
 /** The same request once more when the reply, not the provider, was at fault. */
-async function askTwice<T>(
+export async function askTwice<T>(
   ask: () => Promise<Result<T, AppError>>,
 ): Promise<Result<T, AppError>> {
   const reply = await ask()

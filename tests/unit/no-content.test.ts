@@ -124,6 +124,8 @@ function adapterAnswering(noContentIndexes: (texts: string[]) => number[]): LlmA
     classifyColumns: vi.fn(),
     mergeTopics: vi.fn(),
     confirmMerges: vi.fn(),
+    groupThemes: vi.fn(),
+    writeInsights: vi.fn(),
     analyzeBatch: vi.fn(async ({ texts }: { texts: string[] }) => {
       const empty = new Set(noContentIndexes(texts))
       return ok({

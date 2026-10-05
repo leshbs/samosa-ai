@@ -4,12 +4,15 @@ import type { RawBatchAnalysis } from '../adapters/types'
 import * as analysisV1 from './analysis.v1'
 import * as analysisV2 from './analysis.v2'
 import * as analysisV3 from './analysis.v3'
+import * as insightV1 from './insight.v1'
 import * as mergeV1 from './merge.v1'
 import * as modesV1 from './modes.v1'
 import * as sentimentV1 from './sentiment.v1'
 import * as summaryV1 from './summary.v1'
 import * as summaryV2 from './summary.v2'
 import * as summaryV3 from './summary.v3'
+import * as summaryV4 from './summary.v4'
+import * as themeV1 from './theme.v1'
 import * as topicV1 from './topic.v1'
 
 /**
@@ -37,19 +40,29 @@ export const SUMMARY_PROMPTS = {
   'summary.v1': summaryV1,
   'summary.v2': summaryV2,
   'summary.v3': summaryV3,
+  'summary.v4': summaryV4,
   v1: summaryV1,
 } as const
 export const MODE_PROMPTS = { 'modes.v1': modesV1 } as const
 export const MERGE_PROMPTS = { 'merge.v1': mergeV1 } as const
+export const THEME_PROMPTS = { 'theme.v1': themeV1 } as const
+export const INSIGHT_PROMPTS = { 'insight.v1': insightV1 } as const
 
-/** v3 is what new reports use: it is told the questions and cites them. */
-export const DEFAULT_SUMMARY_VERSION = 'summary.v3'
+/**
+ * v4 is what new reports use: the paragraph only, with the findings written
+ * from the data by insight.v1 (C.4).
+ */
+export const DEFAULT_SUMMARY_VERSION = 'summary.v4'
 
 export const DEFAULT_PROMPT_VERSION = 'analysis.v3'
 
 export const DEFAULT_MODE_VERSION = 'modes.v1'
 
 export const DEFAULT_MERGE_VERSION = 'merge.v1'
+
+export const DEFAULT_THEME_VERSION = 'theme.v1'
+
+export const DEFAULT_INSIGHT_VERSION = 'insight.v1'
 
 export type PromptVersion =
   keyof typeof ANALYSIS_PROMPTS | keyof typeof MODE_AWARE_PROMPTS
@@ -164,6 +177,11 @@ export type SummaryPrompt = {
   readonly parse: (value: unknown) => z.SafeParseReturnType<unknown, NormalizedSummary>
   /** Whether its insights name the question they come from. */
   readonly citesQuestions: boolean
+  /**
+   * Whether the findings are written apart, by insight.v1, from items picked
+   * out of the data. Such a version returns no insights of its own.
+   */
+  readonly writesInsightsApart: boolean
 }
 
 /** v1 predates cited evidence; normalize it to the same shape with none. */
@@ -191,6 +209,11 @@ const summaryV3Schema = summaryV3.OUTPUT_SCHEMA.transform((value) => ({
   })),
 }))
 
+const summaryV4Schema = summaryV4.OUTPUT_SCHEMA.transform((value) => ({
+  summary: value.summary,
+  insights: [] as NormalizedInsight[],
+}))
+
 const SUMMARY_PROMPT_IMPLS: Record<keyof typeof SUMMARY_PROMPTS, SummaryPrompt> = {
   'summary.v1': {
     PROMPT_VERSION: summaryV1.PROMPT_VERSION,
@@ -199,6 +222,7 @@ const SUMMARY_PROMPT_IMPLS: Record<keyof typeof SUMMARY_PROMPTS, SummaryPrompt> 
     FEW_SHOT_MESSAGES: NO_FEW_SHOT,
     parse: (value) => summaryV1Schema.safeParse(value),
     citesQuestions: false,
+    writesInsightsApart: false,
   },
   v1: {
     PROMPT_VERSION: summaryV1.PROMPT_VERSION,
@@ -207,6 +231,7 @@ const SUMMARY_PROMPT_IMPLS: Record<keyof typeof SUMMARY_PROMPTS, SummaryPrompt> 
     FEW_SHOT_MESSAGES: NO_FEW_SHOT,
     parse: (value) => summaryV1Schema.safeParse(value),
     citesQuestions: false,
+    writesInsightsApart: false,
   },
   'summary.v2': {
     PROMPT_VERSION: summaryV2.PROMPT_VERSION,
@@ -215,6 +240,7 @@ const SUMMARY_PROMPT_IMPLS: Record<keyof typeof SUMMARY_PROMPTS, SummaryPrompt> 
     FEW_SHOT_MESSAGES: summaryV2.FEW_SHOT_MESSAGES,
     parse: (value) => summaryV2Schema.safeParse(value),
     citesQuestions: false,
+    writesInsightsApart: false,
   },
   'summary.v3': {
     PROMPT_VERSION: summaryV3.PROMPT_VERSION,
@@ -223,6 +249,16 @@ const SUMMARY_PROMPT_IMPLS: Record<keyof typeof SUMMARY_PROMPTS, SummaryPrompt> 
     FEW_SHOT_MESSAGES: summaryV3.FEW_SHOT_MESSAGES,
     parse: (value) => summaryV3Schema.safeParse(value),
     citesQuestions: true,
+    writesInsightsApart: false,
+  },
+  'summary.v4': {
+    PROMPT_VERSION: summaryV4.PROMPT_VERSION,
+    SYSTEM: summaryV4.SYSTEM,
+    USER_TEMPLATE: summaryV4.USER_TEMPLATE,
+    FEW_SHOT_MESSAGES: summaryV4.FEW_SHOT_MESSAGES,
+    parse: (value) => summaryV4Schema.safeParse(value),
+    citesQuestions: true,
+    writesInsightsApart: true,
   },
 }
 
@@ -318,5 +354,68 @@ export function mergePrompt(version: string): MergePrompt {
       FEW_SHOT_MESSAGES: mergeV1.CONFIRM_FEW_SHOT_MESSAGES,
       parse: (value) => mergeV1Verdicts.safeParse(value),
     },
+  }
+}
+
+export type ThemePromptInput = themeV1.ThemePromptInput
+
+/** One theme as the model wrote it; not yet checked against the list. */
+export type ProposedTheme = { name: string; topics: string[] }
+
+export type ThemePrompt = {
+  readonly PROMPT_VERSION: string
+  readonly SYSTEM: string
+  readonly USER_TEMPLATE: (input: ThemePromptInput) => string
+  readonly FEW_SHOT_MESSAGES: Messages
+  readonly parse: (value: unknown) => z.SafeParseReturnType<unknown, ProposedTheme[]>
+}
+
+const themeV1Themes = themeV1.OUTPUT_SCHEMA.transform((value) => value.themes)
+
+export function themePrompt(version: string): ThemePrompt {
+  if (!(version in THEME_PROMPTS)) {
+    throw new Error(`Unknown theme prompt version: ${version}`)
+  }
+  return {
+    PROMPT_VERSION: themeV1.PROMPT_VERSION,
+    SYSTEM: themeV1.SYSTEM,
+    USER_TEMPLATE: themeV1.USER_TEMPLATE,
+    FEW_SHOT_MESSAGES: themeV1.FEW_SHOT_MESSAGES,
+    parse: (value) => themeV1Themes.safeParse(value),
+  }
+}
+
+export type InsightPromptInput = insightV1.InsightPromptInput
+export type InsightCandidateInput = insightV1.InsightCandidateInput
+export type InsightSignal = insightV1.InsightSignal
+
+/** One finding as the model wrote it; its candidate and quotes are unchecked. */
+export type WrittenInsight = {
+  candidate: number
+  title: string
+  detail: string
+  evidence: number[]
+}
+
+export type InsightPrompt = {
+  readonly PROMPT_VERSION: string
+  readonly SYSTEM: string
+  readonly USER_TEMPLATE: (input: InsightPromptInput) => string
+  readonly FEW_SHOT_MESSAGES: Messages
+  readonly parse: (value: unknown) => z.SafeParseReturnType<unknown, WrittenInsight[]>
+}
+
+const insightV1Insights = insightV1.OUTPUT_SCHEMA.transform((value) => value.insights)
+
+export function insightPrompt(version: string): InsightPrompt {
+  if (!(version in INSIGHT_PROMPTS)) {
+    throw new Error(`Unknown insight prompt version: ${version}`)
+  }
+  return {
+    PROMPT_VERSION: insightV1.PROMPT_VERSION,
+    SYSTEM: insightV1.SYSTEM,
+    USER_TEMPLATE: insightV1.USER_TEMPLATE,
+    FEW_SHOT_MESSAGES: insightV1.FEW_SHOT_MESSAGES,
+    parse: (value) => insightV1Insights.safeParse(value),
   }
 }

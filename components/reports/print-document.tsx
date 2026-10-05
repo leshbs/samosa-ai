@@ -109,6 +109,11 @@ export function PrintDocument({
                               Dari pertanyaan: {insight.origin}
                             </p>
                           ) : null}
+                          {insight.supportLine ? (
+                            <p className="text-[8pt] text-muted-foreground">
+                              {insight.supportLine}
+                            </p>
+                          ) : null}
                           <p className="text-muted-foreground">{insight.detail}</p>
                           {cited.map((text, index) => (
                             <blockquote
@@ -122,6 +127,25 @@ export function PrintDocument({
                       )
                     })}
                   </ul>
+                ) : null}
+
+                {view.moreInsights.length > 0 ? (
+                  <div className="mt-4">
+                    <p className="font-semibold [break-after:avoid]">
+                      Temuan lain ({view.moreInsights.length})
+                    </p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[9pt] text-muted-foreground">
+                      {view.moreInsights.map((insight, index) => (
+                        <li key={index}>
+                          {insight.title}
+                          {insight.support !== null
+                            ? ` — disebut di ${insight.support} jawaban`
+                            : ''}
+                          {insight.origin ? ` (${insight.origin})` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ) : null}
               </Section>
 

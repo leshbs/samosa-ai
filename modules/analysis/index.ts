@@ -47,18 +47,24 @@ export {
 } from './postprocess/normalize'
 export { sanitizeResponseText } from './postprocess/sanitize'
 export {
+  DEFAULT_INSIGHT_VERSION,
   DEFAULT_MERGE_VERSION,
   DEFAULT_MODE_VERSION,
   DEFAULT_PROMPT_VERSION,
   DEFAULT_SUMMARY_VERSION,
+  DEFAULT_THEME_VERSION,
   separatesNoContent,
+  summaryPrompt,
 } from './prompts'
 export type {
   ColumnDescription,
   ColumnKind,
+  InsightCandidateInput,
+  InsightSignal,
   NormalizedSummary,
   QuestionDigest,
   SummaryPromptInput,
+  WrittenInsight,
 } from './prompts'
 /** Exported so the reporting module can compose a summary call without owning an SDK. */
 export { createOpenAiAdapter } from './adapters/openai'
@@ -66,6 +72,8 @@ export { createLocalAdapter } from './adapters/local'
 export type {
   LlmAdapter,
   AnalyzedItem,
+  InsightInput,
+  InsightOutput,
   SummaryInput,
   SummaryOutput,
 } from './adapters/types'
@@ -75,7 +83,14 @@ export {
   questionNoContent,
   readQuestionCounts,
 } from './services/question-counts'
-export { applyTopicMerge, mergedLabels, readTopicMerges } from './services/topic-merge'
+export {
+  applyTopicMerge,
+  askTwice,
+  mergedLabels,
+  readTopicMerges,
+} from './services/topic-merge'
+export { themeQuestionTopics } from './services/topic-themes'
+export type { ThemeGroup } from './services/topic-themes'
 export { detectModes, DETECTION_TIMEOUT_MS } from './services/mode-detection'
 export type { ModeDetection, ModeGuess } from './services/mode-detection'
 export { guessModeByRule } from './services/mode-rules'

@@ -8,11 +8,15 @@ import type {
   ClassifyOutput,
   ConfirmInput,
   ConfirmOutput,
+  InsightInput,
+  InsightOutput,
   LlmAdapter,
   MergeInput,
   MergeOutput,
   SummaryInput,
   SummaryOutput,
+  ThemeInput,
+  ThemeOutput,
 } from './types'
 
 const POSITIVE_CUES = ['bagus', 'baik', 'seru', 'puas', 'mantap', 'suka', 'keren']
@@ -139,6 +143,34 @@ export function createLocalAdapter(): LlmAdapter {
     async mergeTopics(_input: MergeInput): Promise<Result<MergeOutput, AppError>> {
       return ok({
         groups: [],
+        modelId: 'local-lexicon-v0',
+        usage: { inputTokens: 0, outputTokens: 0 },
+        costMicroIdr: 0,
+      })
+    },
+
+    /** Nor which topics make one theme: each topic stands as its own. */
+    async groupThemes(_input: ThemeInput): Promise<Result<ThemeOutput, AppError>> {
+      return ok({
+        themes: [],
+        modelId: 'local-lexicon-v0',
+        usage: { inputTokens: 0, outputTokens: 0 },
+        costMicroIdr: 0,
+      })
+    },
+
+    /**
+     * A finding per item from its own figures, citing its first two quotes —
+     * the template prose of `summarize`, held to the same floor as the model.
+     */
+    async writeInsights(input: InsightInput): Promise<Result<InsightOutput, AppError>> {
+      return ok({
+        insights: input.candidates.map((candidate) => ({
+          candidate: candidate.number,
+          title: candidate.name.slice(0, 60),
+          detail: `${candidate.name} disebut di ${candidate.support} jawaban.`,
+          evidence: candidate.quotes.slice(0, 2).map((quote) => quote.number),
+        })),
         modelId: 'local-lexicon-v0',
         usage: { inputTokens: 0, outputTokens: 0 },
         costMicroIdr: 0,
