@@ -4,11 +4,25 @@ import * as React from 'react'
 import { AnimatePresence } from 'motion/react'
 import * as m from 'motion/react-m'
 import { Quote } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { EASE } from '@/components/motion/motion-provider'
 import { Stagger, StaggerItem } from '@/components/motion/primitives'
 import { cn } from '@/lib/utils'
-import type { ReportInsight } from '@/types/domain'
+import type { InsightSignal, ReportInsight } from '@/types/domain'
+
+/**
+ * Findings shown before "Lihat semua". The number of findings comes from the
+ * data (C.4), so a report may have thirty; the reader chooses how many to see,
+ * not how many exist (pilot-01-findings.md §5).
+ */
+export const VISIBLE_INSIGHTS = 5
+
+const SIGNAL_LABELS: Record<InsightSignal, string | null> = {
+  topic: null,
+  split: 'Pendapat terbelah',
+  negative: 'Hampir semua negatif',
+}
 
 /**
  * §6.4 — insight cards, a section of their own rather than a list inside the
@@ -39,7 +53,14 @@ export function InsightCards({
    */
   questions?: ReadonlyArray<{ id: string; text: string }>
 }) {
+  const [showAll, setShowAll] = React.useState(false)
   if (insights.length === 0) return null
+
+  // Findings picked from the data carry their count; older ones were chosen
+  // by the model from a sample and are described as such.
+  const counted = insights.some((insight) => insight.support !== undefined)
+  const shown = showAll ? insights : insights.slice(0, VISIBLE_INSIGHTS)
+  const hidden = insights.length - VISIBLE_INSIGHTS
 
   const originOf = (insight: ReportInsight) =>
     insight.questionId
@@ -53,13 +74,14 @@ export function InsightCards({
           Temuan utama
         </h2>
         <p className="max-w-narrative text-sm text-muted-foreground">
-          Disusun AI dari angka agregat dan contoh aspirasi. Buka kutipannya untuk
-          memeriksa dasar setiap temuan.
+          {counted
+            ? 'Tiap temuan adalah tema atau topik yang disebut cukup banyak jawaban, diurutkan dari yang paling sering. Ditulis AI dan bersandar pada minimal dua kutipan; buka kutipannya untuk memeriksa.'
+            : 'Disusun AI dari angka agregat dan contoh aspirasi. Buka kutipannya untuk memeriksa dasar setiap temuan.'}
         </p>
       </div>
 
       <Stagger className="grid gap-4 lg:grid-cols-2">
-        {insights.map((insight, index) => (
+        {shown.map((insight, index) => (
           <StaggerItem key={`${insight.title}-${index}`}>
             <InsightCard
               insight={insight}
@@ -70,6 +92,20 @@ export function InsightCards({
           </StaggerItem>
         ))}
       </Stagger>
+
+      {hidden > 0 ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-expanded={showAll}
+          onClick={() => setShowAll((open) => !open)}
+        >
+          {showAll
+            ? `Tampilkan ${VISIBLE_INSIGHTS} teratas`
+            : `Lihat semua (${insights.length})`}
+        </Button>
+      ) : null}
     </section>
   )
 }
@@ -98,6 +134,7 @@ function InsightCard({
 
   const [openId, setOpenId] = React.useState<string | null>(null)
   const open = evidence.find((item) => item.id === openId)
+  const signal = insight.signal ? SIGNAL_LABELS[insight.signal] : null
 
   return (
     <Card className="flex h-full flex-col" data-print="keep-together">
@@ -115,6 +152,22 @@ function InsightCard({
         {origin ? (
           <p className="line-clamp-2 text-xs text-muted-foreground" title={origin}>
             <span className="font-medium">Dari pertanyaan:</span> {origin}
+          </p>
+        ) : null}
+
+        {insight.support !== undefined ? (
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <span className="font-medium tabular-nums">
+              Disebut di {insight.support} jawaban
+            </span>
+            {signal ? (
+              <span className="rounded-chip border px-1.5 py-0.5 font-medium">
+                {signal}
+              </span>
+            ) : null}
+            {insight.topics && insight.topics.length > 1 ? (
+              <span>mencakup {insight.topics.join(', ')}</span>
+            ) : null}
           </p>
         ) : null}
 

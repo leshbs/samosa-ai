@@ -1,5 +1,6 @@
 import {
   DEFAULT_REPORT_PREFERENCES,
+  type InsightSignal,
   type QuestionMode,
   type ReportInsight,
   type ReportPreferences,
@@ -151,7 +152,44 @@ export type PrintableInsight = {
   detail: string
   /** The question it comes from, when the report has several and it names one. */
   origin: string | null
+  /**
+   * "Disebut di 11 jawaban · hampir semua negatif · mencakup a, b". Null for a
+   * finding from before summary.v4, which has no count of its own.
+   */
+  supportLine: string | null
   evidenceResponseIds: string[]
+}
+
+/** A finding past the first few, as one line of a list. */
+export type PrintableMoreInsight = {
+  title: string
+  origin: string | null
+  support: number | null
+}
+
+/**
+ * Findings printed in full, as the screen shows them before "Lihat semua".
+ * The rest are listed by title: a printed report cannot expand, and thirty
+ * findings with quotes would bury the sections under them.
+ */
+export const PRINTED_INSIGHTS = 5
+
+const SIGNAL_WORDS: Record<InsightSignal, string | null> = {
+  topic: null,
+  split: 'pendapat terbelah',
+  negative: 'hampir semua negatif',
+}
+
+/** What a finding stands on, in one line; null when it was never counted. */
+export function insightSupportLine(insight: ReportInsight): string | null {
+  if (insight.support === undefined) return null
+  const parts = [`Disebut di ${insight.support} jawaban`]
+  const signal = insight.signal ? SIGNAL_WORDS[insight.signal] : null
+  if (signal) parts.push(signal)
+  if (insight.topics && insight.topics.length > 1) {
+    parts.push(`mencakup ${insight.topics.join(', ')}`)
+  }
+  return parts.join(' · ')
 }
 
 export type PrintableReport = {
@@ -162,7 +200,10 @@ export type PrintableReport = {
    * document says "jawaban" where it would say "aspirasi".
    */
   aspirations: boolean
+  /** The first `PRINTED_INSIGHTS`, in full. */
   insights: PrintableInsight[]
+  /** The rest, by title. */
+  moreInsights: PrintableMoreInsight[]
   sections: PrintableSection[]
   provenance: ReportProvenance | null
   /** "Dianalisis" facts in print order, with the optional ones dropped. */
@@ -271,6 +312,10 @@ export function printableReport(data: ReportDocumentData): PrintableReport {
       .map((section) => [section.questionId, section.questionText]),
   )
 
+  // With one question there is nothing to tell apart.
+  const originOf = (insight: ReportInsight) =>
+    many && insight.questionId ? (titleOf.get(insight.questionId) ?? null) : null
+
   return {
     aspirations,
     countLine: reportCountLine(
@@ -279,13 +324,17 @@ export function printableReport(data: ReportDocumentData): PrintableReport {
       data.sections.length,
       aspirations,
     ),
-    insights: data.insights.map((insight) => ({
+    insights: data.insights.slice(0, PRINTED_INSIGHTS).map((insight) => ({
       title: insight.title,
       detail: insight.detail,
-      // With one question there is nothing to tell apart.
-      origin:
-        many && insight.questionId ? (titleOf.get(insight.questionId) ?? null) : null,
+      origin: originOf(insight),
+      supportLine: insightSupportLine(insight),
       evidenceResponseIds: insight.evidenceResponseIds,
+    })),
+    moreInsights: data.insights.slice(PRINTED_INSIGHTS).map((insight) => ({
+      title: insight.title,
+      origin: originOf(insight),
+      support: insight.support ?? null,
     })),
     sections: data.sections.map((section) => {
       const prose = section.mode === 'evaluative' || section.mode === 'thematic'
@@ -354,6 +403,7 @@ export type ReportPdfPayload = {
     title: string
     detail: string
     origin: string | null
+    supportLine: string | null
     quotes: string[]
   }>
   logoSrc: string | null
@@ -380,6 +430,7 @@ export function reportPdfPayload(
       title: insight.title,
       detail: insight.detail,
       origin: insight.origin,
+      supportLine: insight.supportLine,
       quotes: insight.evidenceResponseIds
         .map((id) => quotes[id])
         .filter((text): text is string => Boolean(text))

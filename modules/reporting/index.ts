@@ -43,7 +43,9 @@ export type {
 export { exportReportToCsv, exportResponsesToCsv } from './exporters/csv-exporter'
 export type { ExportableQuestion, ExportableResponse } from './exporters/csv-exporter'
 export {
+  PRINTED_INSIGHTS,
   formatMean,
+  insightSupportLine,
   printableReport,
   reportCountLine,
   reportFileStem,
@@ -53,6 +55,7 @@ export {
 } from './exporters/report-document'
 export type {
   PrintableInsight,
+  PrintableMoreInsight,
   PrintableReport,
   PrintableSection,
   ReportDocumentData,

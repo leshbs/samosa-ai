@@ -331,7 +331,23 @@ export type ReportInsight = {
    * several; absent on a summary written before insights named their origin.
    */
   questionId?: string | null
+  /**
+   * Answers that mention what the finding is about. From summary.v4, where a
+   * finding is picked from the data (C.4); absent on an older summary, whose
+   * findings the model chose.
+   */
+  support?: number
+  /** The topic labels it covers, most mentioned first; one for a lone topic. */
+  topics?: string[]
+  /** Why it stands out beyond being mentioned often. Absent before summary.v4. */
+  signal?: InsightSignal
 }
+
+/**
+ * `split`: more than 35% positive and more than 35% negative. `negative`: more
+ * than 80% negative over at least five answers. `topic`: neither.
+ */
+export type InsightSignal = 'topic' | 'split' | 'negative'
 
 export type Report = {
   id: string

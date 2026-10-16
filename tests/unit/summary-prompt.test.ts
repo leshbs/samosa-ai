@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  DEFAULT_SUMMARY_VERSION,
-  summaryPrompt,
-  type SummaryPromptInput,
-} from '@/modules/analysis/prompts'
+import { summaryPrompt, type SummaryPromptInput } from '@/modules/analysis/prompts'
 
 const INPUT: SummaryPromptInput = {
   totalResponses: 46,
@@ -46,9 +42,9 @@ const INPUT: SummaryPromptInput = {
 describe('summary.v3', () => {
   const prompt = summaryPrompt('summary.v3')
 
-  it('is what a new report is written with, and names the question of each insight', () => {
-    expect(DEFAULT_SUMMARY_VERSION).toBe('summary.v3')
+  it('names the question of each insight, and writes its insights itself', () => {
     expect(prompt.citesQuestions).toBe(true)
+    expect(prompt.writesInsightsApart).toBe(false)
     expect(summaryPrompt('summary.v2').citesQuestions).toBe(false)
   })
 
@@ -129,5 +125,25 @@ describe('summary.v3', () => {
       insights: [{ title: 'Konsumsi', detail: 'Telat.', evidence: [1] }],
     })
     expect(parsed.success && parsed.data.insights[0]?.question).toBeNull()
+  })
+})
+
+describe('summary.v4', () => {
+  const prompt = summaryPrompt('summary.v4')
+
+  it('leaves the findings to insight.v1 and is not shown any quote', () => {
+    const text = prompt.USER_TEMPLATE({ ...INPUT, sampleQuotes: ['Konsumsi telat'] })
+
+    expect(prompt.writesInsightsApart).toBe(true)
+    expect(text).toContain('Pertanyaan 1 (kritik & saran): "Kritik dan saran"')
+    expect(text).not.toContain('Konsumsi telat')
+    expect(text).not.toContain('insights')
+  })
+
+  it('reads the paragraph alone, with no insight of its own', () => {
+    const parsed = prompt.parse({ summary: '  Ringkas.  ' })
+
+    expect(parsed.success && parsed.data).toEqual({ summary: 'Ringkas.', insights: [] })
+    expect(prompt.parse({ summary: '' }).success).toBe(false)
   })
 })

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  PRINTED_INSIGHTS,
+  insightSupportLine,
   printableReport,
   reportCountLine,
   reportFileStem,
@@ -226,6 +228,38 @@ describe('reportPdfPayload', () => {
       reportPdfPayload(fixture({ preparedBy: { ...named, title: '' } }), {}).preparedLine,
     ).toBe('Disiapkan oleh Rani Putri')
     expect(reportPdfPayload(fixture(), {}).preparedLine).toBeNull()
+  })
+
+  it('prints the first findings in full and lists the rest by title', () => {
+    const counted = Array.from({ length: PRINTED_INSIGHTS + 2 }, (_, index) => ({
+      title: `Temuan ${index + 1}`,
+      detail: 'd',
+      evidenceResponseIds: ['r1', 'r3'],
+      support: 20 - index,
+      topics: index === 0 ? ['kualitas audio', 'kualitas mic'] : ['kantin'],
+      signal: index === 0 ? ('negative' as const) : ('topic' as const),
+    }))
+
+    const payload = reportPdfPayload(fixture({ insights: counted }), quotes)
+
+    expect(payload.insights).toHaveLength(PRINTED_INSIGHTS)
+    expect(payload.insights[0]?.supportLine).toBe(
+      'Disebut di 20 jawaban · hampir semua negatif · mencakup kualitas audio, kualitas mic',
+    )
+    expect(payload.insights[1]?.supportLine).toBe('Disebut di 19 jawaban')
+    expect(payload.view.moreInsights).toEqual([
+      { title: 'Temuan 6', origin: null, support: 15 },
+      { title: 'Temuan 7', origin: null, support: 14 },
+    ])
+  })
+
+  it('gives a finding from before summary.v4 no count line', () => {
+    expect(insightSupportLine(insight)).toBeNull()
+    expect(
+      reportPdfPayload(fixture({ insights: [insight] }), quotes).insights[0],
+    ).toMatchObject({
+      supportLine: null,
+    })
   })
 
   it('is plain JSON: nothing is lost crossing the network', () => {
